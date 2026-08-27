@@ -21,6 +21,7 @@
 #include "platform_error.h"
 #include "platform_object.h"
 #include "platform_lifecycle.h"
+#include "platform_def.h"
 //******************************** Includes *********************************//
 
 //******************************** Defines *********************************//
