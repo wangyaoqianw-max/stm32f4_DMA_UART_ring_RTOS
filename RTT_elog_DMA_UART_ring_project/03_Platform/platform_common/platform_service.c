@@ -19,13 +19,14 @@
 #include "platform_service.h"
 //******************************** Includes *********************************//
 
+//******************************** Functions *********************************//
 /**
  * @brief 初始化服务对象的公共基础字段
  *
- * @param[in] p_svc         : 指向服务对象本体的指针
- * @param[in] name          : 服务的名称
- * @param[in] service_class : 服务功能的细分类型
- * @param[in] p_lifecycle   : 生命周期管理的指针
+ * @param[out] p_svc          : 指向服务对象本体的指针
+ * @param[in] p_name          : 服务的名称
+ * @param[in] service_class   : 服务功能的细分类型
+ * @param[in] p_lifecycle     : 生命周期管理的指针
  *
  * @return platform_error_t : 函数执行状态
  */
@@ -57,3 +58,4 @@ platform_error_t platform_service_init(platform_service_t *p_svc,
 
     return PLATFORM_ERR_OK;
 }
+//******************************** Functions *********************************//
