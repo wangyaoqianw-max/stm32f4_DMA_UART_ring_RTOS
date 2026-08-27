@@ -1,0 +1,13 @@
+rtt_elog_dma_uart_ring_project\heap_4.o: ../Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c
+rtt_elog_dma_uart_ring_project\heap_4.o: E:\APP\ProgramFile\MDK\Core\ARM\ARMCC\Bin\..\include\stdlib.h
+rtt_elog_dma_uart_ring_project\heap_4.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h
+rtt_elog_dma_uart_ring_project\heap_4.o: E:\APP\ProgramFile\MDK\Core\ARM\ARMCC\Bin\..\include\stddef.h
+rtt_elog_dma_uart_ring_project\heap_4.o: E:\APP\ProgramFile\MDK\Core\ARM\ARMCC\Bin\..\include\stdint.h
+rtt_elog_dma_uart_ring_project\heap_4.o: ../Core/Inc/FreeRTOSConfig.h
+rtt_elog_dma_uart_ring_project\heap_4.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/projdefs.h
+rtt_elog_dma_uart_ring_project\heap_4.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/portable.h
+rtt_elog_dma_uart_ring_project\heap_4.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/deprecated_definitions.h
+rtt_elog_dma_uart_ring_project\heap_4.o: ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F/portmacro.h
+rtt_elog_dma_uart_ring_project\heap_4.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/mpu_wrappers.h
+rtt_elog_dma_uart_ring_project\heap_4.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h
+rtt_elog_dma_uart_ring_project\heap_4.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/list.h

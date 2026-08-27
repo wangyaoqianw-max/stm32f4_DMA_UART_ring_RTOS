@@ -1,0 +1,1 @@
+rtt_elog_dma_uart_ring_project\startup_stm32f411xe.o: startup_stm32f411xe.s
