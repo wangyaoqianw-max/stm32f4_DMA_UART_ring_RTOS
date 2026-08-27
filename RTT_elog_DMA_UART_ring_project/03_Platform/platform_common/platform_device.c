@@ -41,9 +41,17 @@ platform_error_t platform_device_init(platform_device_t *p_dev,
     if(NULL == p_dev){
         return PLATFORM_ERR_INVALID_PARAM;
     }
+
+    if (dev_class >= PLATFORM_DEVICE_CLASS_MAX)
+    {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
     /*2.初始化基类*/
     ret = platform_object_init(&p_dev->object,p_name,PLATFORM_OBJECT_DEVICE,NULL);
-    if(PLATFORM_ERR_OK != ret) return ret;
+    if(PLATFORM_ERR_OK != ret) 
+    {
+        return ret;
+    }
     /*3.初始化其他值*/
     p_dev->dev_class = dev_class;
     p_dev->caps = caps;
@@ -57,16 +65,29 @@ platform_error_t platform_device_init(platform_device_t *p_dev,
  * @brief 修改设备的电源及运行状态
  *
  * @param[in] p_dev       : 指向设备对象本体的指针
- * @param[in] power_atate : 电源及运行状态
+ * @param[in] power_state : 电源及运行状态
  *
  * @return platform_error_t : 函数执行状态
  */
 platform_error_t platform_device_set_power_state(
                                 platform_device_t *p_dev,
-                                platform_device_power_state_t power_atate)
+                                platform_device_power_state_t power_state)
 {
     if(NULL == p_dev) return PLATFORM_ERR_INVALID_PARAM;
-    p_dev->power_state = power_atate;
+    
+    if (PLATFORM_TRUE !=
+        platform_object_is_valid(&p_dev->object, PLATFORM_OBJECT_DEVICE))
+    {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    if (power_state >= PLATFORM_DEVICE_POWER_STATE_MAX)
+    {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    p_dev->power_state = power_state;
+
     return PLATFORM_ERR_OK;
 }
 //******************************** Functions *********************************//

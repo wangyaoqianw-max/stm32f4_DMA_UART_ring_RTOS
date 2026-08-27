@@ -73,6 +73,8 @@ typedef enum{
     PLATFORM_DEVICE_POWER_IDLE,      //设备已就绪，但当前未执行主要工作
     PLATFORM_DEVICE_POWER_ACTIVE,    //设备处于正常工作状态
     PLATFORM_DEVICE_POWER_ERROR,     //设备出现异常，当前状态不可正常使用
+
+    PLATFORM_DEVICE_POWER_STATE_MAX,
 }platform_device_power_state_t;
 
 /*平台设备基础对象*/
@@ -101,6 +103,18 @@ platform_error_t platform_device_init(platform_device_t *p_dev,
                                       platform_device_class_t dev_class,
                                       uint32_t caps,
                                       const platform_lifecycle_ops_t *p_lifecycle);
+
+/**
+ * @brief 修改设备电源及运行状态
+ *
+ * @param[in,out] p_dev       : 指向设备对象本体的指针
+ * @param[in]     power_state : 新的设备电源及运行状态
+ *
+ * @return platform_error_t : 函数执行状态
+ */
+platform_error_t platform_device_set_power_state(
+                                platform_device_t *p_dev,
+                                platform_device_power_state_t power_state);
 
 //******************************** Declaring *********************************//
 #endif
