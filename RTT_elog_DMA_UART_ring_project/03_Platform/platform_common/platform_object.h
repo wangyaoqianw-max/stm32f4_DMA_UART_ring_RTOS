@@ -43,7 +43,7 @@ typedef enum
     PLATFORM_OBJECT_TYPE_MAX    //边界值
 }platform_object_type_t;
 
-/*对象状态*/
+/*软件对象状态*/
 typedef enum
 {
     PLATFORM_OBJECT_CREATED,    //已创建

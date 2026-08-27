@@ -41,7 +41,7 @@ platform_error_t platform_object_init(platform_object_t *obj,
                                       void *parent)
 {
     /*1.检查指针对象是否有效*/
-    if((NULL == obj)||(NULL == name)||(type < PLATFORM_OBJECT_TYPE_MAX)){
+    if((NULL == obj)||(NULL == name)||(type >= PLATFORM_OBJECT_TYPE_MAX)){
         return PLATFORM_ERR_INVALID_PARAM;
     }
     /*2.写入对象的magic，名称，类型和初始状态*/

@@ -20,19 +20,22 @@
 //******************************** Includes *********************************//
 #include <stdbool.h>
 #include "easylogger_port.h"
+#include "platform_def.h"
+#include "platform_error.h"
 //******************************** Includes *********************************//
 
 //******************************** Defines *********************************//
 /*对日志错误状态进行枚举定义*/
-typedef enum
-{
-    PLATFORM_LOG_OK              = 0,        //操作成功
-    PLATFORM_LOG_ERROR           = 1,        //通用错误
-    PLATFORM_LOG_ERROR_PARAMETER = 2,        //参数错误
-    PLATFORM_LOG_ERROR_INIT      = 3,        //初始化失败
-    PLATFORM_LOG_ERROR_RESOURCE  = 4,        //资源不足
-    PLATFORM_LOG_RESETRVED       = 0x7FFFFFFF//预留
-}Platform_Log_Error_t;
+//使用通用错误类型
+// typedef enum
+// {
+//     PLATFORM_LOG_OK              = 0,        //操作成功
+//     PLATFORM_LOG_ERROR           = 1,        //通用错误
+//     PLATFORM_LOG_ERROR_PARAMETER = 2,        //参数错误
+//     PLATFORM_LOG_ERROR_INIT      = 3,        //初始化失败
+//     PLATFORM_LOG_ERROR_RESOURCE  = 4,        //资源不足
+//     PLATFORM_LOG_RESETRVED       = 0x7FFFFFFF//预留
+// }Platform_Log_Error_t;
 
 /*对日志等级进行枚举定义*/
 typedef enum
@@ -58,21 +61,21 @@ typedef enum
  * @brief  对日志进行初始化
  * @return Platform_Log_Error_t 返回PLATFORM_LOG_OK表示成功，其他表示失败
  */
-Platform_Log_Error_t Platform_Log_Init(void);
+platform_error_t Platform_Log_Init(void);
 
 /**
  * @brief  设置可以输出的日志的级别
  * @param  level  代表要设置的日志级别
  * @return Platform_Log_Error_t 返回PLATFORM_LOG_OK表示成功，其他表示失败
  */
-Platform_Log_Error_t Platform_Log_SetLevel(Platform_Log_Level_t level);
+platform_error_t Platform_Log_SetLevel(Platform_Log_Level_t level);
 
 /**
  * @brief  打开/关闭日志输出
  * @param  enable  代表日志的开关指令
  * @return Platform_Log_Error_t 返回PLATFORM_LOG_OK表示成功，其他表示失败
  */
-Platform_Log_Error_t Platform_Log_EnableOutput(bool enable);
+platform_error_t Platform_Log_EnableOutput(bool enable);
 //******************************** Function *********************************//
 
 #endif
