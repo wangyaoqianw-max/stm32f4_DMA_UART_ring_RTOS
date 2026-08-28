@@ -109,6 +109,62 @@ static uint32_t platform_uart_resolve_timeout(const platform_uart_t *uart,
 }
 
 /**
+ * @brief 校验 UART 异步事件的字段组合
+ * @param[in] event : UART 异步事件
+ * @param[out] 无
+ * @return platform_error_t : 事件校验结果
+ */
+static platform_error_t platform_uart_validate_event(
+    const platform_uart_event_t *event)
+{
+    /**
+     * 先校验公共枚举范围，再校验每类事件的专用约束。
+     **/
+    if ((NULL == event) ||
+        (event->type < PLATFORM_UART_EVENT_TX_COMPLETE) ||
+        (event->type >= PLATFORM_UART_EVENT_MAX) ||
+        (event->direction < PLATFORM_UART_DIRECTION_TX) ||
+        (event->direction >= PLATFORM_UART_DIRECTION_MAX)) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    switch (event->type) {
+        case PLATFORM_UART_EVENT_TX_COMPLETE:
+            if ((PLATFORM_UART_DIRECTION_TX != event->direction) ||
+                (NULL == event->data) || (0U == event->dataLength) ||
+                (PLATFORM_ERR_OK != event->error)) {
+                return PLATFORM_ERR_INVALID_PARAM;
+            }
+            break;
+
+        case PLATFORM_UART_EVENT_RX_DATA:
+            if ((PLATFORM_UART_DIRECTION_RX != event->direction) ||
+                (NULL == event->data) || (0U == event->dataLength) ||
+                (PLATFORM_ERR_OK != event->error)) {
+                return PLATFORM_ERR_INVALID_PARAM;
+            }
+            break;
+
+        case PLATFORM_UART_EVENT_ERROR:
+            if (PLATFORM_ERR_OK == event->error) {
+                return PLATFORM_ERR_INVALID_PARAM;
+            }
+            break;
+
+        case PLATFORM_UART_EVENT_CANCELED:
+            if (PLATFORM_ERR_CANCELED != event->error) {
+                return PLATFORM_ERR_INVALID_PARAM;
+            }
+            break;
+
+        default:
+            return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    return PLATFORM_ERR_OK;
+}
+
+/**
  * @brief 构造 Platform UART 对象
  * @param[out] uart  : 待构造的 UART 对象
  * @param[in] params : UART 初始化参数
@@ -239,5 +295,149 @@ platform_error_t platform_uart_read(platform_uart_t *uart,
                            bufferSize,
                            platform_uart_resolve_timeout(uart, timeoutMs),
                            readLength);
+}
+
+/**
+ * @brief 校验并转发一次异步 UART 发送
+ * @param[in] uart       : UART 对象
+ * @param[in] data       : 发送缓冲区
+ * @param[in] dataLength : 发送长度
+ * @return platform_error_t : 函数执行状态
+ */
+platform_error_t platform_uart_write_async(platform_uart_t *uart,
+                                           const uint8_t *data,
+                                           platform_size_t dataLength)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    /**
+     * 异步操作必须有结束事件接收者，否则 Buffer 所有权无法安全归还。
+     **/
+    if ((NULL == data) || (0U == dataLength)) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    result = platform_uart_validate_ready(uart);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    if (NULL == uart->callback) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    if (NULL == uart->ops->writeAsync) {
+        return PLATFORM_ERR_NOT_SUPPORTED;
+    }
+
+    return uart->ops->writeAsync(uart, data, dataLength);
+}
+
+/**
+ * @brief 校验并转发一次异步 UART 接收
+ * @param[in] uart       : UART 对象
+ * @param[out] buffer    : 接收缓冲区
+ * @param[in] bufferSize : 接收缓冲区容量
+ * @return platform_error_t : 函数执行状态
+ */
+platform_error_t platform_uart_read_async(platform_uart_t *uart,
+                                          uint8_t *buffer,
+                                          platform_size_t bufferSize)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    /**
+     * 异步接收不在 Platform 中创建或复制 Buffer。
+     **/
+    if ((NULL == buffer) || (0U == bufferSize)) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    result = platform_uart_validate_ready(uart);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    if (NULL == uart->callback) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    if (NULL == uart->ops->readAsync) {
+        return PLATFORM_ERR_NOT_SUPPORTED;
+    }
+
+    return uart->ops->readAsync(uart, buffer, bufferSize);
+}
+
+/**
+ * @brief 校验并转发一次 UART 异步传输取消
+ * @param[in] uart      : UART 对象
+ * @param[in] direction : 待取消的传输方向
+ * @return platform_error_t : 函数执行状态
+ */
+platform_error_t platform_uart_cancel(platform_uart_t *uart,
+                                      platform_uart_direction_t direction)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    /**
+     * BOTH 用于停止前同时取消 TX 和 RX，其他越界值全部拒绝。
+     **/
+    if ((direction < PLATFORM_UART_DIRECTION_TX) ||
+        (direction >= PLATFORM_UART_DIRECTION_MAX)) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    result = platform_uart_validate_ready(uart);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    if (NULL == uart->ops->cancel) {
+        return PLATFORM_ERR_NOT_SUPPORTED;
+    }
+
+    return uart->ops->cancel(uart, direction);
+}
+
+/**
+ * @brief 校验并通知一次 UART 异步事件
+ * @param[in] uart  : UART 对象
+ * @param[in] event : UART 异步事件
+ * @return platform_error_t : 函数执行状态
+ */
+platform_error_t platform_uart_notify_event(platform_uart_t *uart,
+                                             const platform_uart_event_t *event)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    /**
+     * 事件可能在 stop 或 deinit 过程中抵达，因此只校验对象身份，不要求 STARTED。
+     **/
+    if ((NULL == uart) || (NULL == event)) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    if ((PLATFORM_TRUE !=
+         platform_object_is_valid(&uart->device.object, PLATFORM_OBJECT_DEVICE)) ||
+        (PLATFORM_DEVICE_CLASS_UART != uart->device.dev_class)) {
+        return PLATFORM_ERR_NOT_INITIALIZED;
+    }
+
+    if (NULL == uart->callback) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    result = platform_uart_validate_event(event);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    /**
+     * 校验通过后仅通知一次，回调上下文原样透传。
+     **/
+    uart->callback(uart, event, uart->callbackContext);
+
+    return PLATFORM_ERR_OK;
 }
 //******************************** Functions *********************************//

@@ -28,8 +28,17 @@ typedef struct
     platform_size_t dataLength;
     uint32_t timeoutMs;
     platform_size_t completedLength;
+    platform_uart_direction_t direction;
     platform_error_t result;
 } fake_uart_context_t;
+
+typedef struct
+{
+    platform_uart_t *uart;
+    platform_uart_event_t event;
+    void *callbackContext;
+    uint32_t callCount;
+} fake_callback_record_t;
 
 /**
  * @brief 为生命周期测试返回成功
@@ -104,6 +113,96 @@ static platform_error_t fake_read(platform_uart_t *uart,
     return context->result;
 }
 
+/**
+ * @brief 记录一次异步写请求
+ * @param[in] uart       : UART 对象
+ * @param[in] data       : 发送缓冲区
+ * @param[in] dataLength : 发送长度
+ * @param[out] 无
+ * @return 预设的假实现结果
+ */
+static platform_error_t fake_write_async(platform_uart_t *uart,
+                                         const uint8_t *data,
+                                         platform_size_t dataLength)
+{
+    fake_uart_context_t *context = (fake_uart_context_t *)uart->implContext;
+
+    /**
+     * 记录异步边界参数，不在假实现中复制数据。
+     **/
+    context->uart = uart;
+    context->data = data;
+    context->dataLength = dataLength;
+
+    return context->result;
+}
+
+/**
+ * @brief 记录一次异步读请求
+ * @param[in] uart       : UART 对象
+ * @param[out] buffer    : 接收缓冲区
+ * @param[in] bufferSize : 接收缓冲区容量
+ * @return 预设的假实现结果
+ */
+static platform_error_t fake_read_async(platform_uart_t *uart,
+                                        uint8_t *buffer,
+                                        platform_size_t bufferSize)
+{
+    fake_uart_context_t *context = (fake_uart_context_t *)uart->implContext;
+
+    /**
+     * 记录异步边界参数，不在假实现中填充数据。
+     **/
+    context->uart = uart;
+    context->buffer = buffer;
+    context->dataLength = bufferSize;
+
+    return context->result;
+}
+
+/**
+ * @brief 记录一次异步传输取消请求
+ * @param[in] uart      : UART 对象
+ * @param[in] direction : 取消方向
+ * @return 预设的假实现结果
+ */
+static platform_error_t fake_cancel(platform_uart_t *uart,
+                                    platform_uart_direction_t direction)
+{
+    fake_uart_context_t *context = (fake_uart_context_t *)uart->implContext;
+
+    /**
+     * 保存取消方向，用于验证 TX、RX 和 BOTH 的透传。
+     **/
+    context->uart = uart;
+    context->direction = direction;
+
+    return context->result;
+}
+
+/**
+ * @brief 记录 Platform UART 事件回调
+ * @param[in] uart            : 产生事件的 UART 对象
+ * @param[in] event           : UART 事件
+ * @param[in] callbackContext : 用户上下文
+ * @return 无
+ */
+static void fake_event_callback(platform_uart_t *uart,
+                                const platform_uart_event_t *event,
+                                void *callbackContext)
+{
+    fake_callback_record_t *record =
+        (fake_callback_record_t *)callbackContext;
+
+    /**
+     * 复制事件值，避免断言依赖回调参数的短暂生命周期。
+     **/
+    record->uart = uart;
+    record->event = *event;
+    record->callbackContext = callbackContext;
+    record->callCount++;
+}
+
 static const platform_lifecycle_ops_t g_fakeLifecycleOps = {
     fake_lifecycle,
     fake_lifecycle,
@@ -126,6 +225,14 @@ static const platform_uart_ops_t g_noBlockingOps = {
     NULL,
     NULL,
     NULL
+};
+
+static const platform_uart_ops_t g_fakeFullOps = {
+    fake_write,
+    fake_read,
+    fake_write_async,
+    fake_read_async,
+    fake_cancel
 };
 
 /**
@@ -364,6 +471,229 @@ static int test_missing_blocking_ops_are_not_supported(void)
 }
 
 /**
+ * @brief 验证异步收发和取消请求的参数转发
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_async_operations_validate_and_delegate(void)
+{
+    platform_uart_t uart = {0};
+    fake_uart_context_t context = {0};
+    fake_callback_record_t callbackRecord = {0};
+    platform_uart_init_params_t params = make_valid_params(&context);
+    uint8_t data[4] = {0};
+
+    params.ops = &g_fakeFullOps;
+    params.callback = fake_event_callback;
+    params.callbackContext = &callbackRecord;
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_init(&uart, &params));
+
+    TEST_ASSERT(PLATFORM_ERR_INVALID_STATE ==
+                platform_uart_write_async(&uart, data, sizeof(data)));
+    uart.device.object.state = PLATFORM_OBJECT_STARTED;
+
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM ==
+                platform_uart_write_async(&uart, NULL, sizeof(data)));
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM ==
+                platform_uart_write_async(&uart, data, 0U));
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM ==
+                platform_uart_read_async(&uart, NULL, sizeof(data)));
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM ==
+                platform_uart_read_async(&uart, data, 0U));
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM ==
+                platform_uart_cancel(&uart, PLATFORM_UART_DIRECTION_MAX));
+
+    context.result = PLATFORM_ERR_OK;
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_uart_write_async(&uart, data, sizeof(data)));
+    TEST_ASSERT(&uart == context.uart);
+    TEST_ASSERT(data == context.data);
+    TEST_ASSERT(sizeof(data) == context.dataLength);
+
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_uart_read_async(&uart, data, sizeof(data)));
+    TEST_ASSERT(data == context.buffer);
+    TEST_ASSERT(sizeof(data) == context.dataLength);
+
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_uart_cancel(&uart, PLATFORM_UART_DIRECTION_BOTH));
+    TEST_ASSERT(PLATFORM_UART_DIRECTION_BOTH == context.direction);
+
+    context.result = PLATFORM_ERR_BUSY;
+    TEST_ASSERT(PLATFORM_ERR_BUSY ==
+                platform_uart_write_async(&uart, data, sizeof(data)));
+
+    return 0;
+}
+
+/**
+ * @brief 验证异步操作对回调和 Ops 的要求
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_async_operations_require_callback_and_ops(void)
+{
+    platform_uart_t uart = {0};
+    fake_uart_context_t context = {0};
+    fake_callback_record_t callbackRecord = {0};
+    platform_uart_init_params_t params = make_valid_params(&context);
+    uint8_t data[2] = {0};
+
+    params.ops = &g_fakeFullOps;
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_init(&uart, &params));
+    uart.device.object.state = PLATFORM_OBJECT_STARTED;
+    TEST_ASSERT(PLATFORM_ERR_INVALID_STATE ==
+                platform_uart_write_async(&uart, data, sizeof(data)));
+    TEST_ASSERT(PLATFORM_ERR_INVALID_STATE ==
+                platform_uart_read_async(&uart, data, sizeof(data)));
+
+    params = make_valid_params(&context);
+    params.callback = fake_event_callback;
+    params.callbackContext = &callbackRecord;
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_init(&uart, &params));
+    uart.device.object.state = PLATFORM_OBJECT_STARTED;
+    TEST_ASSERT(PLATFORM_ERR_NOT_SUPPORTED ==
+                platform_uart_write_async(&uart, data, sizeof(data)));
+    TEST_ASSERT(PLATFORM_ERR_NOT_SUPPORTED ==
+                platform_uart_read_async(&uart, data, sizeof(data)));
+    TEST_ASSERT(PLATFORM_ERR_NOT_SUPPORTED ==
+                platform_uart_cancel(&uart, PLATFORM_UART_DIRECTION_TX));
+
+    return 0;
+}
+
+/**
+ * @brief 验证合法事件传递到注册回调
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_notify_event_delivers_valid_events(void)
+{
+    platform_uart_t uart = {0};
+    fake_uart_context_t context = {0};
+    fake_callback_record_t callbackRecord = {0};
+    platform_uart_init_params_t params = make_valid_params(&context);
+    uint8_t data[4] = {0};
+    platform_uart_event_t event = {
+        PLATFORM_UART_EVENT_RX_DATA,
+        PLATFORM_UART_DIRECTION_RX,
+        data,
+        2U,
+        PLATFORM_ERR_OK
+    };
+
+    params.ops = &g_fakeFullOps;
+    params.callback = fake_event_callback;
+    params.callbackContext = &callbackRecord;
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_init(&uart, &params));
+
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_notify_event(&uart, &event));
+    TEST_ASSERT(1U == callbackRecord.callCount);
+    TEST_ASSERT(&uart == callbackRecord.uart);
+    TEST_ASSERT(&callbackRecord == callbackRecord.callbackContext);
+    TEST_ASSERT(PLATFORM_UART_EVENT_RX_DATA == callbackRecord.event.type);
+    TEST_ASSERT(data == callbackRecord.event.data);
+    TEST_ASSERT(2U == callbackRecord.event.dataLength);
+
+    event.type = PLATFORM_UART_EVENT_TX_COMPLETE;
+    event.direction = PLATFORM_UART_DIRECTION_TX;
+    event.dataLength = sizeof(data);
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_notify_event(&uart, &event));
+    TEST_ASSERT(2U == callbackRecord.callCount);
+
+    event.type = PLATFORM_UART_EVENT_ERROR;
+    event.direction = PLATFORM_UART_DIRECTION_BOTH;
+    event.data = NULL;
+    event.dataLength = 0U;
+    event.error = PLATFORM_ERR_IO;
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_notify_event(&uart, &event));
+
+    event.type = PLATFORM_UART_EVENT_CANCELED;
+    event.error = PLATFORM_ERR_CANCELED;
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_notify_event(&uart, &event));
+    TEST_ASSERT(4U == callbackRecord.callCount);
+
+    return 0;
+}
+
+/**
+ * @brief 验证非法事件不会进入用户回调
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_notify_event_rejects_invalid_events(void)
+{
+    platform_uart_t uart = {0};
+    fake_uart_context_t context = {0};
+    fake_callback_record_t callbackRecord = {0};
+    platform_uart_init_params_t params = make_valid_params(&context);
+    uint8_t data[2] = {0};
+    platform_uart_event_t event = {
+        PLATFORM_UART_EVENT_RX_DATA,
+        PLATFORM_UART_DIRECTION_RX,
+        data,
+        sizeof(data),
+        PLATFORM_ERR_OK
+    };
+
+    params.callback = fake_event_callback;
+    params.callbackContext = &callbackRecord;
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_init(&uart, &params));
+
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM ==
+                platform_uart_notify_event(NULL, &event));
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM ==
+                platform_uart_notify_event(&uart, NULL));
+
+    event.type = PLATFORM_UART_EVENT_MAX;
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM ==
+                platform_uart_notify_event(&uart, &event));
+    event.type = PLATFORM_UART_EVENT_RX_DATA;
+    event.direction = PLATFORM_UART_DIRECTION_TX;
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM ==
+                platform_uart_notify_event(&uart, &event));
+    event.direction = PLATFORM_UART_DIRECTION_RX;
+    event.data = NULL;
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM ==
+                platform_uart_notify_event(&uart, &event));
+    event.data = data;
+    event.dataLength = 0U;
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM ==
+                platform_uart_notify_event(&uart, &event));
+
+    event.type = PLATFORM_UART_EVENT_TX_COMPLETE;
+    event.direction = PLATFORM_UART_DIRECTION_RX;
+    event.dataLength = sizeof(data);
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM ==
+                platform_uart_notify_event(&uart, &event));
+
+    event.type = PLATFORM_UART_EVENT_ERROR;
+    event.direction = PLATFORM_UART_DIRECTION_BOTH;
+    event.error = PLATFORM_ERR_OK;
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM ==
+                platform_uart_notify_event(&uart, &event));
+
+    event.type = PLATFORM_UART_EVENT_CANCELED;
+    event.error = PLATFORM_ERR_IO;
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM ==
+                platform_uart_notify_event(&uart, &event));
+    TEST_ASSERT(0U == callbackRecord.callCount);
+
+    params.callback = NULL;
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_init(&uart, &params));
+    event.type = PLATFORM_UART_EVENT_CANCELED;
+    event.error = PLATFORM_ERR_CANCELED;
+    TEST_ASSERT(PLATFORM_ERR_INVALID_STATE ==
+                platform_uart_notify_event(&uart, &event));
+
+    return 0;
+}
+
+/**
  * @brief 运行 Platform UART 对象和阻塞 API 测试
  * @param[in] 无
  * @param[out] 无
@@ -397,6 +727,26 @@ int main(void)
     }
 
     result = test_missing_blocking_ops_are_not_supported();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_async_operations_validate_and_delegate();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_async_operations_require_callback_and_ops();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_notify_event_delivers_valid_events();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_notify_event_rejects_invalid_events();
     if (0 != result) {
         return result;
     }
