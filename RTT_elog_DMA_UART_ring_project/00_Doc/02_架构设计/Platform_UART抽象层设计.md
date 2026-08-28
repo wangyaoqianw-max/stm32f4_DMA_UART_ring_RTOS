@@ -68,7 +68,8 @@ platform_uart_t
 
 `lifecycle` 和 `ops` 建议定义为 `static const`；它们以及 `implContext`、`callbackContext`
 指向的对象必须至少有效至 `deinit` 完成。同一 UART 对象只允许调用一次
-`platform_uart_init()`，重复构造返回 `PLATFORM_ERR_ALREADY_INITIALIZED`。
+`platform_uart_init()`，重复构造返回 `PLATFORM_ERR_ALREADY_INITIALIZED`。首次构造前必须使用
+`PLATFORM_UART_INITIALIZER` 将对象存储清零，避免读取未初始化的对象标识。
 
 ## 5. 公共类型
 

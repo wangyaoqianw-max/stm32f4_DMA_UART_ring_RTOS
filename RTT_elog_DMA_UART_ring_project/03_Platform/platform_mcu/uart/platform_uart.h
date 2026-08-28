@@ -21,6 +21,11 @@
 #include "platform_lifecycle.h"
 //******************************** Includes *********************************//
 
+//******************************** Defines *********************************//
+/*首次构造前使用此宏初始化 UART 对象存储*/
+#define PLATFORM_UART_INITIALIZER {0}
+//******************************** Defines *********************************//
+
 //******************************** Declaring *********************************//
 /*UART 数据操作表，由 Impl 层注入*/
 typedef struct
@@ -75,7 +80,7 @@ typedef struct
 
 /**
  * @brief 构造 Platform UART 对象
- * @param[out] uart   : 待构造的 UART 对象
+ * @param[in,out] uart : 已使用 PLATFORM_UART_INITIALIZER 零初始化的 UART 对象
  * @param[in] params  : 配置、生命周期、Ops 和上下文
  * @return platform_error_t : 函数执行状态
  * @note 本函数只构造抽象对象，不初始化具体硬件

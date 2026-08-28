@@ -364,6 +364,41 @@ static int test_init_rejects_reinitialization(void)
 }
 
 /**
+ * @brief 验证未构造对象和错误设备类别被拒绝
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_data_operations_reject_invalid_objects(void)
+{
+    platform_uart_t uart = PLATFORM_UART_INITIALIZER;
+    uint8_t data[2] = {0};
+    platform_size_t completedLength = 9U;
+
+    TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED ==
+                platform_uart_write(&uart,
+                                    data,
+                                    sizeof(data),
+                                    10U,
+                                    &completedLength));
+    TEST_ASSERT(0U == completedLength);
+
+    uart.device.object.magic = PLATFORM_OBJECT_MAGIC;
+    uart.device.object.type = PLATFORM_OBJECT_DEVICE;
+    uart.device.object.state = PLATFORM_OBJECT_STARTED;
+    uart.device.dev_class = PLATFORM_DEVICE_CLASS_DISPLAY;
+    TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED ==
+                platform_uart_read(&uart,
+                                   data,
+                                   sizeof(data),
+                                   10U,
+                                   &completedLength));
+    TEST_ASSERT(0U == completedLength);
+
+    return 0;
+}
+
+/**
  * @brief 验证写接口的状态、参数、超时和返回行为
  * @param[in] 无
  * @param[out] 无
@@ -785,6 +820,11 @@ int main(void)
     }
 
     result = test_init_rejects_reinitialization();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_data_operations_reject_invalid_objects();
     if (0 != result) {
         return result;
     }

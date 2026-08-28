@@ -43,6 +43,8 @@ int main(void)
         PLATFORM_UART_FLOW_CONTROL_NONE,
         100U
     };
+    platform_uart_t uart = PLATFORM_UART_INITIALIZER;
 
-    return (115200U == config.baudRate) ? 0 : 1;
+    return ((115200U == config.baudRate) &&
+            (0U == uart.device.object.magic)) ? 0 : 1;
 }
