@@ -42,6 +42,9 @@ typedef uint8      uchar_t;
 /*布尔类型*/
 typedef uint8      platform_bool_t;
 
+/*长度与索引类型*/
+typedef uint32     platform_size_t;
+
 //******************************** Declaring *********************************//
 
 #endif

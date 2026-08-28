@@ -43,6 +43,7 @@ typedef enum
     PLATFORM_DEVICE_CLASS_MOTOR,       //电机及执行机构设备
     PLATFORM_DEVICE_CLASS_CPU,         //处理器相关设备
     PLATFORM_DEVICE_CLASS_POWER,       //电源管理设备，如电源开关
+    PLATFORM_DEVICE_CLASS_UART,        //通用异步收发设备
 
     PLATFORM_DEVICE_CLASS_MAX
 } platform_device_class_t;
