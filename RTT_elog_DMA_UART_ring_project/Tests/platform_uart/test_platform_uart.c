@@ -323,6 +323,9 @@ static int test_init_rejects_invalid_parameters(void)
     params.config.dataBits = (platform_uart_data_bits_t)6;
     TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == platform_uart_init(&uart, &params));
     params = make_valid_params(&context);
+    params.config.dataBits = (platform_uart_data_bits_t)-1;
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == platform_uart_init(&uart, &params));
+    params = make_valid_params(&context);
     params.config.stopBits = PLATFORM_UART_STOP_BITS_MAX;
     TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == platform_uart_init(&uart, &params));
     params = make_valid_params(&context);
@@ -334,6 +337,28 @@ static int test_init_rejects_invalid_parameters(void)
     params = make_valid_params(&context);
     params.config.defaultTimeoutMs = PLATFORM_UART_TIMEOUT_USE_DEFAULT;
     TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == platform_uart_init(&uart, &params));
+
+    return 0;
+}
+
+/**
+ * @brief 验证 UART 对象只允许构造一次
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_init_rejects_reinitialization(void)
+{
+    platform_uart_t uart = {0};
+    fake_uart_context_t context = {0};
+    platform_uart_init_params_t params = make_valid_params(&context);
+
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_init(&uart, &params));
+    TEST_ASSERT(PLATFORM_ERR_ALREADY_INITIALIZED ==
+                platform_uart_init(&uart, &params));
+    uart.device.object.state = PLATFORM_OBJECT_STARTED;
+    TEST_ASSERT(PLATFORM_ERR_ALREADY_INITIALIZED ==
+                platform_uart_init(&uart, &params));
 
     return 0;
 }
@@ -380,9 +405,29 @@ static int test_write_validates_and_delegates(void)
     TEST_ASSERT(2U == writtenLength);
 
     context.result = PLATFORM_ERR_BUSY;
+    writtenLength = 9U;
     TEST_ASSERT(PLATFORM_ERR_BUSY ==
                 platform_uart_write(&uart, data, 2U, 25U, &writtenLength));
     TEST_ASSERT(25U == context.timeoutMs);
+    TEST_ASSERT(0U == writtenLength);
+
+    context.result = PLATFORM_ERR_OK;
+    context.completedLength = 2U;
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_uart_write(&uart, data, 2U, 0U, &writtenLength));
+    TEST_ASSERT(0U == context.timeoutMs);
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_uart_write(&uart,
+                                    data,
+                                    2U,
+                                    PLATFORM_UART_WAIT_FOREVER,
+                                    &writtenLength));
+    TEST_ASSERT(PLATFORM_UART_WAIT_FOREVER == context.timeoutMs);
+
+    context.completedLength = 3U;
+    TEST_ASSERT(PLATFORM_ERR_OVERFLOW ==
+                platform_uart_write(&uart, data, 2U, 10U, &writtenLength));
+    TEST_ASSERT(0U == writtenLength);
 
     return 0;
 }
@@ -429,9 +474,17 @@ static int test_read_validates_and_delegates(void)
     TEST_ASSERT(3U == readLength);
 
     context.result = PLATFORM_ERR_TIMEOUT;
+    readLength = 9U;
     TEST_ASSERT(PLATFORM_ERR_TIMEOUT ==
                 platform_uart_read(&uart, buffer, 4U, 20U, &readLength));
     TEST_ASSERT(20U == context.timeoutMs);
+    TEST_ASSERT(0U == readLength);
+
+    context.result = PLATFORM_ERR_OK;
+    context.completedLength = 5U;
+    TEST_ASSERT(PLATFORM_ERR_OVERFLOW ==
+                platform_uart_read(&uart, buffer, 4U, 10U, &readLength));
+    TEST_ASSERT(0U == readLength);
 
     return 0;
 }
@@ -536,6 +589,7 @@ static int test_async_operations_validate_and_delegate(void)
 static int test_async_operations_require_callback_and_ops(void)
 {
     platform_uart_t uart = {0};
+    platform_uart_t uartWithMissingOps = {0};
     fake_uart_context_t context = {0};
     fake_callback_record_t callbackRecord = {0};
     platform_uart_init_params_t params = make_valid_params(&context);
@@ -552,14 +606,16 @@ static int test_async_operations_require_callback_and_ops(void)
     params = make_valid_params(&context);
     params.callback = fake_event_callback;
     params.callbackContext = &callbackRecord;
-    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_init(&uart, &params));
-    uart.device.object.state = PLATFORM_OBJECT_STARTED;
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_uart_init(&uartWithMissingOps, &params));
+    uartWithMissingOps.device.object.state = PLATFORM_OBJECT_STARTED;
     TEST_ASSERT(PLATFORM_ERR_NOT_SUPPORTED ==
-                platform_uart_write_async(&uart, data, sizeof(data)));
+                platform_uart_write_async(&uartWithMissingOps, data, sizeof(data)));
     TEST_ASSERT(PLATFORM_ERR_NOT_SUPPORTED ==
-                platform_uart_read_async(&uart, data, sizeof(data)));
+                platform_uart_read_async(&uartWithMissingOps, data, sizeof(data)));
     TEST_ASSERT(PLATFORM_ERR_NOT_SUPPORTED ==
-                platform_uart_cancel(&uart, PLATFORM_UART_DIRECTION_TX));
+                platform_uart_cancel(&uartWithMissingOps,
+                                     PLATFORM_UART_DIRECTION_TX));
 
     return 0;
 }
@@ -589,6 +645,7 @@ static int test_notify_event_delivers_valid_events(void)
     params.callback = fake_event_callback;
     params.callbackContext = &callbackRecord;
     TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_init(&uart, &params));
+    uart.device.object.state = PLATFORM_OBJECT_STARTED;
 
     TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_notify_event(&uart, &event));
     TEST_ASSERT(1U == callbackRecord.callCount);
@@ -628,6 +685,7 @@ static int test_notify_event_delivers_valid_events(void)
 static int test_notify_event_rejects_invalid_events(void)
 {
     platform_uart_t uart = {0};
+    platform_uart_t uartWithoutCallback = {0};
     fake_uart_context_t context = {0};
     fake_callback_record_t callbackRecord = {0};
     platform_uart_init_params_t params = make_valid_params(&context);
@@ -648,6 +706,9 @@ static int test_notify_event_rejects_invalid_events(void)
                 platform_uart_notify_event(NULL, &event));
     TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM ==
                 platform_uart_notify_event(&uart, NULL));
+    TEST_ASSERT(PLATFORM_ERR_INVALID_STATE ==
+                platform_uart_notify_event(&uart, &event));
+    uart.device.object.state = PLATFORM_OBJECT_STARTED;
 
     event.type = PLATFORM_UART_EVENT_MAX;
     TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM ==
@@ -683,12 +744,19 @@ static int test_notify_event_rejects_invalid_events(void)
                 platform_uart_notify_event(&uart, &event));
     TEST_ASSERT(0U == callbackRecord.callCount);
 
-    params.callback = NULL;
-    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_init(&uart, &params));
+    uart.device.object.state = PLATFORM_OBJECT_STOPPED;
     event.type = PLATFORM_UART_EVENT_CANCELED;
     event.error = PLATFORM_ERR_CANCELED;
     TEST_ASSERT(PLATFORM_ERR_INVALID_STATE ==
                 platform_uart_notify_event(&uart, &event));
+    TEST_ASSERT(0U == callbackRecord.callCount);
+
+    params.callback = NULL;
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_uart_init(&uartWithoutCallback, &params));
+    uartWithoutCallback.device.object.state = PLATFORM_OBJECT_STARTED;
+    TEST_ASSERT(PLATFORM_ERR_INVALID_STATE ==
+                platform_uart_notify_event(&uartWithoutCallback, &event));
 
     return 0;
 }
@@ -712,6 +780,11 @@ int main(void)
     }
 
     result = test_init_rejects_invalid_parameters();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_init_rejects_reinitialization();
     if (0 != result) {
         return result;
     }

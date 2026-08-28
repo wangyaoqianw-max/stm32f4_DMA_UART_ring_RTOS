@@ -66,6 +66,10 @@ platform_uart_t
 - `callback`：异步收发事件回调。
 - `callbackContext`：由调用者提供并在回调时原样返回。
 
+`lifecycle` 和 `ops` 建议定义为 `static const`；它们以及 `implContext`、`callbackContext`
+指向的对象必须至少有效至 `deinit` 完成。同一 UART 对象只允许调用一次
+`platform_uart_init()`，重复构造返回 `PLATFORM_ERR_ALREADY_INITIALIZED`。
+
 ## 5. 公共类型
 
 ### 5.1 UART 配置
@@ -204,7 +208,8 @@ platform_error_t platform_uart_notify_event(
 ```
 
 `platform_uart_notify_event()` 是 Impl 向 Platform 上报异步事件的统一入口。Platform 校验对象和事件后，
-调用用户注册的回调。
+调用用户注册的回调。事件仅在对象处于 `STARTED` 状态时接受；Impl 必须在退出 `STARTED`
+前关闭事件源并排空尾部事件，防止停止或反初始化后访问失效的回调上下文。
 
 `platform_uart_init_params_t` 定义为：
 
@@ -252,7 +257,8 @@ Impl 的生命周期函数负责。
 
 - Buffer 由调用者创建和持有。
 - Buffer 在函数返回前必须保持有效。
-- `writtenLength` 或 `readLength` 返回实际完成量。
+- 接口成功时，`writtenLength` 或 `readLength` 返回实际完成量。
+- 接口失败时，完成量固定为 0；Impl 返回超过请求长度的完成量时返回 `PLATFORM_ERR_OVERFLOW`。
 
 ### 9.2 异步发送
 

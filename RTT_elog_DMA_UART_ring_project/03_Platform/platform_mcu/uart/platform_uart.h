@@ -56,7 +56,11 @@ struct platform_uart
     void *callbackContext;
 };
 
-/*Platform UART 对象构造参数*/
+/**
+ * @brief Platform UART 对象构造参数
+ * @note lifecycle 和 ops 建议使用 static const，且必须至少有效至 deinit 完成
+ * @note implContext 和 callbackContext 指向的对象必须至少有效至 deinit 完成
+ */
 typedef struct
 {
     const char *name;
@@ -75,6 +79,7 @@ typedef struct
  * @param[in] params  : 配置、生命周期、Ops 和上下文
  * @return platform_error_t : 函数执行状态
  * @note 本函数只构造抽象对象，不初始化具体硬件
+ * @note 同一 UART 对象只允许构造一次，重复调用返回已初始化错误
  */
 platform_error_t platform_uart_init(platform_uart_t *uart,
                                     const platform_uart_init_params_t *params);
@@ -85,7 +90,7 @@ platform_error_t platform_uart_init(platform_uart_t *uart,
  * @param[in] data            : 发送缓冲区，函数返回前必须保持有效
  * @param[in] dataLength      : 发送字节数
  * @param[in] timeoutMs       : 超时时间，单位毫秒
- * @param[out] writtenLength  : 实际完成的字节数
+ * @param[out] writtenLength  : 成功时为实际完成字节数，失败时为 0
  * @return platform_error_t : 函数执行状态
  */
 platform_error_t platform_uart_write(platform_uart_t *uart,
@@ -100,7 +105,7 @@ platform_error_t platform_uart_write(platform_uart_t *uart,
  * @param[out] buffer      : 接收缓冲区，函数返回前必须保持有效
  * @param[in] bufferSize   : 接收缓冲区容量
  * @param[in] timeoutMs    : 超时时间，单位毫秒
- * @param[out] readLength  : 实际完成的字节数
+ * @param[out] readLength  : 成功时为实际完成字节数，失败时为 0
  * @return platform_error_t : 函数执行状态
  */
 platform_error_t platform_uart_read(platform_uart_t *uart,
@@ -145,6 +150,7 @@ platform_error_t platform_uart_cancel(platform_uart_t *uart,
  * @param[in] uart  : 产生事件的 UART 对象
  * @param[in] event : 事件数据，仅在回调期间有效
  * @return platform_error_t : 函数执行状态
+ * @note 仅允许在 STARTED 状态通知事件，Impl 须在停止前关闭并排空事件源
  * @warning 用户回调可能在中断上下文执行，不得阻塞
  */
 platform_error_t platform_uart_notify_event(platform_uart_t *uart,

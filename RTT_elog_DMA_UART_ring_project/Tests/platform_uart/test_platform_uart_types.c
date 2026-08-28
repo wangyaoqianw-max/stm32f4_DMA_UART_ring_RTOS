@@ -11,12 +11,17 @@
  *
  *****************************************************************************/
 
-#include "platform_uart_types.h"
-#include "platform_device.h"
+#include <stddef.h>
+
+#include "platform_uart.h"
 
 typedef char assert_platform_size_is_32_bit[(sizeof(platform_size_t) == 4U) ? 1 : -1];
 typedef char assert_uart_class_appended[
     (PLATFORM_DEVICE_CLASS_UART == (PLATFORM_DEVICE_CLASS_POWER + 1)) ? 1 : -1];
+_Static_assert(offsetof(platform_uart_t, device) == 0U,
+               "platform_device_t 必须是 platform_uart_t 的首字段");
+_Static_assert(offsetof(platform_device_t, object) == 0U,
+               "platform_object_t 必须是 platform_device_t 的首字段");
 
 /**
  * @brief 验证调用者使用的 Platform UART 公共类型

@@ -183,6 +183,11 @@ platform_error_t platform_uart_init(platform_uart_t *uart,
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
+    if (PLATFORM_TRUE ==
+        platform_object_is_valid(&uart->device.object, PLATFORM_OBJECT_DEVICE)) {
+        return PLATFORM_ERR_ALREADY_INITIALIZED;
+    }
+
     result = platform_uart_validate_config(&params->config);
     if (PLATFORM_ERR_OK != result) {
         return result;
@@ -225,6 +230,7 @@ platform_error_t platform_uart_write(platform_uart_t *uart,
                                      platform_size_t *writtenLength)
 {
     platform_error_t result = PLATFORM_ERR_OK;
+    platform_size_t completedLength = 0U;
 
     /**
      * 所有退出路径都使可用的完成长度保持明确的零值。
@@ -246,11 +252,21 @@ platform_error_t platform_uart_write(platform_uart_t *uart,
         return PLATFORM_ERR_NOT_SUPPORTED;
     }
 
-    return uart->ops->write(uart,
-                            data,
-                            dataLength,
-                            platform_uart_resolve_timeout(uart, timeoutMs),
-                            writtenLength);
+    result = uart->ops->write(uart,
+                              data,
+                              dataLength,
+                              platform_uart_resolve_timeout(uart, timeoutMs),
+                              &completedLength);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    if (completedLength > dataLength) {
+        return PLATFORM_ERR_OVERFLOW;
+    }
+
+    *writtenLength = completedLength;
+    return PLATFORM_ERR_OK;
 }
 
 /**
@@ -269,6 +285,7 @@ platform_error_t platform_uart_read(platform_uart_t *uart,
                                     platform_size_t *readLength)
 {
     platform_error_t result = PLATFORM_ERR_OK;
+    platform_size_t completedLength = 0U;
 
     /**
      * 所有退出路径都使可用的完成长度保持明确的零值。
@@ -290,11 +307,21 @@ platform_error_t platform_uart_read(platform_uart_t *uart,
         return PLATFORM_ERR_NOT_SUPPORTED;
     }
 
-    return uart->ops->read(uart,
-                           buffer,
-                           bufferSize,
-                           platform_uart_resolve_timeout(uart, timeoutMs),
-                           readLength);
+    result = uart->ops->read(uart,
+                             buffer,
+                             bufferSize,
+                             platform_uart_resolve_timeout(uart, timeoutMs),
+                             &completedLength);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    if (completedLength > bufferSize) {
+        return PLATFORM_ERR_OVERFLOW;
+    }
+
+    *readLength = completedLength;
+    return PLATFORM_ERR_OK;
 }
 
 /**
@@ -411,17 +438,17 @@ platform_error_t platform_uart_notify_event(platform_uart_t *uart,
 {
     platform_error_t result = PLATFORM_ERR_OK;
 
-    /**
-     * 事件可能在 stop 或 deinit 过程中抵达，因此只校验对象身份，不要求 STARTED。
-     **/
-    if ((NULL == uart) || (NULL == event)) {
+    if (NULL == event) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
-    if ((PLATFORM_TRUE !=
-         platform_object_is_valid(&uart->device.object, PLATFORM_OBJECT_DEVICE)) ||
-        (PLATFORM_DEVICE_CLASS_UART != uart->device.dev_class)) {
-        return PLATFORM_ERR_NOT_INITIALIZED;
+    /**
+     * Impl 必须在退出 STARTED 前关闭事件源并排空尾部事件，
+     * 防止停止或反初始化后访问已失效的回调上下文。
+     **/
+    result = platform_uart_validate_ready(uart);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
     }
 
     if (NULL == uart->callback) {
