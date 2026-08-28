@@ -4,7 +4,7 @@
  * All Rights Reserved.
  *
  * @file platform_uart_types.h
- * @brief Platform UART public data types
+ * @brief Platform UART 公共数据类型
  * @author YaoQian Wang
  * @date 2026-08-28
  * @version V1.0
@@ -27,7 +27,7 @@
 //******************************** Declaring *********************************//
 typedef struct platform_uart platform_uart_t;
 
-/*UART data bits*/
+/*UART 数据位*/
 typedef enum
 {
     PLATFORM_UART_DATA_BITS_7 = 7,
@@ -35,7 +35,7 @@ typedef enum
     PLATFORM_UART_DATA_BITS_9 = 9
 } platform_uart_data_bits_t;
 
-/*UART stop bits*/
+/*UART 停止位*/
 typedef enum
 {
     PLATFORM_UART_STOP_BITS_1 = 0,
@@ -43,7 +43,7 @@ typedef enum
     PLATFORM_UART_STOP_BITS_MAX
 } platform_uart_stop_bits_t;
 
-/*UART parity modes*/
+/*UART 校验模式*/
 typedef enum
 {
     PLATFORM_UART_PARITY_NONE = 0,
@@ -52,7 +52,7 @@ typedef enum
     PLATFORM_UART_PARITY_MAX
 } platform_uart_parity_t;
 
-/*UART hardware flow-control modes*/
+/*UART 硬件流控模式*/
 typedef enum
 {
     PLATFORM_UART_FLOW_CONTROL_NONE = 0,
@@ -62,7 +62,7 @@ typedef enum
     PLATFORM_UART_FLOW_CONTROL_MAX
 } platform_uart_flow_control_t;
 
-/*UART transfer directions*/
+/*UART 传输方向*/
 typedef enum
 {
     PLATFORM_UART_DIRECTION_TX = 0,
@@ -71,7 +71,7 @@ typedef enum
     PLATFORM_UART_DIRECTION_MAX
 } platform_uart_direction_t;
 
-/*UART asynchronous event types*/
+/*UART 异步事件类型*/
 typedef enum
 {
     PLATFORM_UART_EVENT_TX_COMPLETE = 0,
@@ -81,7 +81,7 @@ typedef enum
     PLATFORM_UART_EVENT_MAX
 } platform_uart_event_type_t;
 
-/*UART static configuration*/
+/*UART 静态配置*/
 typedef struct
 {
     uint32_t baudRate;
@@ -92,7 +92,7 @@ typedef struct
     uint32_t defaultTimeoutMs;
 } platform_uart_config_t;
 
-/*UART asynchronous event payload*/
+/*UART 异步事件数据*/
 typedef struct
 {
     platform_uart_event_type_t type;
@@ -103,12 +103,12 @@ typedef struct
 } platform_uart_event_t;
 
 /**
- * @brief Handle an asynchronous UART event
- * @param[in] uart            : UART object that emitted the event
- * @param[in] event           : Event payload, valid only during the callback
- * @param[in] callbackContext : User context registered during initialization
- * @return None
- * @warning The callback may run in interrupt context and must not block
+ * @brief 处理 UART 异步事件
+ * @param[in] uart            : 产生事件的 UART 对象
+ * @param[in] event           : 事件数据，仅在回调执行期间有效
+ * @param[in] callbackContext : 初始化时注册的用户上下文
+ * @return 无
+ * @warning 回调可能在中断上下文执行，不得阻塞
  */
 typedef void (*platform_uart_callback_t)(platform_uart_t *uart,
                                          const platform_uart_event_t *event,

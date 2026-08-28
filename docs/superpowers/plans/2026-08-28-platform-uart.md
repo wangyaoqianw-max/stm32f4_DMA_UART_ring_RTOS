@@ -18,6 +18,7 @@
 - UART Ops 不重复 `init/start/process/stop/deinit`；生命周期继续使用 `platform_lifecycle_ops_t`。
 - 不使用动态内存，Platform 不复制传输 Buffer，不创建 RTOS 同步对象。
 - `RX_DATA` 仅表示收到字节，不表示完整协议帧。
+- 自研代码的文件、API、函数内和类型说明注释默认使用中文。
 - 保留用户已有未提交改动，Git 操作只指定本计划的文件。
 
 ---

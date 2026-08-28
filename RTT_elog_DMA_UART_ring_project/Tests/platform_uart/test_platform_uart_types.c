@@ -4,7 +4,7 @@
  * All Rights Reserved.
  *
  * @file test_platform_uart_types.c
- * @brief Verify the public Platform UART type contract
+ * @brief 验证 Platform UART 公共类型契约
  * @author Codex
  * @date 2026-08-28
  * @version V1.0
@@ -19,16 +19,16 @@ typedef char assert_uart_class_appended[
     (PLATFORM_DEVICE_CLASS_UART == (PLATFORM_DEVICE_CLASS_POWER + 1)) ? 1 : -1];
 
 /**
- * @brief Verify the Platform UART public type values used by callers
- * @param[in] None
- * @param[out] None
- * @return Zero when the public type contract is valid
+ * @brief 验证调用者使用的 Platform UART 公共类型
+ * @param[in] 无
+ * @param[out] 无
+ * @return 公共类型契约有效时返回 0
  */
 int main(void)
 {
     /**
-     * Use a concrete configuration to ensure each public field and enum is
-     * available to callers without any hardware-specific dependency.
+     * 使用具体配置验证公共字段和枚举可被调用者使用，
+     * 同时不引入任何具体硬件依赖。
      **/
     platform_uart_config_t config = {
         115200U,
