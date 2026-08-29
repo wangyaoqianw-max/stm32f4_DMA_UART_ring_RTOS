@@ -25,9 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
 #include "usart.h"
-#include "SEGGER_RTT.h"
 #include "platform_log.h"
 #define LOG_TAG "frssrtos001"
 /* USER CODE END Includes */
@@ -121,9 +119,7 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument)
 {
     /* USER CODE BEGIN StartDefaultTask */
-    if(PLATFORM_LOG_OK != Platform_Log_Init()){
-		SEGGER_RTT_printf(0,"platform_log init failed.\r\n");
-	}
+    (void)Platform_Log_Init();
     /* Infinite loop */
     for(;;)
     {

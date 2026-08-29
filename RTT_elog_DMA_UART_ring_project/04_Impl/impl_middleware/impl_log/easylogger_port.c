@@ -28,6 +28,18 @@
 static bool s_app_log_inited = false;
 
 /**
+ * @brief  日志未初始化时丢弃输出
+ */
+static void Impl_Elog_NoOutput(uint8_t level,
+                               const char *tag,
+                               const char *file,
+                               const char *func,
+                               long line,
+                               const char *format,
+                               ...);
+static platform_log_output_fn_t s_log_output_fn = Impl_Elog_NoOutput;
+
+/**
  * @brief  各个级别的日志输出内容设置
  */
 static void Impl_Elog_ConfigFormat(void);
@@ -76,29 +88,29 @@ static void Impl_Elog_AsyncTask(void *argument);
 //******************************** Function *********************************//
 /**
  * @brief  对日志进行初始化
- * @return Platform_Log_Error_t 返回PLATFORM_LOG_OK表示成功，其他表示失败
+ * @return PLATFORM_ERR_OK 表示成功，其他 platform_error_t 表示失败
  */
-Platform_Log_Error_t Platform_Log_Init(void){
-    Platform_Log_Error_t result = PLATFORM_LOG_OK;
+platform_error_t Platform_Log_Init(void){
+    platform_error_t result = PLATFORM_ERR_OK;
     //防止重复初始化
-    if(true == s_app_log_inited) return PLATFORM_LOG_OK;
+    if(true == s_app_log_inited) return PLATFORM_ERR_OK;
 
     //如果是异步状态，需要创建信号量和任务
 #if defined(ELOG_ASYNC_OUTPUT_ENABLE)
     s_elog_async_sem_handle = osSemaphoreNew(IMPL_ELOG_ASYNC_SEM_MAX_COUNT, 0, NULL);
     if(NULL == s_elog_async_sem_handle){
-        return PLATFORM_LOG_ERROR_RESOURCE;
+        return PLATFORM_ERR_NO_RESOURCE;
     }
     s_elog_async_task_handle = osThreadNew(Impl_Elog_AsyncTask, NULL, &s_elog_async_task_attributes);
     if(NULL == s_elog_async_task_handle){
-        result = PLATFORM_LOG_ERROR_RESOURCE;
+        result = PLATFORM_ERR_NO_RESOURCE;
         goto init_failed;
     }
 #endif
 
     //日志初始化
     if(ELOG_NO_ERR != elog_init()){
-        result = PLATFORM_LOG_ERROR_INIT;
+        result = PLATFORM_ERR_IO;
         goto init_failed;
     }
     //日志钩子函数注册
@@ -108,7 +120,8 @@ Platform_Log_Error_t Platform_Log_Init(void){
     //日志开始运行
     elog_start();
     s_app_log_inited = true;
-    return PLATFORM_LOG_OK;
+    s_log_output_fn = elog_output;
+    return PLATFORM_ERR_OK;
 
 init_failed:
 //异步模式下如果初始化失败，释放信号量和线程申请的资源
@@ -125,33 +138,36 @@ init_failed:
 #endif
 
     s_app_log_inited = false;
+    s_log_output_fn = Impl_Elog_NoOutput;
     return result;
 }
-
 /**
  * @brief  设置可以输出的日志的级别
  * @param  level  代表要设置的日志级别
- * @return Platform_Log_Error_t 返回PLATFORM_LOG_OK表示成功，其他表示失败
+ * @return PLATFORM_ERR_OK 表示成功，其他 platform_error_t 表示失败
  */
-Platform_Log_Error_t Platform_Log_SetLevel(Platform_Log_Level_t level){
+platform_error_t Platform_Log_SetLevel(Platform_Log_Level_t level){
     //初始化和参数校验
-    if(!s_app_log_inited) return PLATFORM_LOG_ERROR_INIT;
-    if(level >= PLATFORM_LOG_LEVEL_MAX)return PLATFORM_LOG_ERROR_PARAMETER;
+    if(!s_app_log_inited) return PLATFORM_ERR_NOT_INITIALIZED;
+    if(level >= PLATFORM_LOG_LEVEL_MAX)return PLATFORM_ERR_INVALID_PARAM;
 
     elog_set_filter_lvl(Impl_Elog_ConvertLevel(level));
-    return PLATFORM_LOG_OK;
+    return PLATFORM_ERR_OK;
 }
-
 /**
  * @brief  打开/关闭日志输出
  * @param  enable  代表日志的开关指令
- * @return Platform_Log_Error_t 返回PLATFORM_LOG_OK表示成功，其他表示失败
+ * @return PLATFORM_ERR_OK 表示成功，其他 platform_error_t 表示失败
  */
-Platform_Log_Error_t Platform_Log_EnableOutput(bool enable){
-    if(!s_app_log_inited) return PLATFORM_LOG_ERROR_INIT;
+platform_error_t Platform_Log_EnableOutput(bool enable){
+    if(!s_app_log_inited) return PLATFORM_ERR_NOT_INITIALIZED;
 
     elog_set_output_enabled(enable);
-    return PLATFORM_LOG_OK;
+    return PLATFORM_ERR_OK;
+}
+
+platform_log_output_fn_t Platform_Log_GetOutputFn(void){
+    return s_log_output_fn;
 }
 
 #if defined(ELOG_ASYNC_OUTPUT_ENABLE)
@@ -166,6 +182,21 @@ void elog_async_output_notice(void){
 #endif
 
 //********************* 私有函数 ********************//
+static void Impl_Elog_NoOutput(uint8_t level,
+                               const char *tag,
+                               const char *file,
+                               const char *func,
+                               long line,
+                               const char *format,
+                               ...){
+    (void)level;
+    (void)tag;
+    (void)file;
+    (void)func;
+    (void)line;
+    (void)format;
+}
+
 #if defined(ELOG_ASYNC_OUTPUT_ENABLE)
 /**
  * @brief  异步模式，日志任务函数，用来接收信号量，触发日志传输

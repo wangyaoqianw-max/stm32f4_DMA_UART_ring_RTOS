@@ -25,12 +25,4 @@
 #include "task.h"
 //******************************** Includes *********************************//
 
-//******************************** Defines *********************************//
-#define impl_elog_e(tag,...)      elog_e(LOG_TAG, __VA_ARGS__)
-#define impl_elog_w(tag,...)      elog_w(LOG_TAG, __VA_ARGS__)
-#define impl_elog_i(tag,...)      elog_i(LOG_TAG, __VA_ARGS__)
-#define impl_elog_d(tag,...)      elog_d(LOG_TAG, __VA_ARGS__)
-#define impl_elog_v(tag,...)      elog_v(LOG_TAG, __VA_ARGS__)
-//******************************** Defines *********************************//
-
 #endif

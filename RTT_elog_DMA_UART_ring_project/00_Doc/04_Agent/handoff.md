@@ -7,7 +7,7 @@
 - 工程根目录：`RTT_elog_DMA_UART_ring_project/`
 - 当前分支：`main`
 - 当前活动阶段：Log Phase 1 — Platform Log / EasyLogger Impl Boundary Cleanup
-- 当前状态：`READY_FOR_IMPLEMENTATION`
+- 当前状态：`CODE_COMPLETE_PENDING_LOG_RUNTIME_VERIFICATION`
 - MCU：STM32F411CEU6，UFQFPN48
 - 软件环境：STM32 HAL、CMSIS-RTOS2 / FreeRTOS、Keil、EasyLogger、SEGGER RTT
 - 总体目标：实现 UART + DMA + Ring Buffer + FreeRTOS，并通过分层架构隔离业务与硬件
@@ -185,7 +185,7 @@ Log Phase 1 只允许在 USER CODE 区做最小收口，使它只依赖 Platform
 当前 Plan 状态：
 
 ```text
-READY_FOR_IMPLEMENTATION
+CODE_COMPLETE_PENDING_LOG_RUNTIME_VERIFICATION
 ```
 
 ### 5.1 保留控制 API
@@ -452,28 +452,17 @@ git log --oneline -n 10
 
 ## 12. 当前推荐动作
 
-直接执行：
+完成 Log Phase 1 的 RTT Runtime Smoke Test：
 
 ```text
-Log Phase 1
-Platform / Impl Boundary Cleanup
+Platform_Log_Init()
+    ↓
+platform_log_i(...)
+    ↓
+RTT Viewer 实际可见
 ```
 
-严格按照 `implementation_plan.md`：
-
-1. Preflight。
-2. Platform Header 解耦。
-3. Error Contract 统一。
-4. Output Backend Binding。
-5. 保持 Async EasyLogger 行为。
-6. 收缩 Impl Header。
-7. 更新 `freertos.c` USER CODE。
-8. Host / Static Verification。
-9. Keil Full Rebuild。
-10. RTT Runtime Smoke Test。
-11. 更新本 handoff。
-
-出现需要修改 Vendor、UART 或建立 Log Service 的情况时，不得自行扩大任务；记录 `BLOCKED` 后返回设计阶段。
+RTT 验证通过后，标记 Log Phase 1 为 `COMPLETED`，再返回 UART Phase 1 板上 TX / RX / Lifecycle 验证。不得开始 UART DMA / IDLE Phase 2。
 
 ---
 
@@ -526,3 +515,68 @@ UART Phase 1 COMPLETED
 ```
 
 UART DMA / IDLE 仍未设计，不得提前实现。
+
+---
+
+## 15. Log Phase 1 实施记录（2026-08-29）
+
+- 阶段状态：`CODE_COMPLETE_PENDING_LOG_RUNTIME_VERIFICATION`
+
+### Completed
+
+- Platform Log 已移除对 `easylogger_port.h` 和 `impl_elog_*` 的依赖。
+- 已建立 `platform_log_output_fn_t` 与 `Platform_Log_GetOutputFn()` 通用输出后端契约。
+- Impl 在初始化前和失败后使用 no-op 后端；EasyLogger 初始化成功后才绑定 `elog_output`。
+- 公共日志控制 API 已统一使用 `platform_error_t`，并完成既有旧错误符号的清除。
+- `freertos.c` 的 USER CODE 不再包含或调用 SEGGER RTT，日志初始化改为 Platform API 调用。
+- 保持 EasyLogger Async Semaphore、Async Task、Assert Hook 与格式配置在 Impl 内部。
+
+### Changed Files
+
+- `03_Platform/platform_middleware/platform_log.h`
+- `04_Impl/impl_middleware/impl_log/easylogger_port.c`
+- `04_Impl/impl_middleware/impl_log/easylogger_port.h`
+- `Core/Src/freertos.c`（仅 USER CODE Includes / StartDefaultTask）
+- `Tests/platform_log/test_platform_log.c`（新增 Host Test）
+- 本文件
+
+### Build Status
+
+- 2026-08-29 使用本机 Keil MDK 5.38 执行 Full Rebuild。
+- 实际 Build Log：`0 Error(s), 13 Warning(s)`，Target 已创建。
+- 修复前基线为 `14 Error(s), 14 Warning(s)`；本阶段未引入新的 Warning，`freertos.c` 的旧 `LOG_TAG` 重定义 Warning 已消失。
+- Keil 批处理进程退出码为 `1`，但实际构建日志明确为 `0 Error(s)`；验收以 Keil 输出日志为准。
+
+### Test Status
+
+- Host Test：`Tests/platform_log/test_platform_log.c` 使用 MinGW GCC 编译并运行，exit code `0`。
+- 测试在不提供 EasyLogger、RTT、CMSIS-RTOS 或 FreeRTOS include 路径的条件下通过，验证 Platform Header 独立性及 `platform_log_i/e` 的 Level、Tag、Format、可变参数转发。
+- 静态扫描通过：`platform_log.h` 无 EasyLogger / RTT / RTOS / `impl_elog_*` 依赖；非 Vendor 活动 C/H 无旧 `Platform_Log_Error_t`、`PLATFORM_LOG_OK`、`PLATFORM_LOG_ERROR_*` 符号；`freertos.c` 无直接 RTT 日志输出。
+- RTT 硬件 Smoke Test：`NOT_VERIFIED`，当前环境未连接可验证板卡 / RTT Viewer。
+
+### Deviations From Plan
+
+- 无架构或接口偏差。
+- 新增 Host Test 使用 Fake Output Backend，仅测试 Platform 宏与 Header 契约；EasyLogger 实际绑定由 Keil 全工程链接验证，仍需板上 RTT Smoke Test 验证运行行为。
+
+### Known Issues
+
+- Keil 仍有 13 个既有 Warning：`usart.h` 旧式函数声明、Platform UART 无符号比较、占位 `rtt_elog_port.c` 与 Vendor `elog_port.c` 缺少末尾换行。均不属于本阶段范围。
+- Keil 启动过程中更新了 `.uvoptx/.uvguix.*` IDE 视图状态；这些非业务文件不属于本阶段修改范围，未作为实现内容处理。
+
+### Blockers
+
+- 无代码或构建 Blocker。
+- 完成状态受硬件 RTT Runtime Smoke Test 缺失限制。
+
+### Decisions Made During Implementation
+
+- 采用计划指定的函数指针 Getter，而非 variadic wrapper 或额外 `vsnprintf` 缓冲区。
+- 不新增动态内存、Log Service 或 Vendor 修改。
+- 初始化失败时恢复 no-op 后端，并保留已有 Async Task / Semaphore 回收路径。
+
+### Recommended Next Action
+
+1. 连接目标板与 RTT Viewer，验证 INFO 输出、`Platform_Log_SetLevel()` 过滤及 `Platform_Log_EnableOutput(false/true)` 行为。
+2. 该 RTT 验证通过后，将 Log Phase 1 标记为 `COMPLETED`。
+3. 然后返回 UART Phase 1，完成板上 Blocking TX / 固定长度 RX / Lifecycle 验证；不得开始 UART Phase 2 DMA / IDLE。
