@@ -642,3 +642,41 @@ PENDING
 ```
 
 尚未执行任何真实板测，不得将 UART Phase 2A 标记为 COMPLETED。
+
+---
+
+## 18. Phase 2A Board Verification Result — 2026-08-29
+
+状态：
+
+```text
+CODE_COMPLETE_PENDING_KEIL_VERIFICATION
+```
+
+### Hardware Verification
+
+真实目标板经 RTT 验证通过：
+
+- Short + IDLE：PASS。
+- Multiple Bursts：PASS。
+- Continuous 640 Bytes：PASS，`received=640`、`mismatch=0`。
+- HT/TC/IDLE Boundary 300 Bytes：PASS。
+- Cancel Event 与 Old RX Session Stopped：PASS。
+- Cancel Restart：PASS。
+- Lifecycle Stop、No Canceled Event、Stop Restart：PASS。
+- 最终报告：`UART PHASE2A BOARD TEST: PASS`，`CAPTURE OVERFLOW=0`、`ERROR EVENTS=0`。
+
+### Temporary Test Restore
+
+`Core/Src/freertos.c` 中以 `UART PHASE2A BOARD TEST BEGIN/END` 标记的临时测试代码已全部移除，默认任务恢复为空闲 `osDelay(1)` 循环。
+
+### Remaining Verification
+
+当前 Codex 环境不能执行 Keil。临时测试代码恢复后仍需在本地执行：
+
+```text
+Clean Targets
+→ Rebuild all target files
+```
+
+只有确认恢复后工程为 `0 Error(s)`，才可将 UART Phase 2A 标记为 `COMPLETED`。
