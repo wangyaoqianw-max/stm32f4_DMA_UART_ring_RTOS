@@ -53,3 +53,7 @@ rtt_elog_dma_uart_ring_project\freertos.o: E:\APP\ProgramFile\MDK\Core\ARM\ARMCC
 rtt_elog_dma_uart_ring_project\freertos.o: ..\04_Impl\impl_middleware\impl_log\easylogger_port.h
 rtt_elog_dma_uart_ring_project\freertos.o: ..\05_vendors\easylogger\inc\elog.h
 rtt_elog_dma_uart_ring_project\freertos.o: ..\05_vendors\easylogger\inc\elog_cfg.h
+rtt_elog_dma_uart_ring_project\freertos.o: ..\03_Platform\platform_common\platform_def.h
+rtt_elog_dma_uart_ring_project\freertos.o: ..\03_Platform\platform_common\platform_types.h
+rtt_elog_dma_uart_ring_project\freertos.o: ..\04_Impl\impl_board\board_types.h
+rtt_elog_dma_uart_ring_project\freertos.o: ..\03_Platform\platform_common\platform_error.h

@@ -21,3 +21,7 @@ rtt_elog_dma_uart_ring_project\easylogger_port.o: ../Middlewares/Third_Party/Fre
 rtt_elog_dma_uart_ring_project\easylogger_port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/list.h
 rtt_elog_dma_uart_ring_project\easylogger_port.o: ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h
 rtt_elog_dma_uart_ring_project\easylogger_port.o: ..\03_Platform\platform_middleware\platform_log.h
+rtt_elog_dma_uart_ring_project\easylogger_port.o: ..\03_Platform\platform_common\platform_def.h
+rtt_elog_dma_uart_ring_project\easylogger_port.o: ..\03_Platform\platform_common\platform_types.h
+rtt_elog_dma_uart_ring_project\easylogger_port.o: ..\04_Impl\impl_board\board_types.h
+rtt_elog_dma_uart_ring_project\easylogger_port.o: ..\03_Platform\platform_common\platform_error.h
