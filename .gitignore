@@ -2,8 +2,9 @@
 # Keil MDK / ARMCC generated files
 # ============================================================
 
-# 当前 Keil Target 的完整构建输出目录
-/RTT_elog_DMA_UART_ring_project/MDK-ARM/RTT_elog_DMA_UART_ring_project/
+# 当前 Keil Target 的构建输出目录
+/RTT_elog_DMA_UART_ring_project/MDK-ARM/Objects/
+/RTT_elog_DMA_UART_ring_project/MDK-ARM/Listings/
 
 # Keil generated intermediate / output files
 *.o
@@ -22,6 +23,7 @@
 *.12p
 *.fed
 *.Bak
+*.htm
 
 # Keil build reports
 *.build_log.htm
