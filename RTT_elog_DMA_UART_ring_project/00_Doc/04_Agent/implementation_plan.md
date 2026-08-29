@@ -2,481 +2,709 @@
 
 ## Metadata
 
-- Status: READY_FOR_VERIFICATION
-- Phase: UART Phase 1 Final Verification
-- Scope: STM32 USART1 Blocking TX / RX / Lifecycle Board Verification
-- Architecture Version: 1
-- Target: STM32F411CEU6 / USART1 / FreeRTOS / Keil
+- Status: READY_FOR_IMPLEMENTATION
+- Phase: UART Phase 2A
+- Scope: USART1 DMA RX + IDLE + Platform RX_DATA Event
+- Architecture Version: 1.1
+- Target: STM32F411CEU6 / USART1 / DMA2 Stream2 Channel4 / FreeRTOS / Keil
 - Updated: 2026-08-29
+- Design Spec: `00_Doc/02_架构设计/UART_Phase2A_DMA_RX设计.md`
 
 ---
 
-## 1. Objective
+## 1. Goal
 
-本阶段不再实现新的 UART 功能，只对已经完成的 STM32 UART Platform Blocking Impl 做最终板上验收。
-
-验证链路：
+建立并验证：
 
 ```text
-Platform UART
-    ↓
+USART1 RX
+   ↓
+DMA2 Stream2 / Channel 4
+   ↓
+Circular DMA Buffer
+   ↓
+IDLE / HT / TC
+   ↓
 STM32 UART Impl
-    ↓
-STM32 HAL UART
-    ↓
-USART1 PA9 / PA10
+   ↓
+Platform UART RX_DATA Event
 ```
 
-完成本阶段后，UART Phase 1 才可以正式标记 `COMPLETED`。
+Phase 2A 只负责硬件字节流采集和 Platform 事件上报。
+
+本阶段结束时应能够持续接收不定长 UART 数据，包括超过一次 DMA Buffer 容量的连续数据流。
 
 ---
 
 ## 2. Preconditions
 
-### 2.1 Log Phase 1
+UART Phase 1 已完成：
 
-Log Phase 1 已完成代码、Host Test、Keil Build 和 RTT Runtime Smoke Test。
+- Blocking TX/RX 板测 PASS。
+- Lifecycle 板测 PASS。
+- 临时测试代码已恢复。
+- 恢复后 Keil Full Rebuild `0 Error(s)`。
 
-人工 RTT 验证已确认：
-
-- `Platform_Log_Init()` 成功。
-- INFO 日志正常可见。
-- `Platform_Log_SetLevel(WARN)` 后 ERROR / WARN 可见，INFO 被过滤。
-- `Platform_Log_EnableOutput(false)` 后日志停止。
-- `Platform_Log_EnableOutput(true)` 后日志恢复。
-
-临时日志测试代码已经恢复为正常周期日志代码。
-
-恢复后曾出现 Keil `Invalid argument` 写 `.o` 文件的环境性 I/O Error；重启系统后用户确认构建恢复正常。该问题不是 C 代码、Log API 或 UART API Error。
-
-### 2.2 UART Code Baseline
-
-以下代码已存在并冻结：
+CubeMX Phase 2A 配置已经生成并确认：
 
 ```text
-03_Platform/platform_common/platform_object.c/.h
-03_Platform/platform_common/platform_device.c/.h
-03_Platform/platform_mcu/uart/platform_uart.c/.h
-03_Platform/platform_mcu/uart/platform_uart_types.h
-04_Impl/impl_mcu/impl_platform_uart.c/.h
+USART1_RX            DMA2 Stream2 / Channel 4
+Direction            Peripheral -> Memory
+Peripheral Inc       Disable
+Memory Inc           Enable
+Peripheral Width     Byte
+Memory Width         Byte
+Mode                 Circular
+Priority             Medium
+FIFO                 Disable
+USART1_IRQn           5 / 0
+DMA2_Stream2_IRQn    5 / 0
 ```
 
-已有：
+`main.c` 初始化顺序：
 
-- USART1 专用构造入口。
-- STM32 UART 私有 Context。
-- Platform Config → HAL Config。
-- Lifecycle init/start/process/stop/deinit。
-- Blocking write/read。
-- HAL Error Mapping。
-- 9-bit byte stream 不兼容保护。
-- Platform UART Host Test PASS 记录。
-- Impl Config Mapping Host Test PASS 记录。
+```text
+MX_GPIO_Init()
+MX_DMA_Init()
+MX_USART1_UART_Init()
+```
 
 ---
 
-## 3. Frozen Scope
+## 3. Frozen Architecture Decisions
 
-本阶段只允许：
+### 3.1 HAL API
 
-- 在 `Core/Src/freertos.c` 的 USER CODE 区加入最小临时 UART Board Smoke Test。
-- 使用 RTT 日志输出测试状态。
-- 完成测试后恢复临时测试代码。
-- 必要时修复本阶段暴露出的真实 UART Phase 1 Bug。
-- 更新 `handoff.md`。
+使用：
+
+```c
+HAL_UARTEx_ReceiveToIdle_DMA()
+```
+
+保留：
+
+```text
+HT + TC + IDLE
+```
+
+全部转换为 Platform：
+
+```text
+PLATFORM_UART_EVENT_RX_DATA
+```
+
+不得向 Platform 暴露 DMA Stream、HT、TC、IDLE 或 HAL 类型。
+
+### 3.2 Existing Platform API
+
+保留现有：
+
+```c
+platform_error_t platform_uart_read_async(
+    platform_uart_t *uart,
+    uint8_t *buffer,
+    platform_size_t bufferSize);
+```
+
+不得修改函数签名。
+
+`read_async()` 在 Phase 2A 中表示启动持续 RX Session。
+
+`RX_DATA` 只是新增字节事件，不结束 RX Session。
+
+### 3.3 Buffer Ownership — Scheme A
+
+```text
+Storage owner              Caller
+DMA control owner          STM32 UART Impl
+RX Session writer          DMA / Impl
+RX_DATA consumer           callback read-only
+```
+
+调用者提供静态 DMA Buffer。
+
+RX Session 活跃期间调用者不得修改、释放或复用该 Buffer。
+
+Buffer lease 在以下情况结束：
+
+```text
+cancel(RX)
+RX error
+lifecycle stop
+```
+
+`RX_DATA.event.data` 只保证在 callback 执行期间可访问。
+
+### 3.4 DMA Buffer Baseline
+
+Phase 2A 板测固定：
+
+```text
+256 bytes
+```
+
+该值属于当前 Impl / Integration Test 基准，不加入 Platform UART 公共配置。
+
+---
+
+## 4. Scope Guard
+
+Phase 2A 允许修改：
+
+```text
+04_Impl/impl_mcu/impl_platform_uart.c
+04_Impl/impl_mcu/impl_platform_uart.h   （仅必要的 Impl 私有声明）
+Tests/impl_platform_uart/*
+Core/Src/freertos.c                     （仅临时 Board Test USER CODE）
+00_Doc/04_Agent/handoff.md
+```
+
+CubeMX 已生成且只应作为基础硬件资源的文件：
+
+```text
+RTT_elog_DMA_UART_ring_project.ioc
+Core/Src/dma.c
+Core/Inc/dma.h
+Core/Src/usart.c
+Core/Inc/usart.h
+Core/Src/stm32f4xx_it.c
+Core/Inc/stm32f4xx_it.h
+Core/Src/main.c
+```
+
+不要手写覆盖 CubeMX 生成的 DMA/NVIC 配置。
 
 本阶段禁止：
 
 ```text
-DMA
-IDLE
-ReceiveToIdle
-HT / TC
-UART IRQ Data Chain
-Async TX / RX
-RingBuffer
 UART Service
+Ring Buffer
 FreeRTOS Notification
+Communication Task
 Protocol Parser
-APP Communication
-Log Architecture Refactor
+DMA TX
+Async TX
+通用 DMA Platform Framework
+impl_dma 通用抽象
+Vendor HAL 修改
 Platform UART API Redesign
-Vendor HAL Modification
+动态内存
 ```
-
-如果板上验证证明必须改变冻结的 Platform UART API 或扩大架构范围，停止并标记 `BLOCKED`。
 
 ---
 
-## 4. Hardware Baseline
+## 5. STM32 Impl Runtime Context
 
-USART1：
-
-```text
-TX: PA9
-RX: PA10
-Baud: 115200
-Data: 8 bits
-Parity: None
-Stop: 1 bit
-Flow Control: None
-```
-
-建议工具：
-
-- USB-UART 串口模块或等价串口终端。
-- J-Link + RTT Viewer 用于观察测试结果。
-
-连接要求：
+扩展现有私有 Context，保持最小状态：
 
 ```text
-MCU PA9  (USART1_TX) -> USB-UART RX
-MCU PA10 (USART1_RX) <- USB-UART TX
-MCU GND               -> USB-UART GND
+stm32_uart_impl_context_t
+├── UART_HandleTypeDef *halUart
+├── uint8_t *rxBuffer
+├── platform_size_t rxBufferSize
+├── platform_size_t rxLastPosition
+└── bool rxActive
 ```
 
-USB-UART 使用 3.3 V TTL 电平。
+不得把 RingBuffer、Task Handle、Queue、Mutex 或协议状态加入该 Context。
 
 ---
 
-## 5. Temporary Test Object
+## 6. Task 1 — Host Test Baseline
 
-测试代码使用一个静态对象：
+### Files
 
-```c
-static platform_uart_t s_uart = PLATFORM_UART_INITIALIZER;
+Modify:
+
+```text
+Tests/impl_platform_uart/test_impl_platform_uart.c
+Tests/impl_platform_uart/usart.h
 ```
 
-配置固定为：
+### Required Fake HAL Capability
 
-```c
-static const platform_uart_config_t s_uartConfig = {
-    .baudRate = 115200U,
-    .dataBits = PLATFORM_UART_DATA_BITS_8,
-    .stopBits = PLATFORM_UART_STOP_BITS_1,
-    .parity = PLATFORM_UART_PARITY_NONE,
-    .flowControl = PLATFORM_UART_FLOW_CONTROL_NONE,
-    .defaultTimeoutMs = 3000U,
-};
+Host stub 至少需要覆盖：
+
+```text
+HAL_UARTEx_ReceiveToIdle_DMA
+HAL_UART_AbortReceive
+HAL UART ErrorCode
+HAL UART RxState / DMA-related minimum fields needed by Impl
 ```
 
-构造：
+现有 config mapping tests 必须继续 PASS。
 
-```c
-impl_platform_uart_usart1_construct(
-    &s_uart,
-    "usart1",
-    PLATFORM_DEVICE_CAP_NONE,
-    &s_uartConfig,
-    NULL,
-    NULL);
-```
+### Required New Tests
 
-构造不初始化硬件。
+先写失败测试，再实现代码：
+
+1. `readAsync` 成功时调用 `HAL_UARTEx_ReceiveToIdle_DMA()`，保存 Buffer/Size，进入 `rxActive`。
+2. 第二次 `readAsync` 返回 `PLATFORM_ERR_BUSY`。
+3. `bufferSize > 0xFFFF` 返回 `PLATFORM_ERR_OVERFLOW`，不调用 HAL。
+4. HAL 启动失败时不保留 active session。
+5. `Pos > lastPosition` 只上报新增区间。
+6. `Pos == lastPosition` 不重复上报。
+7. Wrap 情况分成尾部和头部两个连续 `RX_DATA` Event。
+8. `Pos == bufferSize` 正确处理 TC 边界并归一化位置。
+9. `cancel(RX)` 调用 `HAL_UART_AbortReceive()`、清理 session 并产生 CANCELED Event。
+10. 无 active RX 时 `cancel(RX)` 返回 `PLATFORM_ERR_INVALID_STATE`。
+11. `cancel(TX)` 返回 `PLATFORM_ERR_NOT_SUPPORTED`。
+12. ORE 映射 `PLATFORM_ERR_OVERFLOW`。
+13. DMA/PE/NE/FE 映射 `PLATFORM_ERR_IO`。
+14. Error 后 session 被释放。
+15. lifecycle stop 在 active RX 时先 Abort，成功后才切换 STOPPED。
+
+所有 Host Test 必须使用现有 Platform Event 入口，不为测试增加新的公共生产 API。
 
 ---
 
-## 6. Verification Sequence
+## 7. Task 2 — Implement Continuous DMA RX Session
 
-### Step 1 — Construct
-
-调用 `impl_platform_uart_usart1_construct()`。
-
-期望：
+### File
 
 ```text
-return = PLATFORM_ERR_OK
-object.state = PLATFORM_OBJECT_CREATED
+04_Impl/impl_mcu/impl_platform_uart.c
 ```
 
-重复构造不属于本次必测项。
+### Ops Table
 
-### Step 2 — Non-STARTED Guard
+将：
 
-在 CREATED 状态调用一次：
+```text
+readAsync = NULL
+cancel    = NULL
+```
+
+替换为 STM32 Phase 2A 实现。
+
+`writeAsync` 保持 `NULL`。
+
+### readAsync Required Behavior
+
+执行顺序：
+
+```text
+validate context
+    ↓
+validate buffer / size
+    ↓
+size <= 0xFFFF
+    ↓
+rxActive == false
+    ↓
+record session fields
+    ↓
+HAL_UARTEx_ReceiveToIdle_DMA()
+```
+
+返回映射：
+
+```text
+HAL_OK      -> PLATFORM_ERR_OK
+HAL_BUSY    -> PLATFORM_ERR_BUSY
+HAL_TIMEOUT -> PLATFORM_ERR_TIMEOUT
+HAL_ERROR   -> PLATFORM_ERR_IO
+```
+
+HAL 启动失败时必须恢复：
+
+```text
+rxBuffer       = NULL
+rxBufferSize   = 0
+rxLastPosition = 0
+rxActive       = false
+```
+
+---
+
+## 8. Task 3 — RxEvent Position Processing
+
+### HAL Callback
+
+由于当前：
+
+```text
+USE_HAL_UART_REGISTER_CALLBACKS = 0
+```
+
+在自定义 Impl 源文件实现 weak callback override：
 
 ```c
-platform_uart_write(...)
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart,
+                                uint16_t Pos);
 ```
 
-期望：
+只处理：
+
+```text
+huart == &huart1
+```
+
+其他 UART 直接返回。
+
+### Position Algorithm
+
+令：
+
+```text
+N    = rxBufferSize
+last = rxLastPosition
+pos  = Pos
+```
+
+规则：
+
+```text
+pos > N
+    -> internal error guard，不访问 Buffer
+
+pos == last
+    -> no new data, ignore
+
+pos > last
+    -> emit [last, pos)
+
+pos < last
+    -> emit [last, N)
+    -> emit [0, pos)
+```
+
+如果：
+
+```text
+pos == N
+```
+
+尾部事件完成后：
+
+```text
+rxLastPosition = 0
+```
+
+否则：
+
+```text
+rxLastPosition = pos
+```
+
+不得构造跨 Buffer 尾首的单一 Event。
+
+每个 `RX_DATA`：
+
+```text
+type      = RX_DATA
+direction = RX
+data       = pointer to contiguous new segment
+dataLength = segment length
+error      = PLATFORM_ERR_OK
+```
+
+零长度片段不发送。
+
+---
+
+## 9. Task 4 — Error / Cancel / Stop
+
+### HAL Error Callback
+
+实现：
+
+```c
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart);
+```
+
+只处理 USART1 active RX session。
+
+映射：
+
+```text
+HAL_UART_ERROR_ORE -> PLATFORM_ERR_OVERFLOW
+HAL_UART_ERROR_DMA -> PLATFORM_ERR_IO
+HAL_UART_ERROR_PE  -> PLATFORM_ERR_IO
+HAL_UART_ERROR_NE  -> PLATFORM_ERR_IO
+HAL_UART_ERROR_FE  -> PLATFORM_ERR_IO
+```
+
+ERROR Event：
+
+```text
+type       = ERROR
+direction  = RX
+data        = NULL
+dataLength  = 0
+error       = mapped error
+```
+
+Error 后清理 RX session，不在 ISR 内自动重启 DMA。
+
+### cancel(RX)
+
+活动 session：
+
+```text
+HAL_UART_AbortReceive()
+    ↓
+clear RX context
+    ↓
+CANCELED / RX event
+```
+
+无活动 session：
 
 ```text
 PLATFORM_ERR_INVALID_STATE
-writtenLength = 0
 ```
 
-用于验证 Blocking API 的 Platform 状态保护仍然生效。
-
-### Step 3 — Lifecycle Init
-
-调用：
-
-```c
-s_uart.device.lifecycle->init(&s_uart);
-```
-
-期望：
+TX：
 
 ```text
-return = PLATFORM_ERR_OK
-state = PLATFORM_OBJECT_INITIALIZED
-power = PLATFORM_DEVICE_POWER_IDLE
+PLATFORM_ERR_NOT_SUPPORTED
 ```
 
-该步骤同时验证 Platform UART Config 能实际应用到 USART1。
+### lifecycle stop
 
-### Step 4 — Lifecycle Start
-
-调用：
-
-```c
-s_uart.device.lifecycle->start(&s_uart);
-```
-
-期望：
+active RX 时：
 
 ```text
-return = PLATFORM_ERR_OK
-state = PLATFORM_OBJECT_STARTED
-power = PLATFORM_DEVICE_POWER_ACTIVE
+AbortReceive
+    ↓ only if success
+clear RX context
+    ↓
+state -> STOPPED
 ```
 
-### Step 5 — Blocking TX
+stop 不主动产生 CANCELED Event。
 
-发送固定字符串：
-
-```text
-UART_PHASE1_TX_OK\r\n
-```
-
-通过：
-
-```c
-platform_uart_write()
-```
-
-验收：
-
-- 返回 `PLATFORM_ERR_OK`。
-- `writtenLength` 等于发送字节数。
-- PC 串口终端实际收到完整字符串。
-
-这一步必须有真实 USART1 对端证据，不能只看返回值。
-
-### Step 6 — Blocking RX
-
-测试固定长度 4 bytes。
-
-MCU 调用：
-
-```c
-platform_uart_read(..., 4U, 5000U, ...);
-```
-
-在 5 秒内从 PC 串口终端发送：
-
-```text
-PING
-```
-
-验收：
-
-```text
-return = PLATFORM_ERR_OK
-readLength = 4
-buffer = {'P','I','N','G'}
-```
-
-结果可通过 RTT 输出：
-
-```text
-UART RX PASS: PING
-```
-
-本测试只是固定长度 Blocking RX，不得描述为不定长 RX、DMA RX 或 IDLE RX。
-
-### Step 7 — Lifecycle Stop / Restart
-
-调用：
-
-```text
-STARTED
- -> stop
-STOPPED
-```
-
-期望：
-
-```text
-state = PLATFORM_OBJECT_STOPPED
-power = PLATFORM_DEVICE_POWER_IDLE
-```
-
-在 STOPPED 状态再次调用 `platform_uart_write()`：
-
-```text
-expect PLATFORM_ERR_INVALID_STATE
-```
-
-然后：
-
-```text
-STOPPED
- -> start
-STARTED
-```
-
-再次发送一个短字符串：
-
-```text
-UART_RESTART_OK\r\n
-```
-
-确认串口对端仍能收到。
-
-### Step 8 — Final Stop / Deinit
-
-调用：
-
-```text
-STARTED
- -> stop
-STOPPED
- -> deinit
-CREATED
-```
-
-期望：
-
-```text
-deinit return = PLATFORM_ERR_OK
-state = PLATFORM_OBJECT_CREATED
-power = PLATFORM_DEVICE_POWER_OFF
-```
-
-这一步验证 `HAL_UART_DeInit()` 与 Platform 状态回退语义。
+Abort 失败时保持 STARTED，返回底层映射错误。
 
 ---
 
-## 7. Recommended Temporary Test Output
+## 10. Task 5 — Platform Regression
 
-RTT 最少输出以下结果：
+不得修改 Platform API 签名。
 
-```text
-UART CONSTRUCT: PASS
-UART PRE-START GUARD: PASS
-UART INIT: PASS
-UART START: PASS
-UART TX: PASS
-UART RX: PASS [PING]
-UART STOP GUARD: PASS
-UART RESTART TX: PASS
-UART DEINIT: PASS
-UART PHASE1 BOARD TEST: PASS
-```
-
-任何一步失败时输出：
+重新运行现有：
 
 ```text
-<STEP>: FAIL error=<platform_error_t value>
+Tests/platform_uart
+Tests/impl_platform_uart
+Tests/platform_log
 ```
 
-失败后停止继续执行后续依赖步骤，避免错误状态继续传播。
+要求原有 Phase 1 Blocking 行为继续 PASS。
+
+重点确认：
+
+- Blocking TX 不回归。
+- Blocking RX 在没有 active DMA RX 时仍正常。
+- `platform_uart_read_async()` 仍要求 UART STARTED + callback 非 NULL。
+- `platform_uart_notify_event()` 仍校验 RX_DATA / ERROR / CANCELED。
 
 ---
 
-## 8. Build Verification
+## 11. Task 6 — Keil Integration
 
-临时测试代码加入后执行 Keil Full Rebuild。
+执行：
 
-必须确认：
+```text
+Clean Targets
+Rebuild all target files
+```
+
+要求：
 
 ```text
 0 Error(s)
 ```
 
-执行完硬件测试并恢复临时测试代码后，再执行一次 Full Rebuild。
+不得为了消除已有 Warning 修改无关模块。
 
-最终提交状态必须基于恢复后的正常代码，而不是临时测试版本。
-
-如果再次出现：
+若再次出现：
 
 ```text
-I/O error writing .o
+C4051E
+L6449E
 Invalid argument
 ```
 
-先按环境问题处理，不要修改 UART 或 Log 代码来规避；此前同类问题已通过系统重启恢复。
+按 Keil 输出目录 / 环境 I/O 问题处理，不修改 UART 逻辑绕过。
 
 ---
 
-## 9. Completion Criteria
+## 12. Task 7 — Board Smoke Test
 
-以下全部有证据后，UART Phase 1 才可标记 `COMPLETED`：
+只允许在：
 
-1. Construct PASS。
-2. Non-STARTED Blocking Guard PASS。
-3. init PASS。
-4. start PASS。
-5. Blocking TX 实际串口输出 PASS。
-6. Blocking fixed-length RX 实际输入 PASS。
-7. stop PASS。
-8. STOPPED Guard PASS。
-9. restart PASS，重启后 TX PASS。
-10. deinit PASS，状态回到 CREATED / POWER_OFF。
+```text
+Core/Src/freertos.c USER CODE
+```
+
+加入临时测试。
+
+使用：
+
+```text
+static platform_uart_t UART object
+static uint8_t DMA RX buffer[256]
+static capture/status storage
+```
+
+测试 callback 可能运行在 ISR：
+
+- 不打印日志；
+- 不阻塞；
+- 不使用普通 Mutex；
+- 只复制必要测试数据、更新计数/flag。
+
+由 Task Context 根据 flag 输出 RTT 结果。
+
+### Scenario A — Short / IDLE
+
+发送：
+
+```text
+HELLO
+```
+
+停止发送。
+
+验证累计数据：
+
+```text
+length = 5
+content = HELLO
+```
+
+### Scenario B — Continuous > Buffer
+
+连续发送至少：
+
+```text
+600 bytes
+```
+
+使用已知递增/重复 Pattern。
+
+验证：
+
+- total length = expected；
+- byte-by-byte pattern correct；
+- >256 bytes 后仍持续接收；
+- no duplicate；
+- no loss；
+- order correct。
+
+### Scenario C — Mixed Boundaries
+
+使用会跨过：
+
+```text
+128-byte HT
+256-byte TC
+IDLE
+```
+
+的数据块组合。
+
+验证累计结果与发送端完全一致。
+
+### Scenario D — Cancel + Restart
+
+```text
+readAsync
+receive
+cancel(RX)
+expect CANCELED
+readAsync again
+receive again
+```
+
+### Scenario E — Lifecycle Stop + Restart
+
+active RX 时：
+
+```text
+stop
+start
+readAsync again
+```
+
+确认旧 DMA Session 不继续产生事件，新 Session 可正常收数。
+
+---
+
+## 13. Temporary Test Restore
+
+全部板测通过后：
+
+- 恢复 `freertos.c` 正常周期日志任务；
+- 不保留 Board Smoke Test 业务代码；
+- 再次 Keil Full Rebuild。
+
+要求：
+
+```text
+0 Error(s)
+```
+
+最终提交状态必须基于恢复后的正常代码。
+
+---
+
+## 14. Completion Criteria
+
+只有以下全部有真实证据才可写：
+
+```text
+UART Phase 2A = COMPLETED
+```
+
+条件：
+
+1. CubeMX DMA / IRQ 配置与本计划一致。
+2. Host tests 全部 PASS。
+3. `readAsync()` 启动 Circular ReceiveToIdle DMA PASS。
+4. Short + IDLE PASS。
+5. Continuous >256 bytes PASS。
+6. HT / TC / IDLE 混合边界无丢失、无重复、顺序正确。
+7. Cancel + Restart PASS。
+8. Lifecycle Stop + Restart PASS。
+9. Error path 至少由 Host Test 覆盖。
+10. Platform Phase 1 regression PASS。
 11. 临时测试代码已恢复。
-12. 恢复后的 Keil Full Rebuild 为 0 Error。
-13. `handoff.md` 已更新实际结果。
+12. 恢复后的 Keil Full Rebuild 为 `0 Error(s)`。
+13. `handoff.md` 更新真实结果。
 
-如果缺少板上 TX / RX 证据：
+无硬件验证时只能标记：
 
 ```text
 CODE_COMPLETE_PENDING_HARDWARE_VERIFICATION
 ```
 
-出现真实 UART 实现缺陷：
-
-```text
-NEEDS_FIX
-```
-
-需要修改冻结架构或 Platform UART API：
+需要修改冻结 Platform UART API 时：
 
 ```text
 BLOCKED
 ```
 
+停止实现并重新设计。
+
 ---
 
-## 10. After This Phase
+## 15. After Phase 2A
 
-只有 UART Phase 1 `COMPLETED` 后，才进入设计阶段讨论 UART Phase 2：
+只有 Phase 2A 完成后才进入 Phase 2B：
 
 ```text
-USART1
- ↓
-DMA RX
- ↓
-IDLE / DMA Position
- ↓
-Platform UART RX_DATA Event
- ↓
+Platform RX_DATA Callback
+       ↓
 UART Service
- ↓
-RingBuffer
+       ↓
+Ring Buffer
+       ↓
+ISR-safe Notification
+       ↓
+Communication Task
 ```
 
-Phase 2 开始前必须重新设计并冻结：
-
-- DMA Stream / Channel。
-- Normal vs Circular。
-- HAL UART ReceiveToIdle / IDLE 使用方式。
-- DMA Buffer Size。
-- DMA Position / Wrap 算法。
-- IDLE / HT / TC 组合策略。
-- Callback / ISR 与 Task 边界。
-- Buffer Ownership / Lifetime。
-- Error / Cancel / Stop 语义。
-
-本阶段不得提前实现这些内容。
+不得在 Phase 2A 中提前实现 Phase 2B。
