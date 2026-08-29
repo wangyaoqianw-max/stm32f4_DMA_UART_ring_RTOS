@@ -6,8 +6,8 @@
 
 - 工程根目录：`RTT_elog_DMA_UART_ring_project/`
 - 当前分支：`main`
-- 当前活动阶段：UART Phase 1 Final Verification
-- 当前状态：`COMPLETED`
+- 当前活动阶段：UART Phase 2A — DMA RX + IDLE + Platform RX_DATA Event
+- 当前状态：`READY_FOR_IMPLEMENTATION`
 - MCU：STM32F411CEU6，UFQFPN48
 - 软件环境：STM32 HAL、CMSIS-RTOS2 / FreeRTOS、Keil、EasyLogger、SEGGER RTT
 
@@ -17,292 +17,519 @@
 APP -> Service -> Platform -> Impl -> Vendor / HAL / RTOS / Hardware
 ```
 
-当前阶段只验证已经完成的 Blocking UART 实现，不新增 DMA / IDLE / RingBuffer 功能。
+当前阶段只建立：
+
+```text
+USART1 RX
+ -> DMA Circular
+ -> IDLE / HT / TC
+ -> STM32 UART Impl
+ -> Platform RX_DATA Event
+```
+
+不进入 RingBuffer / UART Service / RTOS Notification。
 
 ---
 
-## 2. Log Phase 1 — COMPLETED
+## 2. 已完成阶段
 
-Log Phase 1 已完成。
-
-### Architecture / Code
+### Log Phase 1 — COMPLETED
 
 已完成：
 
-- `platform_log.h` 已移除对 `easylogger_port.h`、EasyLogger、RTT、CMSIS-RTOS、FreeRTOS 的直接依赖。
-- Platform Log 公共错误统一为 `platform_error_t`。
-- 已删除活动代码中的旧 `Platform_Log_Error_t`、`PLATFORM_LOG_OK`、`PLATFORM_LOG_ERROR_*` 依赖。
-- 保留 `platform_log_e/w/i/d/v` 上层调用方式。
-- 已建立 `platform_log_output_fn_t` 与 `Platform_Log_GetOutputFn()` 通用后端契约。
-- Impl 初始化前使用 no-op backend，EasyLogger 初始化成功后绑定 `elog_output`。
-- EasyLogger Async Task / Semaphore、Assert Hook、Format Config 保留在 Impl。
-- `freertos.c` 不再直接依赖 RTT 处理日志初始化失败。
+- Platform Log 与 EasyLogger / RTT 解耦。
+- Host Test PASS。
+- Keil Build PASS。
+- RTT Runtime Smoke Test PASS。
 
-### Host / Static Verification
+### UART Phase 1 — COMPLETED
 
-已有记录：
+真实板测已确认：
 
-- `Tests/platform_log/test_platform_log.c` PASS。
-- Platform Log Header 可在不提供 EasyLogger / RTT / RTOS include path 的条件下编译。
-- Level / Tag / Format / variadic 参数可正确转发到 Fake Backend。
+- construct PASS；
+- CREATED 状态写保护 PASS；
+- init/start PASS；
+- Blocking TX PASS；
+- Blocking fixed-length RX PASS；
+- stop / STOPPED guard PASS；
+- restart + TX PASS；
+- deinit PASS。
 
-### Keil Build
+USB-UART 实际收到：
 
-Log 重构后已有真实 Keil Build 记录：
+```text
+UART_PHASE1_TX_OK
+UART_RESTART_OK
+```
+
+PC -> MCU：
+
+```text
+PING
+```
+
+RTT 确认固定长度 RX PASS。
+
+临时测试代码已经恢复，恢复后 Keil Full Rebuild：
 
 ```text
 0 Error(s), 13 Warning(s)
-Target created
 ```
 
-之后恢复 RTT 临时测试代码时曾出现：
+---
+
+## 3. Keil Build 目录状态
+
+Keil 构建输出已经整理为独立目录，生成物不再作为工程源码跟踪。
+
+构建时仍需遵守：
 
 ```text
-I/O error writing .o
+Agent / Git 写操作结束
+    ↓
+Keil Clean / Rebuild
+```
+
+如出现：
+
+```text
+C4051E
+L6449E
 Invalid argument
 ```
 
-该次失败发生在 Keil / ARMCC 写构建输出文件阶段，`freertos.c` 自身为 0 Error，与 C 代码和 Log/UART API 无关。
+优先按 Keil / Windows 文件 I/O 环境问题处理，不修改 UART 业务代码规避。
 
-用户重启系统后确认构建恢复正常。
+---
 
-### RTT Runtime Smoke Test
+## 4. Phase 2A CubeMX Baseline — VERIFIED
 
-用户已在目标板 + RTT Viewer 上实际验证通过：
+用户已完成 CubeMX 配置并 Generate Code。
+
+当前 `.ioc` / 生成代码确认：
 
 ```text
-EasyLogger V2.2.99 is initialize success.
-[TEST 1] log init ok
-[TEST 2] ERROR should be visible
-[TEST 2] WARN should be visible
-[TEST 4] output enabled again
+USART1_TX              PA9
+USART1_RX              PA10
+115200 / 8N1
+
+USART1_RX DMA          DMA2 Stream2 / Channel 4
+Direction              Peripheral -> Memory
+Peripheral Increment   Disable
+Memory Increment       Enable
+Peripheral Width       Byte
+Memory Width           Byte
+Mode                   Circular
+Priority               Medium
+FIFO                   Disable
+
+USART1_IRQn            Priority 5 / Sub 0
+DMA2_Stream2_IRQn      Priority 5 / Sub 0
 ```
 
-并确认：
+生成代码已存在：
 
-- `Platform_Log_Init()`：PASS。
-- INFO 输出：PASS。
-- `Platform_Log_SetLevel(WARN)`：ERROR/WARN 可见，INFO 被过滤，PASS。
-- `Platform_Log_EnableOutput(false)`：TEST 3 不可见，PASS。
-- `Platform_Log_EnableOutput(true)`：输出恢复，PASS。
+```text
+DMA_HandleTypeDef hdma_usart1_rx
+__HAL_LINKDMA(uartHandle, hdmarx, hdma_usart1_rx)
+DMA2_Stream2_IRQHandler -> HAL_DMA_IRQHandler(...)
+USART1_IRQHandler       -> HAL_UART_IRQHandler(...)
+```
+
+`main.c` 当前初始化顺序：
+
+```text
+MX_GPIO_Init()
+MX_DMA_Init()
+MX_USART1_UART_Init()
+```
+
+CubeMX 侧当前无阻塞项。
+
+---
+
+## 5. Phase 2A Design — APPROVED
+
+设计文档：
+
+```text
+00_Doc/02_架构设计/UART_Phase2A_DMA_RX设计.md
+```
+
+状态：
+
+```text
+APPROVED / FROZEN FOR IMPLEMENTATION
+```
+
+核心方案：
+
+```text
+HAL_UARTEx_ReceiveToIdle_DMA
++ DMA Circular
++ HT / TC / IDLE
++ Platform RX_DATA Event
+```
+
+Platform 不感知 HT / TC / IDLE 的来源差异。
+
+---
+
+## 6. Buffer Ownership — Scheme A
+
+方案 A 已批准并冻结。
+
+现有 Platform API 保持：
+
+```c
+platform_uart_read_async(uart, buffer, bufferSize)
+```
+
+语义改为启动持续 RX Session。
+
+所有权：
+
+```text
+Memory Storage Owner      Caller
+DMA Control Owner         STM32 UART Impl
+RX Session Buffer Writer  DMA / Impl
+RX_DATA Consumer          callback read-only
+```
+
+调用者提供长期有效的静态 Buffer。
+
+Phase 2A 板测基准：
+
+```text
+256 bytes
+```
+
+成功 `readAsync()` 后 Buffer 使用权借给 Impl，直到：
+
+```text
+cancel(RX)
+RX error
+lifecycle stop
+```
+
+`RX_DATA.event.data` 只保证在 callback 执行期间有效；callback 返回后不得继续保存该 DMA Buffer 指针。
+
+基础 `architecture.md` 中旧的“DMA Buffer 属于 UART Impl”在 Phase 2A 中解释为：
+
+> DMA Buffer 的硬件控制、位置状态和访问纪律属于 Impl；静态 Buffer 存储允许由调用者持有。
+
+Phase 2A 以已批准设计文档为该语义的优先解释。
+
+---
+
+## 7. RX Event / Position Contract
+
+HAL：
+
+```c
+HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart,
+                           uint16_t Pos)
+```
+
+Impl 保存：
+
+```text
+rxBuffer
+rxBufferSize
+rxLastPosition
+rxActive
+```
+
+新增数据算法：
+
+```text
+Pos > last
+    -> [last, Pos)
+
+Pos < last
+    -> [last, bufferSize)
+    -> [0, Pos)
+
+Pos == last
+    -> duplicate/no new data, ignore
+
+Pos == bufferSize
+    -> emit tail then normalize lastPosition to 0
+```
+
+每个连续片段独立产生：
+
+```text
+PLATFORM_UART_EVENT_RX_DATA
+```
+
+不得把跨 Buffer 尾首的数据伪装成一个连续指针。
+
+---
+
+## 8. Why HT + TC + IDLE
+
+256-byte DMA Buffer / 115200 8N1：
+
+```text
+128 bytes ≈ 11.1 ms
+256 bytes ≈ 22.2 ms
+```
 
 因此：
 
 ```text
-Log Phase 1 = COMPLETED
+short burst       -> IDLE
+continuous stream -> HT / TC
+mixed traffic     -> HT / TC / IDLE
 ```
 
-临时日志测试代码已经恢复为正常周期日志代码。
+不关闭 HT。
+
+`lastPosition` 负责去除可能的重复位置事件。
 
 ---
 
-## 3. Git / Build Artifact 状态
+## 9. Callback / ISR Boundary
 
-`.gitignore` 已更新，用于忽略 Keil 生成物和用户态文件，包括：
-
-```text
-MDK-ARM/<target output>/
-*.o / *.crf / *.d / *.map / *.hex / *.axf
-*.uvguix.*
-*.uvoptx
-JLinkLog.txt
-JLinkSettings.ini
-```
-
-必须继续保留并跟踪：
+当前：
 
 ```text
-*.uvprojx
-*.ioc
-源码
-Agent 文档
+USE_HAL_UART_REGISTER_CALLBACKS = 0
 ```
 
-注意：`.gitignore` 不影响 Keil 对本地输出目录写文件；此前 `Invalid argument` 是构建环境临时 I/O 问题，不是 ignore 规则导致。
+Phase 2A 由自定义 STM32 UART Impl override：
+
+```c
+HAL_UARTEx_RxEventCallback(...)
+HAL_UART_ErrorCallback(...)
+```
+
+不得修改 Vendor HAL。
+
+Callback / ISR 只允许：
+
+- 判断 USART1；
+- 更新轻量 RX Context；
+- 计算新增数据位置；
+- 产生 Platform Event；
+- 板测时做必要的静态 Buffer 数据复制/计数。
+
+禁止：
+
+- 阻塞；
+- 普通 Mutex；
+- malloc/free；
+- 完整协议解析；
+- 大量日志；
+- USART1 debug print。
+
+Phase 2A 不创建 RTOS Notification。
 
 ---
 
-## 4. UART Phase 1 当前代码状态
+## 10. Cancel / Stop / Error Contract
 
-### 已完成代码
+### cancel(RX)
 
-- `impl_platform_uart_usart1_construct()`。
-- USART1 静态 Impl Context。
-- Platform Config → STM32 HAL Config。
-- Lifecycle：init / start / process / stop / deinit。
-- Blocking `platform_uart_write()`。
-- Blocking `platform_uart_read()`。
-- HAL Status → Platform Error Mapping。
-- 9-bit no-parity byte stream 不兼容保护；当前所有 Platform 9-bit 配置在 STM32 Impl 返回 `PLATFORM_ERR_NOT_SUPPORTED`。
-- Keil 工程已接入 Platform Common、Platform UART 和 STM32 UART Impl。
-
-### 已完成软件验证
-
-已有记录：
+活动 RX：
 
 ```text
-test_platform_uart_types: PASS
-test_platform_uart: PASS
-Impl UART config mapping test: PASS
+HAL_UART_AbortReceive
+ -> clear RX session
+ -> CANCELED / RX Event
 ```
 
-UART Impl 也已有真实 Keil 编译 0 Error 记录。
-
-### Final Verification Result（2026-08-29）
-
-- 临时 Board Smoke Test 仅在 `Core/Src/freertos.c` USER CODE 区运行，且严格通过 Platform UART API 验证 construct、CREATED write guard、init、start、blocking TX、fixed-length RX、stop guard、restart、deinit。
-- RTT Viewer 实际输出：`UART CONSTRUCT`、`UART PRE-START GUARD`、`UART INIT`、`UART START`、`UART TX`、`UART RX: PASS [PING]`、`UART STOP GUARD`、`UART RESTART TX`、`UART DEINIT` 和 `UART PHASE1 BOARD TEST` 均为 PASS。
-- USB-UART 串口终端实际收到 `UART_PHASE1_TX_OK` 与 `UART_RESTART_OK`；PC 向 USART1 发送 `PING` 后，RTT 确认固定长度 Blocking RX PASS。
-- 测试代码已恢复为正常周期日志任务，未保留 UART Smoke Test 业务代码。
-- 恢复后 Keil Full Rebuild：`0 Error(s), 13 Warning(s)`，无 `C4051E`、`L6449E` 或 `Invalid argument`。
-
-因此：
+无活动 RX：
 
 ```text
-UART Phase 1 = COMPLETED
+PLATFORM_ERR_INVALID_STATE
 ```
+
+Phase 2A：
+
+```text
+cancel(TX)  -> NOT_SUPPORTED
+writeAsync  -> NOT_SUPPORTED
+```
+
+### lifecycle stop
+
+活动 RX 时先 Abort，只有成功后才进入 STOPPED。
+
+stop 不发送 CANCELED Event。
+
+### HAL RX Error
+
+映射：
+
+```text
+ORE              -> PLATFORM_ERR_OVERFLOW
+DMA / PE / NE / FE -> PLATFORM_ERR_IO
+```
+
+ERROR 后释放 RX Session，不在 ISR 中自动重启 DMA。
 
 ---
 
-## 5. 当前 Hardware Baseline
+## 11. Current Implementation Plan
 
-USART1：
-
-```text
-PA9  = TX
-PA10 = RX
-115200 baud
-8 data bits
-No parity
-1 stop bit
-No flow control
-```
-
-推荐连接：
-
-```text
-PA9  -> USB-UART RX
-PA10 <- USB-UART TX
-GND  -> USB-UART GND
-```
-
-使用 3.3 V TTL 电平。
-
-RTT 继续作为测试状态输出通道，因此 UART 测试结果不依赖 USART1 自己打印。
-
----
-
-## 6. 当前实施计划
-
-完整计划：
+文件：
 
 ```text
 00_Doc/04_Agent/implementation_plan.md
 ```
 
-当前 Plan：
+当前：
 
 ```text
-Status: COMPLETED
-Phase: UART Phase 1 Final Verification
+Status: READY_FOR_IMPLEMENTATION
+Phase: UART Phase 2A
 ```
-
-本阶段验证已完成；`freertos.c` 已恢复为正常周期日志任务。
-
----
-
-## 7. UART Phase 1 必测链路
 
 执行顺序：
 
 ```text
-construct
-   ↓
-CREATED
-   ↓ pre-start write -> INVALID_STATE
-init
-   ↓
-INITIALIZED / POWER_IDLE
-   ↓
-start
-   ↓
-STARTED / POWER_ACTIVE
-   ↓
-Blocking TX -> PC receives UART_PHASE1_TX_OK
-   ↓
-Blocking RX <- PC sends PING
-   ↓
-stop
-   ↓
-STOPPED / POWER_IDLE
-   ↓ write -> INVALID_STATE
-start
-   ↓
-STARTED
-   ↓
-Restart TX -> PC receives UART_RESTART_OK
-   ↓
-stop
-   ↓
-deinit
-   ↓
-CREATED / POWER_OFF
+Host tests first
+    ↓
+STM32 readAsync + RX context
+    ↓
+RxEvent position processing
+    ↓
+Cancel / Stop / Error
+    ↓
+Platform regression
+    ↓
+Keil Clean Rebuild
+    ↓
+Board Smoke Test
+    ↓
+restore temporary test code
+    ↓
+final Rebuild
 ```
-
-详细参数、验收条件和临时测试约束见 `implementation_plan.md`。
 
 ---
 
-## 8. Scope Guard
+## 12. Required Board Verification
 
-当前禁止：
+最低场景：
+
+### Short / IDLE
 
 ```text
-DMA
-IDLE
-ReceiveToIdle
-HT / TC
-UART IRQ Data Chain
-Async TX / RX
-RingBuffer
-UART Service
-FreeRTOS Notification
-Protocol Parser
-APP Communication
-Platform UART API Redesign
-Log Architecture Refactor
+HELLO
 ```
 
-如果板上测试暴露普通实现 Bug，可在 UART Phase 1 范围内修复并重新验证。
+确认总长度 5、内容一致。
 
-如果必须修改冻结 Platform UART API 或扩大架构范围：
+### Continuous
+
+连续至少：
+
+```text
+600 bytes
+```
+
+确认：
+
+- >256 bytes 后继续接收；
+- 无丢失；
+- 无重复；
+- 顺序正确。
+
+### Mixed Boundary
+
+覆盖：
+
+```text
+HT 128
+TC 256
+IDLE
+```
+
+### Cancel + Restart
+
+取消后重新启动 `readAsync()`，再次正常接收。
+
+### Lifecycle Stop + Restart
+
+活动 DMA RX 中 stop；restart 后重新 `readAsync()` 正常。
+
+---
+
+## 13. Phase 2A Scope Guard
+
+禁止提前实现：
+
+```text
+UART Service
+Ring Buffer
+FreeRTOS Notification
+Communication Task
+Protocol Parser
+DMA TX
+Async TX
+通用 DMA Platform Framework
+impl_dma 通用抽象
+Vendor HAL 修改
+Platform UART API Redesign
+```
+
+如果实现证明必须修改冻结 Platform API：
 
 ```text
 BLOCKED
 ```
 
-并返回设计阶段。
+停止并重新设计。
 
 ---
 
-## 9. Completion Rule
+## 14. Completion Rule
 
-UART Phase 1 只有满足以下条件才可标记 `COMPLETED`：
+只有以下都有真实证据，才能写：
 
-- Construct PASS。
-- Non-STARTED Guard PASS。
-- init/start PASS。
-- Blocking TX 实际串口证据 PASS。
-- Blocking fixed-length RX 实际串口证据 PASS。
-- stop / STOPPED Guard PASS。
-- restart + restart TX PASS。
-- deinit 回到 CREATED / POWER_OFF PASS。
-- 临时测试代码已恢复。
-- 恢复后 Keil Full Rebuild 0 Error。
-- 本 handoff 更新实际结果。
+```text
+UART Phase 2A = COMPLETED
+```
+
+至少包括：
+
+- Host tests PASS；
+- Keil Full Rebuild 0 Error；
+- Short/IDLE PASS；
+- Continuous >256 bytes PASS；
+- HT/TC/IDLE 混合边界无丢失/重复；
+- Cancel + Restart PASS；
+- Stop + Restart PASS；
+- Phase 1 regression PASS；
+- 临时测试代码恢复；
+- 恢复后最终 Rebuild 0 Error；
+- 本 handoff 更新真实结果。
+
+没有板测证据时只能写：
+
+```text
+CODE_COMPLETE_PENDING_HARDWARE_VERIFICATION
+```
 
 ---
 
-## 10. Recommended Next Action
+## 15. Next Phase
 
-UART Phase 1 已完成并在此停止。不得自动进入 DMA / IDLE Phase 2；下一阶段必须重新设计并冻结接口、缓冲区所有权与 ISR/Task 边界。
+Phase 2A 完成后才进入 Phase 2B：
+
+```text
+Platform RX_DATA Event
+       ↓ ISR
+UART Service
+       ↓
+Ring Buffer
+       ↓
+ISR-safe Notification
+       ↓
+Communication Task
+```
+
+Phase 2A 完成前不得开始 Phase 2B。
