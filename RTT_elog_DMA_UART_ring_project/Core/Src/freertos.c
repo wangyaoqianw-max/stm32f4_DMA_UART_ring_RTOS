@@ -118,50 +118,11 @@ void MX_FREERTOS_Init(void) {
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void *argument)
 {
-    platform_error_t result;
+    (void)Platform_Log_Init();
 
-    /* 1. 初始化日志 */
-    result = Platform_Log_Init();
-
-    if (PLATFORM_ERR_OK != result)
-    {
-        /* 初始化失败时可在调试器中观察 result */
-        for (;;)
-        {
-            osDelay(1000);
-        }
-    }
-
-    osDelay(100);
-
-    /* 2. 基本输出验证 */
-    platform_log_i("[TEST 1] log init ok");
-    osDelay(100);
-
-    /* 3. Level 过滤验证 */
-    Platform_Log_SetLevel(PLATFORM_LOG_LEVEL_WARN);
-
-    platform_log_e("[TEST 2] ERROR should be visible");
-    platform_log_w("[TEST 2] WARN should be visible");
-    platform_log_i("[TEST 2] INFO should NOT be visible");
-
-    osDelay(200);
-
-    /* 4. 关闭输出 */
-    Platform_Log_EnableOutput(false);
-
-    platform_log_e("[TEST 3] this should NOT be visible");
-
-    osDelay(200);
-
-    /* 5. 恢复输出 */
-    Platform_Log_EnableOutput(true);
-
-    platform_log_e("[TEST 4] output enabled again");
-
-    /* 测试完成 */
     for (;;)
     {
+        platform_log_i("hello world task1.");
         osDelay(1000);
     }
 }
