@@ -1,26 +1,63 @@
-# Keil Generated output files in the sub-directories . \Listings and . \objects
-*.lst
-*.o 
+# ============================================================
+# Keil MDK / ARMCC generated files
+# ============================================================
+
+# 当前 Keil Target 的完整构建输出目录
+/RTT_elog_DMA_UART_ring_project/MDK-ARM/RTT_elog_DMA_UART_ring_project/
+
+# Keil generated intermediate / output files
+*.o
 *.d
 *.crf
 *.lnp
 *.axf
-*.htm
-*.build_log.htm
+*.map
+*.hex
+*.bin
+*.lst
 *.dep
 *.iex
 *.i
 *_2i
 *.12p
 *.fed
-*.map
-*.hex
-*.bin
 *.Bak
 
-#Keil Project screen Layout file
-.uvguix.*
-.uvgui.*
-#JLINK file
+# Keil build reports
+*.build_log.htm
+
+
+# ============================================================
+# Keil user / IDE state
+# ============================================================
+
+# µVision per-user GUI/layout files
+*.uvguix.*
+*.uvgui.*
+
+# µVision user options
+*.uvoptx
+*.uvopt
+
+# Keep project definition files:
+# *.uvprojx   <-- DO NOT IGNORE
+
+
+# ============================================================
+# J-Link generated files
+# ============================================================
+
 JLinkLog.txt
+JLinkSettings.ini
 *.dbgconf
+
+
+# ============================================================
+# OS / editor temporary files
+# ============================================================
+
+*.tmp
+*.temp
+*~
+.DS_Store
+Thumbs.db
