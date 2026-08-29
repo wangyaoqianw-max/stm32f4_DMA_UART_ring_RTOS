@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F411xE</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;..\05_vendors\RTT;..\05_vendors\easylogger\inc;..\05_vendors\easylogger\plugins\file;..\05_vendors\easylogger\plugins\flash;..\04_Impl\impl_middleware\impl_log;..\03_Platform\platform_middleware</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;..\05_vendors\RTT;..\05_vendors\easylogger\inc;..\05_vendors\easylogger\plugins\file;..\05_vendors\easylogger\plugins\flash;..\04_Impl\impl_middleware\impl_log;..\03_Platform\platform_middleware;..\03_Platform\platform_common;..\03_Platform\platform_mcu\uart;..\04_Impl\impl_mcu;..\04_Impl\impl_board</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -586,6 +586,41 @@
         </Group>
         <Group>
           <GroupName>service</GroupName>
+        </Group>
+        <Group>
+          <GroupName>platform/platform_common</GroupName>
+          <Files>
+            <File>
+              <FileName>platform_object.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\03_Platform\platform_common\platform_object.c</FilePath>
+            </File>
+            <File>
+              <FileName>platform_device.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\03_Platform\platform_common\platform_device.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>platform/platform_mcu/uart</GroupName>
+          <Files>
+            <File>
+              <FileName>platform_uart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\03_Platform\platform_mcu\uart\platform_uart.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>impl/impl_mcu</GroupName>
+          <Files>
+            <File>
+              <FileName>impl_platform_uart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\04_Impl\impl_mcu\impl_platform_uart.c</FilePath>
+            </File>
+          </Files>
         </Group>
         <Group>
           <GroupName>platform/platform_middleware</GroupName>
