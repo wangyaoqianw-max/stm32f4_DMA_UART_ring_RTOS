@@ -199,11 +199,9 @@ static platform_error_t stm32_uart_map_word_length(const platform_uart_config_t 
             return PLATFORM_ERR_OK;
 
         case PLATFORM_UART_DATA_BITS_9:
-            if (config->parity != PLATFORM_UART_PARITY_NONE) {
-                return PLATFORM_ERR_NOT_SUPPORTED;
-            }
-            *wordLength = UART_WORDLENGTH_9B;
-            return PLATFORM_ERR_OK;
+            /* HAL 在 9-bit 无校验模式按 uint16_t 元素访问 Buffer，
+             * 与 Platform UART 的 uint8_t 字节流契约不兼容。 */
+            return PLATFORM_ERR_NOT_SUPPORTED;
 
         default:
             return PLATFORM_ERR_INVALID_PARAM;

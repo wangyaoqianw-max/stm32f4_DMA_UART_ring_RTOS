@@ -54,16 +54,19 @@ USART1
   - `00_Doc/04_Agent/requirements.md`
 - Phase 1 实施计划已补全：
   - `00_Doc/04_Agent/implementation_plan.md`
-  - 当前状态为 `READY_FOR_IMPLEMENTATION`
   - 范围限定为 Platform UART → STM32 Impl → HAL Blocking UART。
 - EasyLogger、SEGGER RTT 及既有日志适配代码已存在，`defaultTask` 当前会调用日志初始化；该旧日志链路不属于当前 Phase 1 重构范围。
+- 已完成 USART1 专用 Platform UART 阻塞式 Impl：
+  - `04_Impl/impl_mcu/impl_platform_uart.h`
+  - `04_Impl/impl_mcu/impl_platform_uart.c`
+  - 具备静态 Context、Config → HAL 转换、Lifecycle、Blocking TX/RX 和 HAL Error Mapping。
+  - 已接入 Keil 工程所需的 Platform Common、Platform UART 和 Impl UART 源文件。
+- STM32 Impl 明确拒绝所有 9-bit 配置：当前 HAL 在 9-bit 无校验模式按 `uint16_t *` 元素访问 Buffer，
+  与 Platform UART 的 `uint8_t` 字节流契约不兼容。
 
 ### 尚未完成
 
-- `04_Impl/impl_mcu/impl_platform_uart.c` 仍为空占位文件。
-- `04_Impl/impl_mcu/impl_platform_uart.h` 尚未创建。
-- `04_Impl/impl_mcu/impl_dma.c/.h` 仍为空占位文件。
-- 新的 Platform UART / STM32 UART Impl 尚未正式加入 Keil 主工程。
+- `04_Impl/impl_mcu/impl_dma.c/.h` 仍为空占位文件；它们属于后续阶段，不是 Phase 1 任务。
 - 尚未执行 Phase 1 的 Keil 全工程构建。
 - 尚未执行 Platform → Impl → HAL 的板上 Blocking TX/RX Smoke Test。
 - USART1 DMA / IDLE、HAL Async Callback、FreeRTOS 通知链路尚未实现。
@@ -273,34 +276,12 @@ RTT_elog_DMA_UART_ring_project/00_Doc/04_Agent/
 
 ## 9. 当前推荐动作
 
-当前不再等待 DMA / IDLE / Ring Buffer 设计。
+Phase 1 代码与主机验证已完成，当前只等待两类实际验证：
 
-下一步直接执行 `implementation_plan.md` 的 Phase 1：
+1. 在安装 Keil MDK 的主机执行当前 Target 全工程 Rebuild，并记录 Errors / Warnings。
+2. 在板上执行 USART1 的 Blocking TX、固定长度 RX 和 Lifecycle Smoke Test。
 
-```text
-STM32 UART Blocking Impl
-```
-
-即：
-
-1. Preflight / git status。
-2. 创建 `impl_platform_uart.h`。
-3. 实现 `impl_platform_uart.c`。
-4. 完成 Config Translation。
-5. 完成 Lifecycle。
-6. 完成 Blocking Write / Read。
-7. 接入 Keil。
-8. 构建。
-9. 板上 TX/RX Smoke Test。
-10. 更新本 handoff。
-
-如果硬件测试尚未执行，但代码、主机测试和 Keil 构建已完成，只能标记：
-
-```text
-CODE_COMPLETE_PENDING_HARDWARE_VERIFICATION
-```
-
-不得标记完整 `COMPLETED`。
+完成前不得进入 DMA、IDLE、RingBuffer、UART Service 或 APP 通信阶段。
 
 ---
 
@@ -340,6 +321,8 @@ Phase 2 开始前重新确定：
 - 新增 USART1 专用的 Platform UART 构造/绑定入口，未暴露 HAL Handle。
 - 实现静态 STM32 UART 私有 Context、静态 Lifecycle Ops 和阻塞 UART Ops；异步 Ops 保持 `NULL`。
 - 实现 Platform Config 到 HAL USART1 配置转换、Lifecycle 状态机、阻塞读写、HAL Error 映射和 `uint16_t` HAL 长度边界检查。
+- 修复 9-bit 配置语义：无论校验模式，`PLATFORM_UART_DATA_BITS_9` 均返回 `PLATFORM_ERR_NOT_SUPPORTED`；
+  不向 Platform API 引入 `uint16_t` Buffer 语义。
 - Keil 工程已加入 `platform_object.c`、`platform_device.c`、`platform_uart.c` 和 `impl_platform_uart.c`，并加入其真实 Include Path。
 - 未修改冻结的 Platform UART API、Vendor、DMA、IDLE、RingBuffer、UART Service、APP 通信或日志技术债。
 
@@ -347,6 +330,8 @@ Phase 2 开始前重新确定：
 
 - `04_Impl/impl_mcu/impl_platform_uart.h`
 - `04_Impl/impl_mcu/impl_platform_uart.c`
+- `Tests/impl_platform_uart/test_impl_platform_uart.c`
+- `Tests/impl_platform_uart/usart.h`
 - `MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx`
 - 本文件。
 
@@ -356,6 +341,7 @@ Phase 2 开始前重新确定：
 | --- | --- | --- |
 | Platform UART types host test | PASS | GCC 编译并执行 `Tests/platform_uart/test_platform_uart_types.c`，退出码 0。 |
 | Platform UART host test | PASS | GCC 编译并执行 `Tests/platform_uart/test_platform_uart.c` 及其 Platform 依赖，退出码 0。 |
+| Impl Config Mapping host test | PASS | 真实 `impl_platform_uart.c` 在测试单元中编译；8N1、8E1、8O1、7E1、7O1 通过，9N1、9E1、9O1 返回 `PLATFORM_ERR_NOT_SUPPORTED`。 |
 | Impl 语法检查 | PASS | 以 Keil Include Path 等价的 GCC `-fsyntax-only` 编译 `impl_platform_uart.c`，退出码 0。 |
 | 静态架构检查 | PASS | Platform UART Header、Impl Header 和 Vendor 变更扫描均无越界依赖；冻结 Platform UART 文件无改动。 |
 | Keil 全工程构建 | 未执行 | 当前主机未发现 `UV4.exe` / Keil MDK 命令行工具，无法生成 Keil Build 证据。 |
@@ -366,7 +352,7 @@ Phase 2 开始前重新确定：
 - 无架构或 API Blocker；Phase 1 未扩大至 DMA、IDLE、RingBuffer、Service 或 APP。
 - 因本机缺少可调用的 Keil 命令行构建工具，尚未取得 Keil 的 Error / Warning 计数。
 - 因当前会话无可访问的板卡/串口设备，尚未执行实际 USART1 TX、固定长度 RX 和 Lifecycle Smoke Test。
-- 预检后的工作区出现 `00_Doc/00_项目需求/项目需求说明书.md` 的无关改动；本次未读取、修改或覆盖该文件。
+- 当前工作区存在 Keil 运行产生的 `MDK-ARM/JLinkLog.txt`、`*.uvguix.*` 和 `*.uvoptx` 无关改动；本次未读取、修改、暂存或提交这些文件。
 
 ### 后续验证步骤
 
