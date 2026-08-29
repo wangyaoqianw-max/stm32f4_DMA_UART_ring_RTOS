@@ -14,6 +14,8 @@
 //******************************** Includes *********************************//
 #include "impl_platform_uart.h"
 
+#include "platform_device.h"
+#include "platform_object.h"
 #include "usart.h"
 //******************************** Includes *********************************//
 
@@ -104,12 +106,12 @@ static platform_error_t stm32_uart_map_hal_status(HAL_StatusTypeDef halStatus)
 static platform_error_t stm32_uart_get_context(platform_uart_t *uart,
                                                stm32_uart_impl_context_t **context)
 {
-    if ((NULL == uart) || (NULL == context) || (NULL == uart->implContext)) {
+    if ((uart == NULL) || (context == NULL) || (uart->implContext == NULL)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
     *context = (stm32_uart_impl_context_t *)uart->implContext;
-    if (NULL == (*context)->halUart) {
+    if ((*context)->halUart == NULL) {
         return PLATFORM_ERR_NOT_INITIALIZED;
     }
 
@@ -118,13 +120,13 @@ static platform_error_t stm32_uart_get_context(platform_uart_t *uart,
 
 static platform_error_t stm32_uart_validate_object(const platform_uart_t *uart)
 {
-    if (NULL == uart) {
+    if (uart == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
-    if ((PLATFORM_TRUE !=
-         platform_object_is_valid(&uart->device.object, PLATFORM_OBJECT_DEVICE)) ||
-        (PLATFORM_DEVICE_CLASS_UART != uart->device.dev_class)) {
+    if ((platform_object_is_valid(&uart->device.object, PLATFORM_OBJECT_DEVICE) !=
+         PLATFORM_TRUE) ||
+        (uart->device.dev_class != PLATFORM_DEVICE_CLASS_UART)) {
         return PLATFORM_ERR_NOT_INITIALIZED;
     }
 
@@ -139,26 +141,26 @@ static platform_error_t stm32_uart_apply_config(UART_HandleTypeDef *halUart,
     uint32_t halStopBits = 0U;
     uint32_t halParity = 0U;
 
-    if ((NULL == halUart) || (NULL == config)) {
+    if ((halUart == NULL) || (config == NULL)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
     result = stm32_uart_map_word_length(config, &wordLength);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
     result = stm32_uart_map_stop_bits(config->stopBits, &halStopBits);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
     result = stm32_uart_map_parity(config->parity, &halParity);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if (PLATFORM_UART_FLOW_CONTROL_NONE != config->flowControl) {
+    if (config->flowControl != PLATFORM_UART_FLOW_CONTROL_NONE) {
         return PLATFORM_ERR_NOT_SUPPORTED;
     }
 
@@ -176,20 +178,20 @@ static platform_error_t stm32_uart_apply_config(UART_HandleTypeDef *halUart,
 static platform_error_t stm32_uart_map_word_length(const platform_uart_config_t *config,
                                                    uint32_t *wordLength)
 {
-    if ((NULL == config) || (NULL == wordLength)) {
+    if ((config == NULL) || (wordLength == NULL)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
     switch (config->dataBits) {
         case PLATFORM_UART_DATA_BITS_7:
-            if (PLATFORM_UART_PARITY_NONE == config->parity) {
+            if (config->parity == PLATFORM_UART_PARITY_NONE) {
                 return PLATFORM_ERR_NOT_SUPPORTED;
             }
             *wordLength = UART_WORDLENGTH_8B;
             return PLATFORM_ERR_OK;
 
         case PLATFORM_UART_DATA_BITS_8:
-            if (PLATFORM_UART_PARITY_NONE == config->parity) {
+            if (config->parity == PLATFORM_UART_PARITY_NONE) {
                 *wordLength = UART_WORDLENGTH_8B;
             } else {
                 *wordLength = UART_WORDLENGTH_9B;
@@ -197,7 +199,7 @@ static platform_error_t stm32_uart_map_word_length(const platform_uart_config_t 
             return PLATFORM_ERR_OK;
 
         case PLATFORM_UART_DATA_BITS_9:
-            if (PLATFORM_UART_PARITY_NONE != config->parity) {
+            if (config->parity != PLATFORM_UART_PARITY_NONE) {
                 return PLATFORM_ERR_NOT_SUPPORTED;
             }
             *wordLength = UART_WORDLENGTH_9B;
@@ -211,7 +213,7 @@ static platform_error_t stm32_uart_map_word_length(const platform_uart_config_t 
 static platform_error_t stm32_uart_map_stop_bits(platform_uart_stop_bits_t stopBits,
                                                  uint32_t *halStopBits)
 {
-    if (NULL == halStopBits) {
+    if (halStopBits == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
@@ -232,7 +234,7 @@ static platform_error_t stm32_uart_map_stop_bits(platform_uart_stop_bits_t stopB
 static platform_error_t stm32_uart_map_parity(platform_uart_parity_t parity,
                                               uint32_t *halParity)
 {
-    if (NULL == halParity) {
+    if (halParity == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
@@ -261,31 +263,31 @@ static platform_error_t stm32_uart_lifecycle_init(void *self)
     platform_uart_t *uart = (platform_uart_t *)self;
 
     result = stm32_uart_validate_object(uart);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if (PLATFORM_OBJECT_CREATED != uart->device.object.state) {
+    if (uart->device.object.state != PLATFORM_OBJECT_CREATED) {
         return PLATFORM_ERR_INVALID_STATE;
     }
 
     result = stm32_uart_get_context(uart, &context);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
     result = stm32_uart_apply_config(context->halUart, &uart->config);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
     result = stm32_uart_map_hal_status(HAL_UART_Init(context->halUart));
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
     result = platform_object_set_state(&uart->device.object, PLATFORM_OBJECT_INITIALIZED);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
@@ -298,17 +300,17 @@ static platform_error_t stm32_uart_lifecycle_start(void *self)
     platform_uart_t *uart = (platform_uart_t *)self;
 
     result = stm32_uart_validate_object(uart);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if ((PLATFORM_OBJECT_INITIALIZED != uart->device.object.state) &&
-        (PLATFORM_OBJECT_STOPPED != uart->device.object.state)) {
+    if ((uart->device.object.state != PLATFORM_OBJECT_INITIALIZED) &&
+        (uart->device.object.state != PLATFORM_OBJECT_STOPPED)) {
         return PLATFORM_ERR_INVALID_STATE;
     }
 
     result = platform_object_set_state(&uart->device.object, PLATFORM_OBJECT_STARTED);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
@@ -321,11 +323,11 @@ static platform_error_t stm32_uart_lifecycle_process(void *self)
     platform_uart_t *uart = (platform_uart_t *)self;
 
     result = stm32_uart_validate_object(uart);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if (PLATFORM_OBJECT_STARTED != uart->device.object.state) {
+    if (uart->device.object.state != PLATFORM_OBJECT_STARTED) {
         return PLATFORM_ERR_INVALID_STATE;
     }
 
@@ -338,16 +340,16 @@ static platform_error_t stm32_uart_lifecycle_stop(void *self)
     platform_uart_t *uart = (platform_uart_t *)self;
 
     result = stm32_uart_validate_object(uart);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if (PLATFORM_OBJECT_STARTED != uart->device.object.state) {
+    if (uart->device.object.state != PLATFORM_OBJECT_STARTED) {
         return PLATFORM_ERR_INVALID_STATE;
     }
 
     result = platform_object_set_state(&uart->device.object, PLATFORM_OBJECT_STOPPED);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
@@ -361,26 +363,26 @@ static platform_error_t stm32_uart_lifecycle_deinit(void *self)
     platform_uart_t *uart = (platform_uart_t *)self;
 
     result = stm32_uart_validate_object(uart);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if (PLATFORM_OBJECT_STOPPED != uart->device.object.state) {
+    if (uart->device.object.state != PLATFORM_OBJECT_STOPPED) {
         return PLATFORM_ERR_INVALID_STATE;
     }
 
     result = stm32_uart_get_context(uart, &context);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
     result = stm32_uart_map_hal_status(HAL_UART_DeInit(context->halUart));
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
     result = platform_device_set_power_state(&uart->device, PLATFORM_DEVICE_POWER_OFF);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
@@ -396,11 +398,11 @@ static platform_error_t stm32_uart_write(platform_uart_t *uart,
     platform_error_t result = PLATFORM_ERR_OK;
     stm32_uart_impl_context_t *context = NULL;
 
-    if (NULL != writtenLength) {
+    if (writtenLength != NULL) {
         *writtenLength = 0U;
     }
 
-    if ((NULL == data) || (0U == dataLength) || (NULL == writtenLength)) {
+    if ((data == NULL) || (dataLength == 0U) || (writtenLength == NULL)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
@@ -409,13 +411,13 @@ static platform_error_t stm32_uart_write(platform_uart_t *uart,
     }
 
     result = stm32_uart_get_context(uart, &context);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
     result = stm32_uart_map_hal_status(
         HAL_UART_Transmit(context->halUart, (uint8_t *)data, (uint16_t)dataLength, timeoutMs));
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
@@ -432,11 +434,11 @@ static platform_error_t stm32_uart_read(platform_uart_t *uart,
     platform_error_t result = PLATFORM_ERR_OK;
     stm32_uart_impl_context_t *context = NULL;
 
-    if (NULL != readLength) {
+    if (readLength != NULL) {
         *readLength = 0U;
     }
 
-    if ((NULL == buffer) || (0U == bufferSize) || (NULL == readLength)) {
+    if ((buffer == NULL) || (bufferSize == 0U) || (readLength == NULL)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
@@ -445,13 +447,13 @@ static platform_error_t stm32_uart_read(platform_uart_t *uart,
     }
 
     result = stm32_uart_get_context(uart, &context);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
     result = stm32_uart_map_hal_status(
         HAL_UART_Receive(context->halUart, buffer, (uint16_t)bufferSize, timeoutMs));
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
@@ -471,7 +473,7 @@ platform_error_t impl_platform_uart_usart1_construct(
 {
     platform_uart_init_params_t params;
 
-    if (NULL == config) {
+    if (config == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
