@@ -27,11 +27,23 @@
 typedef struct
 {
     UART_HandleTypeDef *halUart;
+    platform_uart_t *platformUart;
+    uint8_t *rxBuffer;
+    platform_size_t rxBufferSize;
+    platform_size_t rxLastPosition;
+    platform_bool_t rxActive;
 } stm32_uart_impl_context_t;
 //******************************** Declaring *********************************//
 
 //******************************** Variables *********************************//
-static stm32_uart_impl_context_t g_usart1Context = {&huart1};
+static stm32_uart_impl_context_t g_usart1Context = {
+    &huart1,
+    NULL,
+    NULL,
+    0U,
+    0U,
+    PLATFORM_FALSE
+};
 //******************************** Variables *********************************//
 
 //******************************** Private Functions *************************//
@@ -62,6 +74,18 @@ static platform_error_t stm32_uart_read(platform_uart_t *uart,
                                         platform_size_t bufferSize,
                                         uint32_t timeoutMs,
                                         platform_size_t *readLength);
+static platform_error_t stm32_uart_read_async(platform_uart_t *uart,
+                                              uint8_t *buffer,
+                                              platform_size_t bufferSize);
+static platform_error_t stm32_uart_cancel(platform_uart_t *uart,
+                                          platform_uart_direction_t direction);
+static void stm32_uart_clear_rx_session(stm32_uart_impl_context_t *context);
+static void stm32_uart_emit_rx_data(stm32_uart_impl_context_t *context,
+                                    platform_size_t startPosition,
+                                    platform_size_t dataLength);
+static void stm32_uart_process_rx_position(stm32_uart_impl_context_t *context,
+                                           platform_size_t position);
+static platform_error_t stm32_uart_map_rx_error(uint32_t errorCode);
 //******************************** Private Functions *************************//
 
 //******************************** Constants *********************************//
@@ -77,8 +101,8 @@ static const platform_uart_ops_t g_stm32UartOps = {
     stm32_uart_write,
     stm32_uart_read,
     NULL,
-    NULL,
-    NULL
+    stm32_uart_read_async,
+    stm32_uart_cancel
 };
 //******************************** Constants *********************************//
 
@@ -101,6 +125,80 @@ static platform_error_t stm32_uart_map_hal_status(HAL_StatusTypeDef halStatus)
         default:
             return PLATFORM_ERR_UNKNOWN;
     }
+}
+
+static void stm32_uart_clear_rx_session(stm32_uart_impl_context_t *context)
+{
+    if (context != NULL) {
+        context->rxBuffer = NULL;
+        context->rxBufferSize = 0U;
+        context->rxLastPosition = 0U;
+        context->rxActive = PLATFORM_FALSE;
+    }
+}
+
+static void stm32_uart_emit_rx_data(stm32_uart_impl_context_t *context,
+                                    platform_size_t startPosition,
+                                    platform_size_t dataLength)
+{
+    platform_uart_event_t event;
+
+    if ((context == NULL) || (context->platformUart == NULL) ||
+        (context->rxBuffer == NULL) || (0U == dataLength) ||
+        (startPosition >= context->rxBufferSize) ||
+        (dataLength > (context->rxBufferSize - startPosition))) {
+        return;
+    }
+
+    event.type = PLATFORM_UART_EVENT_RX_DATA;
+    event.direction = PLATFORM_UART_DIRECTION_RX;
+    event.data = &context->rxBuffer[startPosition];
+    event.dataLength = dataLength;
+    event.error = PLATFORM_ERR_OK;
+    (void)platform_uart_notify_event(context->platformUart, &event);
+}
+
+static void stm32_uart_process_rx_position(stm32_uart_impl_context_t *context,
+                                           platform_size_t position)
+{
+    if ((context == NULL) || (PLATFORM_TRUE != context->rxActive) ||
+        (context->rxBuffer == NULL) || (0U == context->rxBufferSize) ||
+        (position > context->rxBufferSize)) {
+        return;
+    }
+
+    if (position > context->rxLastPosition) {
+        stm32_uart_emit_rx_data(context,
+                                context->rxLastPosition,
+                                position - context->rxLastPosition);
+    } else if (position < context->rxLastPosition) {
+        stm32_uart_emit_rx_data(context,
+                                context->rxLastPosition,
+                                context->rxBufferSize - context->rxLastPosition);
+        stm32_uart_emit_rx_data(context, 0U, position);
+    } else {
+        return;
+    }
+
+    if (position == context->rxBufferSize) {
+        context->rxLastPosition = 0U;
+    } else {
+        context->rxLastPosition = position;
+    }
+}
+
+static platform_error_t stm32_uart_map_rx_error(uint32_t errorCode)
+{
+    if (0U != (errorCode & HAL_UART_ERROR_ORE)) {
+        return PLATFORM_ERR_OVERFLOW;
+    }
+
+    if (0U != (errorCode & (HAL_UART_ERROR_DMA | HAL_UART_ERROR_PE |
+                            HAL_UART_ERROR_NE | HAL_UART_ERROR_FE))) {
+        return PLATFORM_ERR_IO;
+    }
+
+    return PLATFORM_ERR_IO;
 }
 
 static platform_error_t stm32_uart_get_context(platform_uart_t *uart,
@@ -274,6 +372,8 @@ static platform_error_t stm32_uart_lifecycle_init(void *self)
         return result;
     }
 
+    stm32_uart_clear_rx_session(context);
+
     result = stm32_uart_apply_config(context->halUart, &uart->config);
     if (result != PLATFORM_ERR_OK) {
         return result;
@@ -283,6 +383,8 @@ static platform_error_t stm32_uart_lifecycle_init(void *self)
     if (result != PLATFORM_ERR_OK) {
         return result;
     }
+
+    context->platformUart = uart;
 
     result = platform_object_set_state(&uart->device.object, PLATFORM_OBJECT_INITIALIZED);
     if (result != PLATFORM_ERR_OK) {
@@ -335,6 +437,7 @@ static platform_error_t stm32_uart_lifecycle_process(void *self)
 static platform_error_t stm32_uart_lifecycle_stop(void *self)
 {
     platform_error_t result = PLATFORM_ERR_OK;
+    stm32_uart_impl_context_t *context = NULL;
     platform_uart_t *uart = (platform_uart_t *)self;
 
     result = stm32_uart_validate_object(uart);
@@ -344,6 +447,20 @@ static platform_error_t stm32_uart_lifecycle_stop(void *self)
 
     if (uart->device.object.state != PLATFORM_OBJECT_STARTED) {
         return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    result = stm32_uart_get_context(uart, &context);
+    if (result != PLATFORM_ERR_OK) {
+        return result;
+    }
+
+    if (PLATFORM_TRUE == context->rxActive) {
+        result = stm32_uart_map_hal_status(HAL_UART_AbortReceive(context->halUart));
+        if (result != PLATFORM_ERR_OK) {
+            return result;
+        }
+
+        stm32_uart_clear_rx_session(context);
     }
 
     result = platform_object_set_state(&uart->device.object, PLATFORM_OBJECT_STOPPED);
@@ -378,6 +495,9 @@ static platform_error_t stm32_uart_lifecycle_deinit(void *self)
     if (result != PLATFORM_ERR_OK) {
         return result;
     }
+
+    stm32_uart_clear_rx_session(context);
+    context->platformUart = NULL;
 
     result = platform_device_set_power_state(&uart->device, PLATFORM_DEVICE_POWER_OFF);
     if (result != PLATFORM_ERR_OK) {
@@ -458,6 +578,80 @@ static platform_error_t stm32_uart_read(platform_uart_t *uart,
     *readLength = bufferSize;
     return PLATFORM_ERR_OK;
 }
+
+static platform_error_t stm32_uart_read_async(platform_uart_t *uart,
+                                              uint8_t *buffer,
+                                              platform_size_t bufferSize)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+    stm32_uart_impl_context_t *context = NULL;
+
+    if ((buffer == NULL) || (0U == bufferSize)) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    if (bufferSize > STM32_UART_HAL_MAX_TRANSFER_SIZE) {
+        return PLATFORM_ERR_OVERFLOW;
+    }
+
+    result = stm32_uart_get_context(uart, &context);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    if (PLATFORM_TRUE == context->rxActive) {
+        return PLATFORM_ERR_BUSY;
+    }
+
+    context->rxBuffer = buffer;
+    context->rxBufferSize = bufferSize;
+    context->rxLastPosition = 0U;
+    context->rxActive = PLATFORM_TRUE;
+    result = stm32_uart_map_hal_status(HAL_UARTEx_ReceiveToIdle_DMA(
+        context->halUart, buffer, (uint16_t)bufferSize));
+    if (PLATFORM_ERR_OK != result) {
+        stm32_uart_clear_rx_session(context);
+        return result;
+    }
+
+    return PLATFORM_ERR_OK;
+}
+
+static platform_error_t stm32_uart_cancel(platform_uart_t *uart,
+                                          platform_uart_direction_t direction)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+    stm32_uart_impl_context_t *context = NULL;
+    platform_uart_event_t event;
+
+    if (PLATFORM_UART_DIRECTION_RX != direction) {
+        return PLATFORM_ERR_NOT_SUPPORTED;
+    }
+
+    result = stm32_uart_get_context(uart, &context);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    if (PLATFORM_TRUE != context->rxActive) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    result = stm32_uart_map_hal_status(HAL_UART_AbortReceive(context->halUart));
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    stm32_uart_clear_rx_session(context);
+    event.type = PLATFORM_UART_EVENT_CANCELED;
+    event.direction = PLATFORM_UART_DIRECTION_RX;
+    event.data = NULL;
+    event.dataLength = 0U;
+    event.error = PLATFORM_ERR_CANCELED;
+    (void)platform_uart_notify_event(uart, &event);
+
+    return PLATFORM_ERR_OK;
+}
 //******************************** Private Functions *************************//
 
 //******************************** Functions *********************************//
@@ -485,5 +679,33 @@ platform_error_t impl_platform_uart_usart1_construct(
     params.callbackContext = callbackContext;
 
     return platform_uart_init(uart, &params);
+}
+
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size)
+{
+    if (huart == g_usart1Context.halUart) {
+        stm32_uart_process_rx_position(&g_usart1Context, (platform_size_t)size);
+    }
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    platform_uart_event_t event;
+    platform_error_t error;
+
+    if ((huart != g_usart1Context.halUart) ||
+        (PLATFORM_TRUE != g_usart1Context.rxActive) ||
+        (g_usart1Context.platformUart == NULL)) {
+        return;
+    }
+
+    error = stm32_uart_map_rx_error(huart->ErrorCode);
+    stm32_uart_clear_rx_session(&g_usart1Context);
+    event.type = PLATFORM_UART_EVENT_ERROR;
+    event.direction = PLATFORM_UART_DIRECTION_RX;
+    event.data = NULL;
+    event.dataLength = 0U;
+    event.error = error;
+    (void)platform_uart_notify_event(g_usart1Context.platformUart, &event);
 }
 //******************************** Functions *********************************//

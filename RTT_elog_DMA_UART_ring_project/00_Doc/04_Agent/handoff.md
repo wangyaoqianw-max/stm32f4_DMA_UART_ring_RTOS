@@ -533,3 +533,78 @@ Communication Task
 ```
 
 Phase 2A 完成前不得开始 Phase 2B。
+
+---
+
+## 16. Phase 2A Implementation Handoff — 2026-08-29
+
+状态：
+
+```text
+CODE_COMPLETE_PENDING_HARDWARE_VERIFICATION
+```
+
+### 修改文件
+
+- `04_Impl/impl_mcu/impl_platform_uart.c`
+  - 实现 USART1 `HAL_UARTEx_ReceiveToIdle_DMA()` 持续 RX Session。
+  - 实现 IDLE / HT / TC 共用的 Position / Delta 上报、Wrap 拆分和重复 Position 抑制。
+  - 实现 RX cancel、lifecycle stop 的 DMA RX Abort，以及 HAL RX Error 事件映射。
+  - 以项目自定义 weak callback override 提供 `HAL_UARTEx_RxEventCallback()` 和
+    `HAL_UART_ErrorCallback()`；未修改 Vendor HAL 或 CubeMX 生成主体。
+- `Tests/impl_platform_uart/test_impl_platform_uart.c`
+  - 添加 DMA 启动期回调、重复启动、单调增量、TC 归一化、Wrap、重复 Position、cancel/restart、stop 和 ORE Error 的 Host 测试。
+- `Tests/impl_platform_uart/usart.h`
+  - 扩展可控 Fake HAL，记录 DMA RX 启动和 Abort 调用。
+
+### Host Test 结果
+
+```text
+PASS  Tests/impl_platform_uart
+PASS  Tests/platform_uart
+PASS  Tests/platform_uart/test_platform_uart_types.c
+PASS  Tests/platform_log
+PASS  git diff --check
+```
+
+### Position / Wrap Test 结果
+
+Host Test 已验证：
+
+- `[0,10)`、`[10,20)` 单调新增；
+- `Pos == lastPosition` 不产生重复 `RX_DATA`；
+- `last=240, Pos=20` 按 `[240,256)`、`[0,20)` 顺序产生两个事件。
+- `Pos=256` 的 TC 边界上报尾部后归一化为 `0`，紧随的 `Pos=0` 不重复上报。
+- Fake HAL 在 `HAL_UARTEx_ReceiveToIdle_DMA()` 返回前触发回调，验证首段数据不会因启动期 IRQ 竞态丢失。
+
+### Cancel / Stop / Error Test 结果
+
+- `cancel(RX)` 调用 `HAL_UART_AbortReceive()`、发送 `CANCELED/RX`、并允许重新 `readAsync()`。
+- 活动 RX 的 stop 调用 Abort 且后续模拟 HAL RX Callback 不产生 `RX_DATA`。
+- HAL start 的 `BUSY`、`ERROR` 分别映射为 `PLATFORM_ERR_BUSY`、`PLATFORM_ERR_IO`，不建立活动 Session。
+- HAL ORE 映射为 `PLATFORM_ERR_OVERFLOW`，发送 `ERROR/RX` 并允许重新 `readAsync()`。
+
+### Keil Build 状态
+
+```text
+CODE_COMPLETE_PENDING_KEIL_VERIFICATION
+```
+
+当前 Codex Host 环境未执行真实 Keil Build。请在本地执行：
+
+```text
+Clean Targets
+→ Rebuild all target files
+```
+
+验收要求：`0 Error(s)`。
+
+### Hardware Verification 状态
+
+未执行，不能声称通过。待板测：Short + IDLE、Multiple bursts、连续超过 256 bytes、Wrap、Cancel / Restart；测试输出优先 RTT，避免使用 USART1 自身大量打印。
+
+### Deviations / Remaining Warnings / Blockers
+
+- Deviations：无；Platform UART 公共 API、CubeMX DMA 配置、IRQ 薄入口均未修改。
+- Remaining Warnings：Host 编译使用 `-Wall -Wextra -Werror`，无警告；Keil 编译结果待验证。
+- Blockers：无。
