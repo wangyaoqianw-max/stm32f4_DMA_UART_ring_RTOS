@@ -7,7 +7,7 @@
 - 工程根目录：`RTT_elog_DMA_UART_ring_project/`
 - 当前分支：`main`
 - 当前活动阶段：UART Phase 1 Final Verification
-- 当前状态：`READY_FOR_VERIFICATION`
+- 当前状态：`COMPLETED`
 - MCU：STM32F411CEU6，UFQFPN48
 - 软件环境：STM32 HAL、CMSIS-RTOS2 / FreeRTOS、Keil、EasyLogger、SEGGER RTT
 
@@ -148,17 +148,19 @@ Impl UART config mapping test: PASS
 
 UART Impl 也已有真实 Keil 编译 0 Error 记录。
 
-### 尚未完成
+### Final Verification Result（2026-08-29）
 
-UART Phase 1 仍缺少最终板上证据：
+- 临时 Board Smoke Test 仅在 `Core/Src/freertos.c` USER CODE 区运行，且严格通过 Platform UART API 验证 construct、CREATED write guard、init、start、blocking TX、fixed-length RX、stop guard、restart、deinit。
+- RTT Viewer 实际输出：`UART CONSTRUCT`、`UART PRE-START GUARD`、`UART INIT`、`UART START`、`UART TX`、`UART RX: PASS [PING]`、`UART STOP GUARD`、`UART RESTART TX`、`UART DEINIT` 和 `UART PHASE1 BOARD TEST` 均为 PASS。
+- USB-UART 串口终端实际收到 `UART_PHASE1_TX_OK` 与 `UART_RESTART_OK`；PC 向 USART1 发送 `PING` 后，RTT 确认固定长度 Blocking RX PASS。
+- 测试代码已恢复为正常周期日志任务，未保留 UART Smoke Test 业务代码。
+- 恢复后 Keil Full Rebuild：`0 Error(s), 13 Warning(s)`，无 `C4051E`、`L6449E` 或 `Invalid argument`。
 
-- Blocking TX 实际 USART1 输出。
-- Blocking fixed-length RX 实际 USART1 输入。
-- Lifecycle init/start/stop/restart/deinit 板上验证。
-- 非 STARTED 状态 Blocking API Guard 板上确认。
-- 恢复临时 UART 测试代码后的最终 Keil Full Rebuild。
+因此：
 
-因此 UART Phase 1 当前不是 `COMPLETED`。
+```text
+UART Phase 1 = COMPLETED
+```
 
 ---
 
@@ -201,11 +203,11 @@ RTT 继续作为测试状态输出通道，因此 UART 测试结果不依赖 USA
 当前 Plan：
 
 ```text
-Status: READY_FOR_VERIFICATION
+Status: COMPLETED
 Phase: UART Phase 1 Final Verification
 ```
 
-本阶段不再重写 UART 实现，只允许在 `freertos.c` USER CODE 中加入最小临时 Board Smoke Test。
+本阶段验证已完成；`freertos.c` 已恢复为正常周期日志任务。
 
 ---
 
@@ -303,21 +305,4 @@ UART Phase 1 只有满足以下条件才可标记 `COMPLETED`：
 
 ## 10. Recommended Next Action
 
-直接执行 UART Phase 1 Board Smoke Test。
-
-建议由执行 Agent：
-
-1. 读取本文件。
-2. 读取 `architecture.md`。
-3. 读取 `requirements.md`。
-4. 读取 `implementation_plan.md`。
-5. 读取当前 UART Platform / Impl 源码和 `freertos.c`。
-6. 只在 USER CODE 区加入最小临时测试。
-7. Keil Full Rebuild。
-8. 用户配合 USB-UART 完成 TX / RX 实际验证。
-9. 完成 Lifecycle 测试。
-10. 恢复临时测试代码。
-11. 再次 Keil Full Rebuild。
-12. 更新本 handoff。
-
-UART Phase 1 完成后停止，不要自动开始 DMA / IDLE Phase 2。
+UART Phase 1 已完成并在此停止。不得自动进入 DMA / IDLE Phase 2；下一阶段必须重新设计并冻结接口、缓冲区所有权与 ISR/Task 边界。
