@@ -6,356 +6,523 @@
 
 - 工程根目录：`RTT_elog_DMA_UART_ring_project/`
 - 当前分支：`main`
-- 当前阶段：Phase 1 — STM32 UART Platform Blocking Impl
-- 当前状态：`CODE_COMPLETE_PENDING_KEIL_AND_HARDWARE_VERIFICATION`
+- 当前活动阶段：Log Phase 1 — Platform Log / EasyLogger Impl Boundary Cleanup
+- 当前状态：`READY_FOR_IMPLEMENTATION`
 - MCU：STM32F411CEU6，UFQFPN48
 - 软件环境：STM32 HAL、CMSIS-RTOS2 / FreeRTOS、Keil、EasyLogger、SEGGER RTT
-- CubeMX 当前配置：USART1 Asynchronous，PA9/PA10，CMSIS-RTOS2；尚未配置 USART1 DMA
 - 总体目标：实现 UART + DMA + Ring Buffer + FreeRTOS，并通过分层架构隔离业务与硬件
 
-依赖方向固定为：
+固定依赖方向：
 
 ```text
-APP -> Service -> Platform -> Impl -> HAL / RTOS / Hardware
+APP -> Service -> Platform -> Impl -> Vendor / HAL / RTOS / Hardware
 ```
 
-本次交接对应的近期目标不是完整 DMA UART，而是先打通：
+当前日志目标依赖：
 
 ```text
-Platform UART
-    ↓
-STM32 UART Impl
-    ↓
-HAL UART
-    ↓
-USART1
+APP / Service / Core Thin Caller
+              ↓
+         Platform Log
+              ↓
+       Impl Log Adapter
+              ↓
+         EasyLogger
+              ↓
+     EasyLogger Port / RTT
 ```
 
 ---
 
-## 2. 当前完成情况
+## 2. 为什么当前切换到 Log Phase 1
+
+UART Phase 1 的 STM32 Blocking Impl 代码已经完成并通过主机侧验证，但最近一次真实 Keil 全工程 Rebuild 失败：
+
+```text
+14 Error(s), 14 Warning(s)
+Target not created
+```
+
+错误分布：
+
+```text
+Core/Src/freertos.c                         1 Error
+04_Impl/impl_middleware/impl_log/
+    easylogger_port.c                      13 Errors
+```
+
+这些 Error 全部来自旧日志接口迁移不完整，而不是 UART Impl。
+
+同一次 Build 中 UART Impl 结果：
+
+```text
+impl_platform_uart.c: 1 warning, 0 errors
+```
+
+因此当前优先完成 Log Phase 1，恢复整个 Target 可构建状态，再返回 UART Phase 1 做板上验证。
+
+---
+
+## 3. UART Phase 1 暂停状态
 
 ### 已完成
 
-- 已建立 `APP / Service / Platform / Impl / Vendors` 分层目录和架构说明。
-- `platform_common` 已提供对象、设备、服务、生命周期、错误码和公共类型基础。
-- Platform UART 抽象层已经完成：
-  - `03_Platform/platform_mcu/uart/platform_uart_types.h`
-  - `03_Platform/platform_mcu/uart/platform_uart.h`
-  - `03_Platform/platform_mcu/uart/platform_uart.c`
-  - 支持阻塞读写、异步读写、取消和统一事件回调契约。
-  - 不暴露 HAL、DMA 或 RTOS 类型，不使用动态内存。
-- Platform UART 设计和测试已经存在：
-  - `00_Doc/02_架构设计/Platform_UART抽象层设计.md`
-  - `Tests/platform_uart/test_platform_uart_types.c`
-  - `Tests/platform_uart/test_platform_uart.c`
-- Agent 长期约束文档已建立：
-  - `00_Doc/04_Agent/architecture.md`
-  - `00_Doc/04_Agent/requirements.md`
-- Phase 1 实施计划已补全：
-  - `00_Doc/04_Agent/implementation_plan.md`
-  - 范围限定为 Platform UART → STM32 Impl → HAL Blocking UART。
-- EasyLogger、SEGGER RTT 及既有日志适配代码已存在，`defaultTask` 当前会调用日志初始化；该旧日志链路不属于当前 Phase 1 重构范围。
-- 已完成 USART1 专用 Platform UART 阻塞式 Impl：
-  - `04_Impl/impl_mcu/impl_platform_uart.h`
-  - `04_Impl/impl_mcu/impl_platform_uart.c`
-  - 具备静态 Context、Config → HAL 转换、Lifecycle、Blocking TX/RX 和 HAL Error Mapping。
-  - 已接入 Keil 工程所需的 Platform Common、Platform UART 和 Impl UART 源文件。
-- STM32 Impl 明确拒绝所有 9-bit 配置：当前 HAL 在 9-bit 无校验模式按 `uint16_t *` 元素访问 Buffer，
-  与 Platform UART 的 `uint8_t` 字节流契约不兼容。
+- USART1 专用 Platform UART 构造 / 绑定入口。
+- STM32 UART 私有 Context。
+- Platform Config → HAL UART Config 转换。
+- Lifecycle。
+- Blocking TX / RX。
+- HAL Error Mapping。
+- 9-bit byte stream 不兼容问题已修复：所有 `PLATFORM_UART_DATA_BITS_9` 在当前 STM32 Impl 返回 `PLATFORM_ERR_NOT_SUPPORTED`。
+- Platform UART host tests 已有 PASS 记录。
+- Impl Config Mapping host test 已有 PASS 记录。
+- Keil 工程已加入 Platform Common、Platform UART、STM32 UART Impl 源文件。
+- `impl_platform_uart.c` 在真实 Keil Build 中为 0 Error。
 
 ### 尚未完成
 
-- `04_Impl/impl_mcu/impl_dma.c/.h` 仍为空占位文件；它们属于后续阶段，不是 Phase 1 任务。
-- 尚未执行 Phase 1 的 Keil 全工程构建。
-- 尚未执行 Platform → Impl → HAL 的板上 Blocking TX/RX Smoke Test。
-- USART1 DMA / IDLE、HAL Async Callback、FreeRTOS 通知链路尚未实现。
-- UART Service、Ring Buffer、APP 通信业务、协议解析尚未实现。
+- UART Phase 1 全 Target 0 Error 证据，因为当前被 Log Build Error 阻塞。
+- 板上 Blocking TX Smoke Test。
+- 板上固定长度 RX Smoke Test。
+- Lifecycle Board Smoke Test。
+
+### 当前规则
+
+Log Phase 1 完成前：
+
+- 不修改 UART Phase 1 已完成代码。
+- 不进入 UART DMA / IDLE Phase 2。
 
 ---
 
-## 3. 当前 Phase 1 边界
+## 4. 当前 Log 模块真实状态
 
-### 本阶段执行
+### 4.1 Platform Log
+
+文件：
 
 ```text
-platform_uart_t
-    ↓
-USART1 construct / bind
-    ↓
-lifecycle.init()
-    ↓
-lifecycle.start()
-    ↓
-platform_uart_write()/read()
-    ↓
-STM32 UART Impl
-    ↓
-HAL_UART_Transmit()/HAL_UART_Receive()
-    ↓
-USART1
+03_Platform/platform_middleware/platform_log.h
 ```
 
-必须实现：
+当前问题：
 
-- STM32 UART 私有 Context。
-- USART1 与 Platform UART 的绑定入口。
-- Platform Config → HAL UART Config 转换。
-- Lifecycle。
-- Blocking Write / Read。
-- HAL → Platform Error Mapping。
-- Keil 工程接入。
-- 最小板上 TX/RX Smoke Test。
+- 公共函数声明已经改为 `platform_error_t`。
+- 仍直接 `#include "easylogger_port.h"`。
+- `platform_log_e/w/i/d/v` 仍通过 `impl_elog_*` 宏调用 EasyLogger。
+- 因此 Platform 间接依赖 EasyLogger、RTT、CMSIS-RTOS 和 FreeRTOS。
+- 旧 `Platform_Log_Error_t` 枚举只被注释掉，没有完成 Impl 同步迁移。
 
-### 本阶段不执行
+这与 `architecture.md` 中已经冻结的日志依赖规则冲突。
 
-- DMA。
-- IDLE。
-- Circular Buffer。
-- UART/DMA IRQ 数据链路。
-- Async TX/RX STM32 实现。
-- Ring Buffer。
-- UART Service。
-- FreeRTOS Notification 通信链路。
-- APP 通信逻辑。
-- 协议解析。
-- 日志架构技术债重构。
-- `platform_types -> board_types` 技术债重构。
+### 4.2 Impl Log
 
-发现必须扩大到上述范围才能继续时，不得自行扩大任务；在本文件记录 `BLOCKED` 并返回架构设计阶段。
+文件：
+
+```text
+04_Impl/impl_middleware/impl_log/easylogger_port.c
+04_Impl/impl_middleware/impl_log/easylogger_port.h
+```
+
+`easylogger_port.c` 当前已经负责：
+
+- EasyLogger init/start。
+- Platform Level → ELOG Level。
+- EasyLogger format 设置。
+- Assert Hook。
+- Async Semaphore / Task。
+- Async log drain。
+
+这些职责继续保留在 Impl。
+
+当前 13 个 Keil Error 来自它继续使用：
+
+```text
+Platform_Log_Error_t
+PLATFORM_LOG_OK
+PLATFORM_LOG_ERROR_RESOURCE
+PLATFORM_LOG_ERROR_INIT
+PLATFORM_LOG_ERROR_PARAMETER
+```
+
+### 4.3 EasyLogger Vendor Port
+
+文件：
+
+```text
+05_Vendors/easylogger/port/elog_port.c
+```
+
+当前负责：
+
+- EasyLogger output mutex。
+- `SEGGER_RTT_Write()` 实际输出。
+- RTOS Tick / HAL Tick 时间。
+- FreeRTOS Task Name。
+
+Log Phase 1 不移动、不修改该文件。
+
+### 4.4 freertos.c
+
+当前 USER CODE 直接：
+
+- include `SEGGER_RTT.h`。
+- 使用旧 `PLATFORM_LOG_OK`。
+- Log init 失败时直接 `SEGGER_RTT_printf()`。
+
+Log Phase 1 只允许在 USER CODE 区做最小收口，使它只依赖 Platform Log 进行正常日志使用。
 
 ---
 
-## 4. Platform UART 已冻结契约
+## 5. Log Phase 1 已冻结接口设计
 
-- `platform_uart_t` 的首字段保持 `platform_device_t`。
-- 对象首次构造前使用 `PLATFORM_UART_INITIALIZER` 零初始化；同一对象禁止重复 `platform_uart_init()` 构造。
-- 生命周期继续使用 `platform_lifecycle_ops_t`；UART Ops 不重复生命周期接口。
-- 数据接口仅允许在 `PLATFORM_OBJECT_STARTED` 状态调用。
-- 异步事件只在 `STARTED` 状态接受；这部分在 Phase 2 才接 STM32 DMA/IRQ。
-- 同步接口失败时完成长度为 0；成功完成量不得超过请求长度。
-- 异步 Buffer 生命周期、Callback ISR 约束和 `RX_DATA` 语义继续保持现有设计。
-- 不得为了 STM32 Impl 修改 Platform UART 公共 API。
-- Platform Header 不得新增 HAL / DMA / FreeRTOS 类型。
+完整设计见：
+
+```text
+00_Doc/04_Agent/implementation_plan.md
+```
+
+当前 Plan 状态：
+
+```text
+READY_FOR_IMPLEMENTATION
+```
+
+### 5.1 保留控制 API
+
+```c
+platform_error_t Platform_Log_Init(void);
+platform_error_t Platform_Log_SetLevel(Platform_Log_Level_t level);
+platform_error_t Platform_Log_EnableOutput(bool enable);
+```
+
+### 5.2 保留调用形式
+
+```c
+platform_log_e(...)
+platform_log_w(...)
+platform_log_i(...)
+platform_log_d(...)
+platform_log_v(...)
+```
+
+### 5.3 新增通用 Output Backend Contract
+
+Platform 定义：
+
+```c
+typedef void (*platform_log_output_fn_t)(
+    uint8_t level,
+    const char *tag,
+    const char *file,
+    const char *func,
+    long line,
+    const char *format,
+    ...);
+
+platform_log_output_fn_t Platform_Log_GetOutputFn(void);
+```
+
+Log 宏通过该 Getter 获取当前输出函数，然后把 Level / Tag / File / Function / Line / Format 直接传递给 Backend。
+
+### 5.4 为什么使用 Backend Getter
+
+EasyLogger 当前公开 `elog_output(..., ...)` variadic API，但没有 `va_list` 版本。
+
+因此：
+
+- 不使用普通 variadic wrapper 再转发 `...`。
+- 不新增 `vsnprintf + 1 KB Stack Buffer`。
+- 不增加额外格式化 Mutex。
+
+Impl 内部：
+
+```text
+Before log init success
+    -> no-op output backend
+
+After log init success
+    -> EasyLogger elog_output
+```
+
+这样保持现有 EasyLogger 格式化、过滤、异步输出能力，同时清除 Platform Header 对 Vendor Header 的依赖。
 
 ---
 
-## 5. Phase 1 已确定实现决策
+## 6. Log Error Contract
 
-以下内容已经在 `implementation_plan.md` 固定，执行 Agent 不再自行选择。
+旧 Log Error Enum 不再恢复。
 
-### 5.1 USART1 Binding
-
-- 当前只实现工程实际使用的 USART1。
-- 上层提供 `platform_uart_t` 对象存储和 Platform Config。
-- Impl 内部静态绑定 CubeMX `huart1`。
-- 上层不得传入或看到 `UART_HandleTypeDef *`。
-- 不建立通用动态 UART Registry。
-
-### 5.2 Config Source of Truth
-
-Platform `platform_uart_config_t` 作为 UART 对外语义配置。
-
-Impl lifecycle `init()` 负责：
+统一：
 
 ```text
-Platform UART Config
-        ↓
-HAL UART Config translation
-        ↓
-huart1.Init
-        ↓
-HAL_UART_Init()
+Success / already initialized
+    -> PLATFORM_ERR_OK
+
+Async Semaphore / Task creation failed
+    -> PLATFORM_ERR_NO_RESOURCE
+
+EasyLogger init failed
+    -> PLATFORM_ERR_IO
+
+SetLevel before init
+    -> PLATFORM_ERR_NOT_INITIALIZED
+
+SetLevel invalid level
+    -> PLATFORM_ERR_INVALID_PARAM
+
+EnableOutput before init
+    -> PLATFORM_ERR_NOT_INITIALIZED
 ```
 
-CubeMX 继续负责 Handle、GPIO、Clock/MSP 和生成框架。
+初始化失败时必须：
 
-当前至少验证 115200 / 8N1 / No Flow Control；当前没有 RTS/CTS GPIO，因此 Phase 1 不要求硬件流控。
-
-### 5.3 Lifecycle
-
-```text
-CREATED / POWER_OFF
-  -> init
-INITIALIZED / POWER_IDLE
-  -> start
-STARTED / POWER_ACTIVE
-  -> stop
-STOPPED / POWER_IDLE
-  -> start 可再次进入 STARTED
-  -> deinit
-CREATED / POWER_OFF
-```
-
-Phase 1 `process()` 为轻量 no-op，不轮询 UART。
-
-### 5.4 HAL Error Mapping
-
-```text
-HAL_OK      -> PLATFORM_ERR_OK
-HAL_BUSY    -> PLATFORM_ERR_BUSY
-HAL_TIMEOUT -> PLATFORM_ERR_TIMEOUT
-HAL_ERROR   -> PLATFORM_ERR_IO
-other       -> PLATFORM_ERR_UNKNOWN
-```
-
-不得修改 Platform Error 枚举。
-
-### 5.5 Concurrency
-
-- Phase 1 不引入新的 UART Mutex。
-- 调用方负责避免多个 Task 同时操作同一 Blocking UART。
-- ISR 不参与 Phase 1 数据链路。
-- Async/DMA 并发模型留到 Phase 2 重新设计。
+- Backend 保持 no-op。
+- `s_app_log_inited = false`。
+- 回收已经创建的 Async Task / Semaphore。
 
 ---
 
-## 6. 当前验证基线
+## 7. Log Phase 1 修改范围
 
-最近一次已有验证记录：
+### 允许修改
 
 ```text
-test_platform_uart_types: 0
-test_platform_uart:       0
-Platform UART 禁止依赖扫描: 0
+03_Platform/platform_middleware/platform_log.h
+04_Impl/impl_middleware/impl_log/easylogger_port.c
+04_Impl/impl_middleware/impl_log/easylogger_port.h
+Core/Src/freertos.c                  # USER CODE only
+Tests/platform_log/*                 # 如需要新增 host test
+00_Doc/04_Agent/handoff.md           # 执行后更新
 ```
 
-该结果来自 Platform UART 阶段，不代表 Phase 1 STM32 Impl 已验证。
+### 禁止修改
 
-Phase 1 实施后必须重新执行：
+```text
+05_Vendors/easylogger/**
+05_Vendors/RTT/**
+04_Impl/impl_mcu/impl_platform_uart.*
+03_Platform/platform_mcu/uart/**
+04_Impl/impl_mcu/impl_dma.*
+02_Service/service_log/**
+UART Service
+RingBuffer
+APP communication
+```
 
-1. Platform UART host tests。
-2. Architecture dependency check。
-3. Keil 全工程构建。
-4. Board Blocking TX Smoke Test。
-5. Board Blocking RX Smoke Test。
-6. Lifecycle Smoke Test。
-
-只有重新验证得到证据后才能更新完成状态。
+`rtt_elog_port.c/.h` 当前为空/占位，不作为本阶段核心，不要为了清理占位文件扩大范围。
 
 ---
 
-## 7. Git / Workspace 规则
+## 8. Log Phase 1 验收重点
 
-仓库最新文档更新已将 Phase 1 标记为可实施。
+### Architecture
 
-执行 Agent 接手时必须先：
+必须确认：
+
+```text
+platform_log.h
+```
+
+不再依赖：
+
+- `easylogger_port.h`
+- `elog.h`
+- `SEGGER_RTT.h`
+- CMSIS-RTOS Header
+- FreeRTOS Header
+- `impl_elog_*`
+
+### Error
+
+活动代码不得再存在：
+
+```text
+Platform_Log_Error_t
+PLATFORM_LOG_OK
+PLATFORM_LOG_ERROR_*
+```
+
+### Host / Static
+
+推荐新增：
+
+```text
+Tests/platform_log/test_platform_log.c
+```
+
+使用 Fake Output Backend 验证 Platform 宏的：
+
+- Level。
+- Tag。
+- Format。
+- Vendor-free Header 编译。
+
+### Keil
+
+必须重新 Full Rebuild。
+
+验收目标：
+
+```text
+0 Error(s)
+```
+
+本阶段不要求清零所有历史 Warning，但本次修改不得新增未解释 Warning。
+
+### Runtime
+
+硬件可用时至少验证：
+
+- `Platform_Log_Init()`。
+- `platform_log_i()` 能在 RTT Viewer 实际看到。
+- `Platform_Log_SetLevel()` 基本过滤行为。
+- `Platform_Log_EnableOutput(false/true)` 基本行为。
+
+没有真实硬件证据时不得写 PASS。
+
+---
+
+## 9. 当前 Build Baseline
+
+最近一次 Keil Full Rebuild 已执行，不再写“未执行”。
+
+实际结果：
+
+```text
+14 Error(s), 14 Warning(s)
+Target not created
+```
+
+主要 Error：
+
+```text
+freertos.c:
+    PLATFORM_LOG_OK undefined
+
+easylogger_port.c:
+    Platform_Log_Error_t undefined
+    PLATFORM_LOG_OK undefined
+    PLATFORM_LOG_ERROR_RESOURCE undefined
+    PLATFORM_LOG_ERROR_INIT undefined
+    PLATFORM_LOG_ERROR_PARAMETER undefined
+```
+
+该结果作为 Log Phase 1 修复前 Baseline。
+
+---
+
+## 10. Git / Workspace 注意事项
+
+近期 Keil 运行已经产生并提交过部分 IDE / Build Artifact 变化。
+
+执行 Agent 仍必须首先执行：
 
 ```text
 git status --short
+git log --oneline -n 10
 ```
 
-并遵守：
+要求：
 
 - 不覆盖用户未提交修改。
-- 不顺带提交与当前任务无关的变更。
-- 修改前先确认文件当前内容和 SHA / 工作区状态。
-- 若本地工作区状态与 GitHub `main` 不一致，以本地真实工作区为准，并在本文件记录差异。
-
-当前 GitHub 侧 Agent 文档所在路径为：
-
-```text
-RTT_elog_DMA_UART_ring_project/00_Doc/04_Agent/
-```
+- 不为了本阶段顺带清理所有 Keil Artifact。
+- 不把无关 IDE UI 状态变化混入 Log 业务提交。
+- 如本地状态与 GitHub main 不同，以本地真实工作区为准，并记录差异。
 
 ---
 
-## 8. 执行 Agent 必读顺序
+## 11. 执行 Agent 必读顺序
 
 1. `00_Doc/04_Agent/handoff.md`
 2. `00_Doc/04_Agent/architecture.md`
 3. `00_Doc/04_Agent/requirements.md`
 4. `00_Doc/04_Agent/implementation_plan.md`
-5. `00_Doc/02_架构设计/Platform_UART抽象层设计.md`
-6. `00_Doc/02_架构设计/嵌入式项目C代码设计规范.md`
-7. 当前相关源码和 Keil / CubeMX 配置
+5. `03_Platform/platform_middleware/platform_log.h`
+6. `04_Impl/impl_middleware/impl_log/easylogger_port.h`
+7. `04_Impl/impl_middleware/impl_log/easylogger_port.c`
+8. `05_Vendors/easylogger/inc/elog.h`
+9. `05_Vendors/easylogger/port/elog_port.c`
+10. `Core/Src/freertos.c`
+11. 最新 Keil Build Log
 
 项目自研代码默认使用中文注释。
 
 ---
 
-## 9. 当前推荐动作
+## 12. 当前推荐动作
 
-Phase 1 代码与主机验证已完成，当前只等待两类实际验证：
-
-1. 在安装 Keil MDK 的主机执行当前 Target 全工程 Rebuild，并记录 Errors / Warnings。
-2. 在板上执行 USART1 的 Blocking TX、固定长度 RX 和 Lifecycle Smoke Test。
-
-完成前不得进入 DMA、IDLE、RingBuffer、UART Service 或 APP 通信阶段。
-
----
-
-## 10. 下一阶段入口
-
-Phase 1 验证通过后，再进入 Phase 2 设计：
+直接执行：
 
 ```text
-Platform UART Async RX
-        ↓
-STM32 UART DMA
-        ↓
-IDLE / DMA Position
-        ↓
-Platform RX_DATA Event
+Log Phase 1
+Platform / Impl Boundary Cleanup
 ```
 
-Phase 2 开始前重新确定：
+严格按照 `implementation_plan.md`：
 
-- USART1 DMA Stream / Channel。
-- DMA Normal / Circular 模式。
-- IDLE 策略。
-- DMA Buffer Size。
-- Wrap Around 算法。
-- IDLE / HT / TC 组合。
-- Async Error / Cancel / Stop 语义。
-- ISR / Task 并发边界。
+1. Preflight。
+2. Platform Header 解耦。
+3. Error Contract 统一。
+4. Output Backend Binding。
+5. 保持 Async EasyLogger 行为。
+6. 收缩 Impl Header。
+7. 更新 `freertos.c` USER CODE。
+8. Host / Static Verification。
+9. Keil Full Rebuild。
+10. RTT Runtime Smoke Test。
+11. 更新本 handoff。
 
-不得由 Phase 1 执行 Agent提前实现。
+出现需要修改 Vendor、UART 或建立 Log Service 的情况时，不得自行扩大任务；记录 `BLOCKED` 后返回设计阶段。
 
 ---
 
-## 11. Phase 1 执行记录（2026-08-29）
+## 13. Log Phase 1 完成状态规则
 
-### 实际完成项
+满足：
 
-- 新增 USART1 专用的 Platform UART 构造/绑定入口，未暴露 HAL Handle。
-- 实现静态 STM32 UART 私有 Context、静态 Lifecycle Ops 和阻塞 UART Ops；异步 Ops 保持 `NULL`。
-- 实现 Platform Config 到 HAL USART1 配置转换、Lifecycle 状态机、阻塞读写、HAL Error 映射和 `uint16_t` HAL 长度边界检查。
-- 修复 9-bit 配置语义：无论校验模式，`PLATFORM_UART_DATA_BITS_9` 均返回 `PLATFORM_ERR_NOT_SUPPORTED`；
-  不向 Platform API 引入 `uint16_t` Buffer 语义。
-- Keil 工程已加入 `platform_object.c`、`platform_device.c`、`platform_uart.c` 和 `impl_platform_uart.c`，并加入其真实 Include Path。
-- 未修改冻结的 Platform UART API、Vendor、DMA、IDLE、RingBuffer、UART Service、APP 通信或日志技术债。
+```text
+Architecture boundary PASS
++ Error contract PASS
++ Host/static verification PASS
++ Keil 0 Error
++ RTT runtime verification PASS
+```
 
-### 实际修改文件
+才可标记：
 
-- `04_Impl/impl_mcu/impl_platform_uart.h`
-- `04_Impl/impl_mcu/impl_platform_uart.c`
-- `Tests/impl_platform_uart/test_impl_platform_uart.c`
-- `Tests/impl_platform_uart/usart.h`
-- `MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx`
-- 本文件。
+```text
+COMPLETED
+```
 
-### 验证结果
+代码和 Keil Build 完成，但没有硬件 RTT 验证：
 
-| 项目 | 结果 | 证据 |
-| --- | --- | --- |
-| Platform UART types host test | PASS | GCC 编译并执行 `Tests/platform_uart/test_platform_uart_types.c`，退出码 0。 |
-| Platform UART host test | PASS | GCC 编译并执行 `Tests/platform_uart/test_platform_uart.c` 及其 Platform 依赖，退出码 0。 |
-| Impl Config Mapping host test | PASS | 真实 `impl_platform_uart.c` 在测试单元中编译；8N1、8E1、8O1、7E1、7O1 通过，9N1、9E1、9O1 返回 `PLATFORM_ERR_NOT_SUPPORTED`。 |
-| Impl 语法检查 | PASS | 以 Keil Include Path 等价的 GCC `-fsyntax-only` 编译 `impl_platform_uart.c`，退出码 0。 |
-| 静态架构检查 | PASS | Platform UART Header、Impl Header 和 Vendor 变更扫描均无越界依赖；冻结 Platform UART 文件无改动。 |
-| Keil 全工程构建 | 未执行 | 当前主机未发现 `UV4.exe` / Keil MDK 命令行工具，无法生成 Keil Build 证据。 |
-| 板上 TX/RX/Lifecycle Smoke Test | 未执行 | 当前会话无法访问串口设备，且未发现 ST-LINK CLI；需要带调试器和串口对端的硬件环境。 |
+```text
+CODE_COMPLETE_PENDING_LOG_RUNTIME_VERIFICATION
+```
 
-### 偏差、已知问题与 Blocker
+Keil Build 仍失败：
 
-- 无架构或 API Blocker；Phase 1 未扩大至 DMA、IDLE、RingBuffer、Service 或 APP。
-- 因本机缺少可调用的 Keil 命令行构建工具，尚未取得 Keil 的 Error / Warning 计数。
-- 因当前会话无可访问的板卡/串口设备，尚未执行实际 USART1 TX、固定长度 RX 和 Lifecycle Smoke Test。
-- 当前工作区存在 Keil 运行产生的 `MDK-ARM/JLinkLog.txt`、`*.uvguix.*` 和 `*.uvoptx` 无关改动；本次未读取、修改、暂存或提交这些文件。
+```text
+BLOCKED_BY_BUILD
+```
 
-### 后续验证步骤
+---
 
-1. 在安装 Keil MDK 的主机执行当前 Target 全工程 Rebuild，记录 `Errors` 和 `Warnings`。
-2. 使用 `impl_platform_uart_usart1_construct()` 构造零初始化 UART 对象，依次执行 `init -> start -> write/read -> stop -> start -> stop -> deinit`。
-3. 用 UART 助手确认 USART1 TX 字节，并发送固定长度字节验证 Blocking Read；验证后才可将状态更新为 `COMPLETED`。
+## 14. Log Phase 1 之后
+
+Log Phase 1 完成后，不直接进入 DMA。
+
+先回到 UART Phase 1：
+
+```text
+Log Phase 1 COMPLETED
+        ↓
+UART Phase 1 Board TX/RX/Lifecycle Test
+        ↓
+UART Phase 1 COMPLETED
+        ↓
+再由设计阶段确定 UART Phase 2 DMA + IDLE
+```
+
+UART DMA / IDLE 仍未设计，不得提前实现。
