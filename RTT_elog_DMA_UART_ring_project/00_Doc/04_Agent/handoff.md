@@ -608,3 +608,37 @@ Clean Targets
 - Deviations：无；Platform UART 公共 API、CubeMX DMA 配置、IRQ 薄入口均未修改。
 - Remaining Warnings：Host 编译使用 `-Wall -Wextra -Werror`，无警告；Keil 编译结果待验证。
 - Blockers：无。
+
+---
+
+## 17. Phase 2A Board Smoke Test Code — 2026-08-29
+
+状态：
+
+```text
+BOARD_TEST_CODE_READY
+```
+
+### 修改文件
+
+- `Core/Src/freertos.c`
+  - 仅在 CubeMX `USER CODE` 区添加以 `UART PHASE2A BOARD TEST BEGIN/END` 标记的临时板测代码。
+  - 使用静态 Platform UART、256-byte DMA RX Buffer、1024-byte Capture Buffer。
+  - ISR callback 仅复制 `RX_DATA`、更新计数和错误/取消状态；日志与比较全部位于 `StartDefaultTask()`。
+  - 实现 Short + IDLE、Multiple Bursts、640-byte Continuous、300-byte HT/TC/IDLE、Cancel/Restart、Stop/Restart 的人工板测状态机。
+
+### 验证结果
+
+- `git diff --check`：PASS。
+- `Tests/impl_platform_uart`：PASS。
+- `Tests/platform_uart`：PASS。
+- 当前 Codex 环境未发现可执行 Keil 工具链；本轮未实际执行 Keil Build。
+- 用户已在新增板测代码前报告 Keil `0 Error(s)`；烧录前必须对当前工作区重新执行 `Clean Targets -> Rebuild all target files`。
+
+### Hardware Verification
+
+```text
+PENDING
+```
+
+尚未执行任何真实板测，不得将 UART Phase 2A 标记为 COMPLETED。
