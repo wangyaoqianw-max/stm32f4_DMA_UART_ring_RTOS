@@ -26,6 +26,12 @@ static osStatus_t s_timerStatus;
 static uint32_t s_timerIsRunning;
 static uint32_t s_onceArgumentValue;
 static uint32_t s_periodicArgumentValue;
+static osThreadId_t s_threadHandle;
+static osThreadFunc_t s_threadFunction;
+static void *s_threadArgument;
+static const osThreadAttr_t *s_threadAttributes;
+static osStatus_t s_threadStatus;
+static osPriority_t s_threadPriority;
 
 uint32_t osKernelGetTickFreq(void)
 {
@@ -41,6 +47,57 @@ osStatus_t osDelay(uint32_t ticks)
 {
     s_delayTicks = ticks;
     return s_delayStatus;
+}
+
+osThreadId_t osThreadNew(osThreadFunc_t function,
+                         void *argument,
+                         const osThreadAttr_t *attributes)
+{
+    s_threadFunction = function;
+    s_threadArgument = argument;
+    s_threadAttributes = attributes;
+    return s_threadHandle;
+}
+
+osThreadId_t osThreadGetId(void)
+{
+    return s_threadHandle;
+}
+
+osStatus_t osThreadSetPriority(osThreadId_t threadId, osPriority_t priority)
+{
+    (void)threadId;
+    s_threadPriority = priority;
+    return s_threadStatus;
+}
+
+osPriority_t osThreadGetPriority(osThreadId_t threadId)
+{
+    (void)threadId;
+    return s_threadPriority;
+}
+
+osStatus_t osThreadSuspend(osThreadId_t threadId)
+{
+    (void)threadId;
+    return s_threadStatus;
+}
+
+osStatus_t osThreadResume(osThreadId_t threadId)
+{
+    (void)threadId;
+    return s_threadStatus;
+}
+
+osStatus_t osThreadTerminate(osThreadId_t threadId)
+{
+    (void)threadId;
+    return s_threadStatus;
+}
+
+osStatus_t osThreadYield(void)
+{
+    return s_threadStatus;
 }
 
 osTimerId_t osTimerNew(osTimerFunc_t function,
@@ -168,6 +225,43 @@ static int test_timer_adapter(void)
     return 0;
 }
 
+static void test_thread_entry(void *argument)
+{
+    (void)argument;
+}
+
+static int test_thread_adapter(void)
+{
+    uint32_t argumentValue = 0U;
+    platform_thread_t thread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_config_t config = {
+        "worker",
+        test_thread_entry,
+        &argumentValue,
+        256U,
+        PLATFORM_THREAD_PRIORITY_ABOVE_NORMAL
+    };
+
+    s_threadHandle = (osThreadId_t)0x1U;
+    s_threadStatus = osOK;
+    s_threadPriority = osPriorityAboveNormal;
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_thread_create(&thread, &config));
+    TEST_ASSERT(thread.native == s_threadHandle);
+    TEST_ASSERT(s_threadFunction == config.entry);
+    TEST_ASSERT(s_threadArgument == config.argument);
+    TEST_ASSERT(s_threadAttributes->name == config.name);
+    TEST_ASSERT(s_threadAttributes->stack_size == config.stackSizeBytes);
+    TEST_ASSERT(s_threadAttributes->priority == osPriorityAboveNormal);
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_thread_suspend(&thread));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_thread_resume(&thread));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_thread_set_priority(&thread,
+                                                                 PLATFORM_THREAD_PRIORITY_LOW));
+    TEST_ASSERT(s_threadPriority == osPriorityLow);
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_thread_terminate(&thread));
+    TEST_ASSERT(thread.native == (void *)0);
+    return 0;
+}
+
 int main(void)
 {
     int result = test_timeout_conversion();
@@ -181,5 +275,10 @@ int main(void)
         return result;
     }
 
-    return test_timer_adapter();
+    result = test_timer_adapter();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_thread_adapter();
 }
