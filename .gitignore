@@ -28,6 +28,9 @@
 # Keil build reports
 *.build_log.htm
 
+# Local Git worktrees
+/.worktrees/
+
 
 # ============================================================
 # Keil user / IDE state
