@@ -1,510 +1,1002 @@
-# RTOS Platform Phase 1 Implementation Plan
+# RingBuffer Phase 1 Implementation Plan
 
-> **For agentic workers:** execute this plan task-by-task. Do not redesign the frozen API during implementation; architecture changes require STOP/BLOCKED and a return to design.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a reusable Platform OS abstraction and CMSIS-RTOS2/FreeRTOS implementation for Thread, Mutex, Semaphore, Queue, Thread Notification, Software Timer, and Time/Delay before UART Service development begins.
+**Goal:** Implement a pure-C SPSC byte-stream RingBuffer for later UART Service use, with caller-owned storage, partial-write overflow reporting, deterministic host tests, and Keil integration.
 
-**Architecture:** `APP / Service -> Platform OS -> Impl OS -> CMSIS-RTOS2 -> FreeRTOS`. Platform headers expose no CMSIS/FreeRTOS types. The selected backend implements Platform API symbols at link time; no runtime backend registry is introduced.
+**Architecture:** `RingBuffer` lives in `02_Service/service_common/` and depends only on Platform common types/errors plus C memory-copy support. It knows nothing about UART, DMA, FreeRTOS, Notification, logging, protocol parsing, statistics, or task creation. Concurrency is frozen as Single Producer / Single Consumer with `writeIndex` owned by Producer and `readIndex` owned by Consumer.
 
-**Tech Stack:** C, STM32F411CEU6, CMSIS-RTOS2, FreeRTOS V10.3.1, Keil MDK-ARM, MinGW/GCC host tests.
+**Tech Stack:** C, STM32F411CEU6, ARMCC5 / Keil MDK-ARM, GCC host tests.
 
-**Spec:** `00_Doc/02_架构设计/RTOS_Platform_OS设计.md`
+**Spec:** `00_Doc/02_架构设计/RingBuffer_SPSC设计.md`
+
+## Mandatory References
+
+Before modifying any C/H file, read in this order:
+
+```text
+00_Doc/04_Agent/execution_rules.md
+00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
+00_Doc/02_架构设计/RingBuffer_SPSC设计.md
+00_Doc/04_Agent/architecture.md
+00_Doc/04_Agent/requirements.md
+00_Doc/04_Agent/handoff.md
+```
+
+Preflight report must explicitly contain:
+
+```text
+Coding Standard:
+00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
+Status: READ
+
+Agent Execution Rules:
+00_Doc/04_Agent/execution_rules.md
+Status: READ
+```
 
 ## Global Constraints
 
-- Keep dependency direction: `APP -> Service -> Platform -> Impl -> Vendor / HAL / RTOS / Hardware`.
-- Platform OS public headers must not include `cmsis_os2.h`, `FreeRTOS.h`, `task.h`, `queue.h`, `semphr.h`, or `timers.h`.
-- Public timeout unit is milliseconds; `0U = NO_WAIT`, `0xFFFFFFFFU = WAIT_FOREVER`.
-- First backend is CMSIS-RTOS2; native FreeRTOS APIs are allowed only inside `04_Impl/impl_os/freertos/` when CMSIS cannot express the required behavior cleanly.
-- Only explicit `_from_isr` APIs may be used from ISR.
-- Do not implement UART Service, RingBuffer, Communication Task, protocol parsing, or APP communication in this phase.
-- Do not add a heap wrapper, StreamBuffer, MessageBuffer, EventGroup full mirror, generic critical-section wrapper, or scheduler-control API.
-- Do not modify Vendor FreeRTOS/CMSIS source.
-- Preserve unrelated user changes.
+- Only implement RingBuffer in this phase.
+- Create only `02_Service/service_common/ring_buffer.h`, `02_Service/service_common/ring_buffer.c`, and RingBuffer host tests, plus required Keil project integration and handoff update.
+- Do not create `service_uart`, `service_uart_cfg`, UART statistics, Communication Task, protocol parser, or Notification integration.
+- Do not modify Platform UART, UART DMA Impl, Platform OS, Vendor, HAL, CMSIS, FreeRTOS Kernel, or CubeMX-generated logic.
+- No dynamic allocation.
+- No Mutex, Semaphore, Critical Section, RTOS API, IRQ control, or logging inside RingBuffer.
+- Storage is caller-owned and must remain valid while the RingBuffer is used.
+- SPSC only: Producer is the sole writer of `writeIndex`; Consumer is the sole writer of `readIndex`.
+- `storageSize = N`, usable capacity is exactly `N - 1`.
+- No power-of-two capacity requirement.
+- Write uses partial-write semantics: preserve old data, write the largest prefix that fits, return `PLATFORM_ERR_OVERFLOW` when `writtenLength < dataLength`.
+- Read is non-blocking and reads up to the requested size.
+- `reset()` is quiescent-only; it is not concurrent-safe.
+- Statistics do not belong to RingBuffer V1.
+- Follow the repository C coding standard for naming, Chinese comments, file headers, Doxygen, braces, NULL checking, ownership, and resource rules.
 
 ---
 
-## 0. Preflight and Previous-Phase Closure Gate
+## Task 0: Preflight and Scope Confirmation
 
 **Files:**
-- Read: `00_Doc/04_Agent/handoff.md`
+- Read: `00_Doc/04_Agent/execution_rules.md`
+- Read: `00_Doc/02_架构设计/嵌入式项目C代码设计规范.md`
+- Read: `00_Doc/02_架构设计/RingBuffer_SPSC设计.md`
 - Read: `00_Doc/04_Agent/architecture.md`
 - Read: `00_Doc/04_Agent/requirements.md`
-- Read: `00_Doc/02_架构设计/RTOS_Platform_OS设计.md`
-- Read: `Core/Inc/FreeRTOSConfig.h`
+- Read: `00_Doc/04_Agent/handoff.md`
+- Inspect: `02_Service/`
+- Inspect: `Tests/`
 
-- [ ] Run:
+- [ ] **Step 1: Inspect repository state**
+
+Run:
 
 ```bash
 git status --short
-git log --oneline -n 10
+git log --oneline -n 12
 ```
 
-- [ ] Confirm the repository still contains the Phase 2A implementation and that temporary UART board-test code has been restored.
+Expected:
 
-- [ ] Check `handoff.md` for the final post-restore Keil result. If UART Phase 2A has not yet recorded the required final `0 Error(s)` rebuild, do not rewrite history. Record it as a remaining previous-phase verification item and continue RTOS work only if the user explicitly accepts the independent-subsystem transition.
+- no destructive cleanup is required;
+- RTOS Platform Phase 1 remains recorded as `COMPLETED`;
+- no existing `service_uart` or RingBuffer implementation is present.
 
-- [ ] Do not use `reset`, `checkout .`, `clean`, or delete unrelated uncommitted work.
+- [ ] **Step 2: Confirm scope in the execution report**
 
-**Deliverable:** clean understanding of repository state; no source modification.
-
----
-
-## 1. Freeze Platform OS Public Types and Headers
-
-**Files:**
-- Create: `03_Platform/platform_os/platform_os_types.h`
-- Create: `03_Platform/platform_os/platform_thread.h`
-- Create: `03_Platform/platform_os/platform_mutex.h`
-- Create: `03_Platform/platform_os/platform_semaphore.h`
-- Create: `03_Platform/platform_os/platform_queue.h`
-- Create: `03_Platform/platform_os/platform_notify.h`
-- Create: `03_Platform/platform_os/platform_timer.h`
-- Create: `03_Platform/platform_os/platform_time.h`
-- Create: `03_Platform/platform_os/platform_os.h`
-- Create: `Tests/platform_os/test_platform_os_headers.c`
-
-**Interfaces produced:**
-
-```c
-typedef struct { void *native; } platform_thread_t;
-typedef struct { void *native; } platform_mutex_t;
-typedef struct { void *native; } platform_semaphore_t;
-typedef struct { void *native; } platform_queue_t;
-typedef struct { void *native; } platform_timer_t;
-
-#define PLATFORM_OS_OBJECT_INITIALIZER { NULL }
-#define PLATFORM_OS_NO_WAIT            (0U)
-#define PLATFORM_OS_WAIT_FOREVER       (0xFFFFFFFFU)
-#define PLATFORM_NOTIFY_VALID_MASK     (0x7FFFFFFFU)
-```
-
-- [ ] Write `test_platform_os_headers.c` that includes every Platform OS public header without any CMSIS/FreeRTOS include path and instantiates all opaque objects/config enums.
-
-- [ ] Run a compile-only host test. From `RTT_elog_DMA_UART_ring_project/`:
-
-```bash
-gcc -std=c11 -Wall -Wextra -Werror -c \
-  -I03_Platform/platform_common \
-  -I03_Platform/platform_os \
-  -I04_Impl/impl_board \
-  Tests/platform_os/test_platform_os_headers.c \
-  -o Tests/platform_os/test_platform_os_headers.o
-```
-
-Expected before headers exist: FAIL. Expected after implementation: PASS.
-
-- [ ] Implement only declarations/types described by the frozen spec. `platform_os.h` aggregates the other public headers and contains no backend definitions.
-
-- [ ] Repeat compile-only test and run `git diff --check`.
-
-**Commit:**
-
-```bash
-git add RTT_elog_DMA_UART_ring_project/03_Platform/platform_os RTT_elog_DMA_UART_ring_project/Tests/platform_os/test_platform_os_headers.c
-git commit -m "feat(os): define platform os public interfaces"
-```
-
----
-
-## 2. Build Fake CMSIS Test Harness and Common Timeout Mapping
-
-**Files:**
-- Create: `Tests/platform_os/cmsis_os2.h`
-- Create: `Tests/platform_os/test_platform_os.c`
-- Create: `04_Impl/impl_os/freertos/impl_freertos_common.h`
-- Create: `04_Impl/impl_os/freertos/impl_freertos_time.c`
-
-**Private helpers produced:**
-
-```c
-uint32_t impl_freertos_timeout_to_ticks(uint32_t timeoutMs);
-platform_error_t impl_freertos_map_status(osStatus_t status);
-```
-
-`impl_freertos_timeout_to_ticks()` rules:
+State explicitly:
 
 ```text
-WAIT_FOREVER -> osWaitForever
-0            -> 0
-non-zero ms  -> ceil(ms * tickFreq / 1000)
-minimum      -> 1 tick
-calculation  -> 64-bit intermediate
+Phase: RingBuffer Phase 1
+Scope: Pure SPSC RingBuffer only
+UART Service: NOT IN SCOPE
+Platform Notify integration: NOT IN SCOPE
+Statistics: NOT IN SCOPE
+Board test: NOT REQUIRED
 ```
 
-- [ ] Fake CMSIS header must define only the CMSIS types/constants/functions consumed by the Impl tests and provide controllable globals for return values/call recording.
+- [ ] **Step 3: Protect unrelated work**
 
-- [ ] Add failing tests for:
-  - `1 ms` at `1000 Hz -> 1 tick`.
-  - `1 ms` at `250 Hz -> 1 tick`.
-  - `5 ms` at `250 Hz -> 2 ticks`.
-  - `1000 ms` at `250 Hz -> 250 ticks`.
-  - `WAIT_FOREVER -> osWaitForever`.
-  - `platform_time_delay_ms()` calls `osDelay()` with converted ticks.
-  - `platform_time_get_ms()` converts tick count using `osKernelGetTickFreq()`.
-  - CMSIS `osErrorISR` maps to `PLATFORM_ERR_INVALID_STATE`.
+Do not run:
 
-- [ ] Implement minimum common helpers and Time/Delay adapter until tests pass.
+```text
+git reset
+git reset --hard
+git checkout .
+git clean
+```
 
-- [ ] Verify with:
+If unrelated uncommitted changes exist, leave them untouched and work around them.
+
+**Deliverable:** verified execution context; no source modification.
+
+---
+
+## Task 1: Define RingBuffer Public Contract and Initialization
+
+**Files:**
+- Create: `02_Service/service_common/ring_buffer.h`
+- Create: `02_Service/service_common/ring_buffer.c`
+- Create: `Tests/ring_buffer/test_ring_buffer.c`
+
+**Consumes:**
+
+```c
+platform_error_t
+platform_size_t
+uint8_t
+```
+
+from Platform common types/error headers.
+
+**Produces:**
+
+```c
+typedef struct
+{
+    uint8_t *storage;
+    platform_size_t storageSize;
+    volatile platform_size_t readIndex;
+    volatile platform_size_t writeIndex;
+} ring_buffer_t;
+
+platform_error_t ring_buffer_init(
+    ring_buffer_t *ringBuffer,
+    uint8_t *storage,
+    platform_size_t storageSize);
+
+platform_error_t ring_buffer_reset(
+    ring_buffer_t *ringBuffer);
+
+platform_error_t ring_buffer_get_readable_size(
+    const ring_buffer_t *ringBuffer,
+    platform_size_t *readableSize);
+
+platform_error_t ring_buffer_get_free_size(
+    const ring_buffer_t *ringBuffer,
+    platform_size_t *freeSize);
+```
+
+- [ ] **Step 1: Write the first failing host tests**
+
+Create `Tests/ring_buffer/test_ring_buffer.c` with test helpers and at least these cases:
+
+```c
+static void test_init_rejects_null_ring_buffer(void);
+static void test_init_rejects_null_storage(void);
+static void test_init_rejects_storage_smaller_than_two(void);
+static void test_init_sets_empty_state(void);
+static void test_initial_sizes_match_reserved_slot_model(void);
+static void test_uninitialized_queries_fail(void);
+static void test_reset_returns_to_empty_without_clearing_storage(void);
+```
+
+Core expectations:
+
+```c
+uint8_t storage[8] = {0};
+ring_buffer_t ringBuffer = {0};
+platform_size_t readableSize = 0;
+platform_size_t freeSize = 0;
+
+assert(ring_buffer_init(&ringBuffer, storage, 8U) == PLATFORM_ERR_OK);
+assert(ring_buffer_get_readable_size(&ringBuffer, &readableSize) == PLATFORM_ERR_OK);
+assert(ring_buffer_get_free_size(&ringBuffer, &freeSize) == PLATFORM_ERR_OK);
+assert(readableSize == 0U);
+assert(freeSize == 7U);
+```
+
+For reset, preset a storage byte to a nonzero value before reset and verify the storage content is not bulk-cleared.
+
+- [ ] **Step 2: Run the tests and verify RED**
+
+From `RTT_elog_DMA_UART_ring_project/`:
 
 ```bash
 gcc -std=c11 -Wall -Wextra -Werror \
-  -ITests/platform_os \
+  -I02_Service/service_common \
   -I03_Platform/platform_common \
-  -I03_Platform/platform_os \
   -I04_Impl/impl_board \
-  -I04_Impl/impl_os/freertos \
-  Tests/platform_os/test_platform_os.c \
-  04_Impl/impl_os/freertos/impl_freertos_time.c \
-  -o Tests/platform_os/test_platform_os
-./Tests/platform_os/test_platform_os
+  Tests/ring_buffer/test_ring_buffer.c \
+  02_Service/service_common/ring_buffer.c \
+  -o Tests/ring_buffer/test_ring_buffer
 ```
 
-**Commit:** `feat(os): add freertos time adapter and test harness`
+Expected before implementation: FAIL because RingBuffer files/API do not yet exist.
 
----
+- [ ] **Step 3: Implement the minimum public object and validation helpers**
 
-## 3. Implement Thread Adapter
+`ring_buffer.h` must:
 
-**Files:**
-- Modify: `Tests/platform_os/test_platform_os.c`
-- Modify: `Tests/platform_os/cmsis_os2.h`
-- Create: `04_Impl/impl_os/freertos/impl_freertos_thread.c`
+- use the project file-header template;
+- use a Header Guard;
+- include only required Platform common headers;
+- define `ring_buffer_t` exactly as frozen by the spec;
+- declare all six frozen public APIs, even if Write/Read are implemented in later tasks;
+- document SPSC ownership, caller-owned storage, usable capacity `N - 1`, and reset quiescence in Chinese Doxygen.
 
-**Public API:**
+`ring_buffer.c` must add a private initialized-state check equivalent to:
 
 ```c
-platform_thread_create()
-platform_thread_get_current()
-platform_thread_set_priority()
-platform_thread_get_priority()
-platform_thread_suspend()
-platform_thread_resume()
-platform_thread_terminate()
-platform_thread_yield()
+static platform_bool_t ring_buffer_is_initialized(const ring_buffer_t *ringBuffer)
+{
+    if (ringBuffer == NULL) {
+        return PLATFORM_FALSE;
+    }
+
+    if (ringBuffer->storage == NULL) {
+        return PLATFORM_FALSE;
+    }
+
+    if (ringBuffer->storageSize < 2U) {
+        return PLATFORM_FALSE;
+    }
+
+    return PLATFORM_TRUE;
+}
 ```
 
-- [ ] Add failing tests for null parameters, duplicate create, stack size `0`, invalid priority, correct name/entry/argument/stack-size mapping, priority mapping, current-thread lookup, suspend/resume, terminate clearing `native`, and CMSIS error propagation.
+Do not add a magic value, object base class, mutex, statistics, or heap ownership.
 
-- [ ] Use CMSIS `osThreadNew`, `osThreadGetId`, priority, suspend/resume/terminate/yield APIs. Do not include native FreeRTOS task headers.
+- [ ] **Step 4: Implement init/reset/query functions**
 
-- [ ] Treat `osThreadNew() == NULL` as `PLATFORM_ERR_NO_MEMORY` and leave `native == NULL`.
+Required semantics:
 
-- [ ] Rebuild host suite with `impl_freertos_thread.c`; require `-Werror` PASS.
+```text
+ring_buffer_init(NULL, ...)        -> NULL_POINTER
+ring_buffer_init(..., NULL, ...)   -> NULL_POINTER
+storageSize < 2                    -> INVALID_PARAM
+valid init                         -> OK, indexes = 0
 
-**Commit:** `feat(os): add platform thread freertos adapter`
+query/reset with invalid object    -> NOT_INITIALIZED
+query with NULL output             -> NULL_POINTER
+reset                              -> indexes = 0 only
+```
 
----
-
-## 4. Implement Mutex and Semaphore Adapters
-
-**Files:**
-- Modify: `Tests/platform_os/test_platform_os.c`
-- Modify: `Tests/platform_os/cmsis_os2.h`
-- Create: `04_Impl/impl_os/freertos/impl_freertos_mutex.c`
-- Create: `04_Impl/impl_os/freertos/impl_freertos_semaphore.c`
-
-### Mutex tests
-
-- [ ] Normal create maps to CMSIS mutex attributes.
-- [ ] Recursive create enables recursive attribute.
-- [ ] Duplicate create rejected.
-- [ ] `lock(NO_WAIT)` + `osErrorResource -> PLATFORM_ERR_BUSY`.
-- [ ] finite timeout + `osErrorTimeout -> PLATFORM_ERR_TIMEOUT`.
-- [ ] unlock and delete work; successful delete clears `native`.
-- [ ] `osErrorISR -> PLATFORM_ERR_INVALID_STATE`.
-
-### Semaphore tests
-
-- [ ] Reject `maxCount == 0` and `initialCount > maxCount`.
-- [ ] create stores valid handle.
-- [ ] `take(NO_WAIT)` unavailable -> `PLATFORM_ERR_EMPTY`.
-- [ ] finite timeout -> `PLATFORM_ERR_TIMEOUT`.
-- [ ] give when full -> `PLATFORM_ERR_FULL`.
-- [ ] `give_from_isr()` uses an ISR-permitted CMSIS path and never blocks.
-- [ ] delete clears `native`.
-
-- [ ] Implement with CMSIS mutex/semaphore APIs only unless a concrete CMSIS limitation is demonstrated.
-
-- [ ] Run full host suite with all adapter files compiled.
-
-**Commit:** `feat(os): add mutex and semaphore adapters`
-
----
-
-## 5. Implement Queue Adapter
-
-**Files:**
-- Modify: `Tests/platform_os/test_platform_os.c`
-- Modify: `Tests/platform_os/cmsis_os2.h`
-- Create: `04_Impl/impl_os/freertos/impl_freertos_queue.c`
-
-**Public API:**
+Readable calculation:
 
 ```c
-platform_queue_create()
-platform_queue_send()
-platform_queue_send_from_isr()
-platform_queue_receive()
-platform_queue_get_count()
-platform_queue_get_space()
-platform_queue_delete()
+if (writeIndex >= readIndex) {
+    readableSize = writeIndex - readIndex;
+} else {
+    readableSize = ringBuffer->storageSize - readIndex + writeIndex;
+}
 ```
 
-- [ ] Add failing tests for zero item count/size, correct depth/item-size mapping, duplicate create, null item pointers, no-wait full -> `FULL`, finite send timeout -> `TIMEOUT`, no-wait receive empty -> `EMPTY`, finite receive timeout -> `TIMEOUT`, ISR send using timeout zero, count/space conversion, and delete clearing handle.
-
-- [ ] Implement using CMSIS Message Queue APIs. `_from_isr()` must pass zero timeout and must not call a blocking path.
-
-- [ ] Do not add peek, overwrite, pointer ownership, or receive-from-ISR in V1.
-
-- [ ] Run full host suite.
-
-**Commit:** `feat(os): add platform queue adapter`
-
----
-
-## 6. Implement Thread Notification Adapter
-
-**Files:**
-- Modify: `Tests/platform_os/test_platform_os.c`
-- Modify: `Tests/platform_os/cmsis_os2.h`
-- Create: `04_Impl/impl_os/freertos/impl_freertos_notify.c`
-
-**Public API:**
+Free calculation:
 
 ```c
-platform_notify_set()
-platform_notify_set_from_isr()
-platform_notify_wait()
-platform_notify_clear()
+capacity = ringBuffer->storageSize - 1U;
+freeSize = capacity - readableSize;
 ```
 
-- [ ] Reject `flags == 0`, any flag outside `0x7FFFFFFF`, null target thread, and null output pointer where required.
+- [ ] **Step 5: Run GREEN verification**
 
-- [ ] Verify task-context set calls CMSIS thread flags and preserves flag bits.
+Run the same GCC command and then:
 
-- [ ] Verify ISR set uses the CMSIS path that is ISR-safe in the current wrapper.
+```bash
+./Tests/ring_buffer/test_ring_buffer
+```
 
-- [ ] Test wait-any / wait-all, clear-on-exit / no-clear, no-wait empty -> `PLATFORM_ERR_EMPTY`, finite timeout -> `PLATFORM_ERR_TIMEOUT`, and successful returned flags.
+Expected: all Task 1 tests PASS.
 
-- [ ] Test clear returns previous flags and rejects ISR context through CMSIS error mapping.
+- [ ] **Step 6: Coding Standard Review**
 
-- [ ] Do not create a separate notification object; wait/clear operate on the current thread, matching CMSIS Thread Flags semantics.
+Check:
 
-- [ ] Run full host suite.
+```text
+file header
+Header Guard
+snake_case functions
+lower_snake_case_t type
+lowerCamelCase params/locals
+Chinese public API Doxygen in .h
+no duplicated public API Doxygen in .c
+4 spaces, no TAB
+no Yoda Condition
+NULL and size validation
+```
 
-**Commit:** `feat(os): add thread notification adapter`
+Run:
+
+```bash
+git diff --check
+```
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add \
+  RTT_elog_DMA_UART_ring_project/02_Service/service_common/ring_buffer.h \
+  RTT_elog_DMA_UART_ring_project/02_Service/service_common/ring_buffer.c \
+  RTT_elog_DMA_UART_ring_project/Tests/ring_buffer/test_ring_buffer.c
+
+git commit -m "feat(ring): add spsc ring buffer core"
+```
 
 ---
 
-## 7. Implement Software Timer Adapter
+## Task 2: Implement Non-Wrapping Write and Read
 
 **Files:**
-- Modify: `Tests/platform_os/test_platform_os.c`
-- Modify: `Tests/platform_os/cmsis_os2.h`
-- Create: `04_Impl/impl_os/freertos/impl_freertos_timer.c`
+- Modify: `02_Service/service_common/ring_buffer.c`
+- Modify: `Tests/ring_buffer/test_ring_buffer.c`
 
-**Public API:**
+**Consumes:** Task 1 object/query APIs.
+
+**Produces:**
 
 ```c
-platform_timer_create()
-platform_timer_start()
-platform_timer_stop()
-platform_timer_is_running()
-platform_timer_delete()
+platform_error_t ring_buffer_write(
+    ring_buffer_t *ringBuffer,
+    const uint8_t *data,
+    platform_size_t dataLength,
+    platform_size_t *writtenLength);
+
+platform_error_t ring_buffer_read(
+    ring_buffer_t *ringBuffer,
+    uint8_t *buffer,
+    platform_size_t bufferSize,
+    platform_size_t *readLength);
 ```
 
-- [ ] Add failing tests for null callback/name policy, once/periodic mapping, callback/argument forwarding, zero period rejection, ms-to-tick conversion, running-state query, delete clearing handle, and task-only ISR rejection where CMSIS reports `osErrorISR`.
+- [ ] **Step 1: Add failing basic Write/Read tests**
 
-- [ ] Timer callback is RTOS Timer Task context, not ISR context; document this in the public header.
+Add at least:
 
-- [ ] Run full host suite.
+```c
+static void test_write_and_read_simple_sequence(void);
+static void test_read_is_partial_when_output_buffer_is_smaller(void);
+static void test_read_returns_empty_when_no_data_exists(void);
+static void test_zero_length_write_succeeds_with_null_data(void);
+static void test_zero_length_read_succeeds_with_null_buffer(void);
+static void test_nonzero_write_rejects_null_data(void);
+static void test_nonzero_read_rejects_null_buffer(void);
+static void test_write_requires_written_length_output(void);
+static void test_read_requires_read_length_output(void);
+```
 
-**Commit:** `feat(os): add software timer adapter`
+Example basic data test:
 
----
+```c
+uint8_t storage[8] = {0};
+uint8_t input[3] = {0x11U, 0x22U, 0x33U};
+uint8_t output[3] = {0};
+ring_buffer_t ringBuffer = {0};
+platform_size_t writtenLength = 0;
+platform_size_t readLength = 0;
 
-## 8. Platform OS Regression and API Review
+assert(ring_buffer_init(&ringBuffer, storage, 8U) == PLATFORM_ERR_OK);
+assert(ring_buffer_write(&ringBuffer, input, 3U, &writtenLength) == PLATFORM_ERR_OK);
+assert(writtenLength == 3U);
+assert(ring_buffer_read(&ringBuffer, output, 3U, &readLength) == PLATFORM_ERR_OK);
+assert(readLength == 3U);
+assert(memcmp(input, output, 3U) == 0);
+```
 
-**Files:**
-- Review all: `03_Platform/platform_os/*`
-- Review all: `04_Impl/impl_os/freertos/*`
-- Review: `Tests/platform_os/*`
+- [ ] **Step 2: Run RED verification**
 
-- [ ] Compile public-header isolation test again with no CMSIS/FreeRTOS include path.
+Compile and run with the Task 1 GCC command.
 
-- [ ] Compile full Fake CMSIS suite with:
+Expected: FAIL because Write/Read behavior is not implemented yet.
+
+- [ ] **Step 3: Implement simple synchronous Write path**
+
+Required ordering:
+
+```text
+1. validate object / output pointer / zero-length semantics
+2. snapshot readIndex
+3. use owned writeIndex
+4. calculate free space
+5. choose writeLength = min(dataLength, freeSize)
+6. copy bytes
+7. publish writeIndex last
+8. report writtenLength
+9. return OK or OVERFLOW
+```
+
+For this task, implementation may already use the final two-segment copy helper so Task 3 only adds wrap-specific tests.
+
+- [ ] **Step 4: Implement simple synchronous Read path**
+
+Required ordering:
+
+```text
+1. validate object / output pointer / zero-length semantics
+2. snapshot writeIndex
+3. use owned readIndex
+4. calculate readable bytes
+5. if requested > 0 and readable == 0 -> EMPTY
+6. choose readLength = min(bufferSize, readable)
+7. copy bytes
+8. publish readIndex last
+9. return OK
+```
+
+- [ ] **Step 5: Run GREEN verification**
+
+Run:
 
 ```bash
 gcc -std=c11 -Wall -Wextra -Werror \
-  -ITests/platform_os \
+  -I02_Service/service_common \
   -I03_Platform/platform_common \
-  -I03_Platform/platform_os \
   -I04_Impl/impl_board \
-  -I04_Impl/impl_os/freertos \
-  Tests/platform_os/test_platform_os.c \
-  04_Impl/impl_os/freertos/impl_freertos_time.c \
-  04_Impl/impl_os/freertos/impl_freertos_thread.c \
-  04_Impl/impl_os/freertos/impl_freertos_mutex.c \
-  04_Impl/impl_os/freertos/impl_freertos_semaphore.c \
-  04_Impl/impl_os/freertos/impl_freertos_queue.c \
-  04_Impl/impl_os/freertos/impl_freertos_notify.c \
-  04_Impl/impl_os/freertos/impl_freertos_timer.c \
-  -o Tests/platform_os/test_platform_os
-./Tests/platform_os/test_platform_os
+  Tests/ring_buffer/test_ring_buffer.c \
+  02_Service/service_common/ring_buffer.c \
+  -o Tests/ring_buffer/test_ring_buffer
+
+./Tests/ring_buffer/test_ring_buffer
 ```
 
-- [ ] Run existing regressions:
+Expected: all Task 1 + Task 2 tests PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add \
+  RTT_elog_DMA_UART_ring_project/02_Service/service_common/ring_buffer.c \
+  RTT_elog_DMA_UART_ring_project/Tests/ring_buffer/test_ring_buffer.c
+
+git commit -m "feat(ring): add ring buffer read write"
+```
+
+---
+
+## Task 3: Freeze Wrap and Overflow Behavior
+
+**Files:**
+- Modify: `02_Service/service_common/ring_buffer.c`
+- Modify: `Tests/ring_buffer/test_ring_buffer.c`
+
+**Consumes:** frozen partial-write semantics from the spec.
+
+**Produces:** verified Wrap, Full, and Partial Write behavior.
+
+- [ ] **Step 1: Add failing capacity/full tests**
+
+For `uint8_t storage[8]`, verify usable capacity is 7:
+
+```text
+write 7 bytes -> OK, written = 7, free = 0
+write 1 more  -> OVERFLOW, written = 0
+old 7 bytes   -> unchanged and readable in original order
+```
+
+Add:
+
+```c
+static void test_reserved_slot_capacity_is_storage_size_minus_one(void);
+static void test_full_buffer_rejects_new_data_without_overwriting_old_data(void);
+```
+
+- [ ] **Step 2: Add failing partial-overflow test**
+
+Scenario:
+
+```text
+storageSize = 8, capacity = 7
+write 5 bytes
+free = 2
+request another 4 bytes
+```
+
+Expected:
+
+```text
+writtenLength = 2
+return OVERFLOW
+final stream = original 5 bytes + first 2 bytes of new input
+last 2 new bytes are absent
+```
+
+Add:
+
+```c
+static void test_partial_write_preserves_old_data_and_reports_overflow(void);
+```
+
+- [ ] **Step 3: Add failing Wrap Write test**
+
+Force indexes near the physical end through normal public operations, not by directly modifying private state in the test.
+
+Example sequence with storage size 8:
+
+```text
+write 5:  A B C D E
+read 4:   consume A B C D
+write 5:  F G H I J
+```
+
+Expected readable stream:
+
+```text
+E F G H I J
+```
+
+and physical copy must wrap correctly.
+
+- [ ] **Step 4: Add failing Wrap Read test**
+
+Read the wrapped stream into a linear output buffer and verify exact order:
+
+```text
+E F G H I J
+```
+
+- [ ] **Step 5: Run RED verification**
+
+Compile and run the RingBuffer suite.
+
+Expected: at least the newly introduced boundary tests fail until final wrap/overflow logic is correct.
+
+- [ ] **Step 6: Implement final two-segment copy logic**
+
+Write path equivalent:
+
+```c
+firstLength = writeLength;
+if (firstLength > (ringBuffer->storageSize - writeIndex)) {
+    firstLength = ringBuffer->storageSize - writeIndex;
+}
+
+secondLength = writeLength - firstLength;
+```
+
+Copy:
+
+```text
+input[0:firstLength]
+    -> storage[writeIndex:]
+
+input[firstLength:]
+    -> storage[0:secondLength]
+```
+
+Then calculate and publish the final `writeIndex`.
+
+Read path uses the same two-segment principle with `readIndex`.
+
+No byte-by-byte modulo loop is required as the primary implementation path.
+
+- [ ] **Step 7: Verify no silent overwrite**
+
+Run all tests and confirm the full-buffer and partial-overflow tests explicitly read back preserved old data.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add \
+  RTT_elog_DMA_UART_ring_project/02_Service/service_common/ring_buffer.c \
+  RTT_elog_DMA_UART_ring_project/Tests/ring_buffer/test_ring_buffer.c
+
+git commit -m "test(ring): cover wrap and overflow semantics"
+```
+
+---
+
+## Task 4: Add Deterministic Reference-Model Stress Test
+
+**Files:**
+- Modify: `Tests/ring_buffer/test_ring_buffer.c`
+
+**Consumes:** final RingBuffer public API.
+
+**Produces:** long-running deterministic verification against a simple linear reference queue.
+
+- [ ] **Step 1: Add a tiny deterministic pseudo-random generator**
+
+Use a local test-only LCG, for example:
+
+```c
+static uint32_t test_next_random(uint32_t *state)
+{
+    *state = (*state * 1664525U) + 1013904223U;
+    return *state;
+}
+```
+
+Do not use nondeterministic seeds.
+
+- [ ] **Step 2: Add a simple reference model**
+
+Use a linear array and explicit `referenceLength` representing the expected byte stream.
+
+The model must implement the same semantics:
+
+```text
+capacity = N - 1
+partial write when free is insufficient
+read up to requested length
+EMPTY when read requested and referenceLength == 0
+```
+
+Do not reuse RingBuffer calculations inside the reference model.
+
+- [ ] **Step 3: Add at least 100000 deterministic operations**
+
+Alternate pseudo-randomly between write and read operations.
+
+For every operation compare:
+
+```text
+return code
+writtenLength / readLength
+read bytes
+readable size
+free size
+```
+
+Use a small RingBuffer, e.g. 17-byte storage / 16-byte usable capacity, to force frequent wrap/full/empty transitions.
+
+- [ ] **Step 4: Run stress test**
+
+Run:
+
+```bash
+./Tests/ring_buffer/test_ring_buffer
+```
+
+Expected: deterministic PASS on repeated executions.
+
+- [ ] **Step 5: Run memory-safety friendly host build if GCC supports it in the local environment**
+
+Preferred additional command:
+
+```bash
+gcc -std=c11 -Wall -Wextra -Werror \
+  -fsanitize=address,undefined \
+  -I02_Service/service_common \
+  -I03_Platform/platform_common \
+  -I04_Impl/impl_board \
+  Tests/ring_buffer/test_ring_buffer.c \
+  02_Service/service_common/ring_buffer.c \
+  -o Tests/ring_buffer/test_ring_buffer_san
+
+./Tests/ring_buffer/test_ring_buffer_san
+```
+
+If the Windows GCC toolchain does not provide sanitizers, record `SANITIZER_NOT_AVAILABLE`; do not treat tool absence as a code failure.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add RTT_elog_DMA_UART_ring_project/Tests/ring_buffer/test_ring_buffer.c
+git commit -m "test(ring): add deterministic stress coverage"
+```
+
+---
+
+## Task 5: API, Concurrency, and Coding-Standard Review
+
+**Files:**
+- Review: `02_Service/service_common/ring_buffer.h`
+- Review: `02_Service/service_common/ring_buffer.c`
+- Review: `Tests/ring_buffer/test_ring_buffer.c`
+
+- [ ] **Step 1: Review SPSC ownership**
+
+Verify by inspection:
+
+```text
+write path never modifies readIndex
+read path never modifies writeIndex
+query APIs modify neither
+reset modifies both only under documented quiescent-only contract
+```
+
+Reject any introduced shared `count`, shared `isFull`, mutex, or hidden critical section.
+
+- [ ] **Step 2: Review publication order**
+
+Verify:
+
+```text
+write: data copy completes before writeIndex publication
+read:  output copy completes before readIndex publication
+```
+
+Do not add CMSIS/FreeRTOS barriers in this pure module without returning to design review.
+
+- [ ] **Step 3: Review error semantics**
+
+Verify exact behavior:
+
+```text
+NULL required pointer       -> NULL_POINTER
+storageSize < 2 on init     -> INVALID_PARAM
+invalid existing object     -> NOT_INITIALIZED
+empty non-zero read         -> EMPTY
+partial / zero-space write  -> OVERFLOW
+complete write/read         -> OK
+zero-length write/read      -> OK
+```
+
+- [ ] **Step 4: Review scope exclusions**
+
+Confirm RingBuffer contains none of:
+
+```text
+UART
+DMA
+FreeRTOS
+CMSIS-RTOS2
+Notification
+Platform Log
+statistics
+malloc/free
+protocol parsing
+```
+
+- [ ] **Step 5: Coding Standard Review**
+
+Record result internally as:
+
+```text
+Coding Standard Review: PASS
+```
+
+only after checking:
+
+- file header;
+- Header Guard;
+- naming;
+- Chinese Doxygen in `.h`;
+- no duplicated public API documentation in `.c`;
+- 4 spaces / no TAB;
+- brace rules;
+- no Yoda Condition;
+- no unchecked bounds around memcpy;
+- const correctness;
+- clear ownership and SPSC comments.
+
+Run:
+
+```bash
+git diff --check
+```
+
+- [ ] **Step 6: Re-run complete RingBuffer host suite**
+
+```bash
+gcc -std=c11 -Wall -Wextra -Werror \
+  -I02_Service/service_common \
+  -I03_Platform/platform_common \
+  -I04_Impl/impl_board \
+  Tests/ring_buffer/test_ring_buffer.c \
+  02_Service/service_common/ring_buffer.c \
+  -o Tests/ring_buffer/test_ring_buffer
+
+./Tests/ring_buffer/test_ring_buffer
+```
+
+Expected: PASS with zero compiler warnings.
+
+- [ ] **Step 7: Run existing subsystem regression suites**
+
+At minimum re-run the current repository Host suites for:
 
 ```text
 Tests/platform_uart
 Tests/impl_platform_uart
+Tests/platform_os
 Tests/platform_log
 ```
 
-- [ ] Check that no Platform OS public header contains CMSIS/FreeRTOS identifiers.
+Use their existing compile commands unchanged; RingBuffer must not require changes to those tests or their production modules.
 
-- [ ] Run `git diff --check`.
+If a regression fails, stop and determine whether RingBuffer introduced the failure before continuing to Keil integration.
 
-**Commit:** only if review fixes are needed: `refactor(os): finalize platform os contracts`
+- [ ] **Step 8: Commit review-only fixes if needed**
+
+```bash
+git add \
+  RTT_elog_DMA_UART_ring_project/02_Service/service_common \
+  RTT_elog_DMA_UART_ring_project/Tests/ring_buffer
+
+git commit -m "refactor(ring): finalize spsc ring buffer contract"
+```
+
+Skip this commit if no review fix is needed.
 
 ---
 
-## 9. Keil Integration
+## Task 6: Keil Integration and Final Verification
 
 **Files:**
-- Modify: `MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx` only as required to add the new Impl `.c` files and Platform include path.
-- Do not modify CubeMX generated RTOS logic to make the adapter compile.
+- Modify: `MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx`
+- Do not modify: `Core/Src/freertos.c`
 
-- [ ] Add all `04_Impl/impl_os/freertos/impl_freertos_*.c` sources to an appropriate Keil group, preferably `04_Impl/impl_os` or equivalent existing project grouping.
+- [ ] **Step 1: Add Service include path**
 
-- [ ] Ensure include paths contain `03_Platform/platform_os` and `04_Impl/impl_os/freertos` only where needed.
+Add exactly the required path:
 
-- [ ] Execute local:
+```text
+../02_Service/service_common
+```
+
+Do not add broad parent directories unnecessarily.
+
+- [ ] **Step 2: Add RingBuffer source to a Service-oriented Keil group**
+
+Preferred group:
+
+```text
+service/service_common
+```
+
+Add:
+
+```text
+../02_Service/service_common/ring_buffer.c
+```
+
+Header does not need to be compiled; adding it to the group is optional and must not be required for the build.
+
+- [ ] **Step 3: Do not add a board smoke test**
+
+Because RingBuffer is hardware-independent pure C, do not modify:
+
+```text
+Core/Src/freertos.c
+main.c
+UART callback
+DMA configuration
+```
+
+for runtime verification.
+
+- [ ] **Step 4: Execute Keil Clean + Full Rebuild**
+
+Local MDK procedure:
 
 ```text
 Clean Targets
 → Rebuild all target files
 ```
 
-Expected: `0 Error(s)`.
+Required result:
 
-- [ ] Existing unrelated warnings may remain; do not refactor UART/Log/CubeMX code to remove them in this phase.
+```text
+0 Error(s)
+```
 
-- [ ] If random `.o` I/O errors (`C4051E`, `L6449E`, `Invalid argument`) recur, classify as environment/output issue first; do not change OS source logic to work around filesystem failures.
+Existing unrelated warnings may remain; do not modify unrelated modules solely to remove historical warnings.
+
+If the executing Agent cannot invoke Keil, status must remain:
+
+```text
+CODE_COMPLETE_PENDING_KEIL_VERIFICATION
+```
+
+and it must stop before claiming completion.
+
+- [ ] **Step 5: Verify project file scope**
+
+Check the `.uvprojx` diff contains only:
+
+```text
+Service include path
+RingBuffer group/source entry
+```
+
+plus unavoidable XML ordering/format changes from Keil. Do not accept unrelated group churn.
+
+- [ ] **Step 6: Commit Keil integration**
+
+```bash
+git add RTT_elog_DMA_UART_ring_project/MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx
+git commit -m "build(ring): integrate ring buffer with keil"
+```
 
 ---
 
-## 10. Temporary Board Smoke Test
-
-**Primary file:**
-- Modify temporarily: `Core/Src/freertos.c` USER CODE sections only.
-- Optional temporary ISR hook only if needed for ISR notification verification; any generated-file modification must stay inside USER CODE sections and be fully restored afterward.
-
-**Board-test sequence:**
-
-```text
-1. platform_time_delay_ms / platform_time_get_ms
-2. platform_thread_get_current
-3. create worker thread
-4. mutex shared-counter protection
-5. semaphore task synchronization
-6. queue task-to-task round trip
-7. notification task-to-task
-8. software timer callback
-9. notification ISR-to-task using existing USART1 RX callback path
-```
-
-- [ ] Log results through Platform Log / RTT from Task Context.
-
-- [ ] For ISR notification test, reuse the already verified Platform UART Phase 2A path without introducing UART Service or RingBuffer:
-
-```text
-PC sends short USART1 data
-    ↓
-Platform UART RX_DATA callback (ISR)
-    ↓
-platform_notify_set_from_isr(targetThread, TEST_RX_FLAG)
-    ↓
-Task platform_notify_wait(...)
-    ↓
-RTT prints PASS
-```
-
-- [ ] ISR callback must not log, block, allocate, take a mutex, or parse data.
-
-- [ ] Required final RTT summary:
-
-```text
-RTOS PLATFORM BOARD TEST
-TIME                PASS
-THREAD              PASS
-MUTEX               PASS
-SEMAPHORE           PASS
-QUEUE               PASS
-NOTIFY TASK         PASS
-TIMER               PASS
-NOTIFY ISR          PASS
-RTOS PLATFORM BOARD TEST: PASS
-```
-
-- [ ] Do not claim PASS without real board evidence.
-
----
-
-## 11. Restore Temporary Test and Final Verification
+## Task 7: Handoff and Phase Closure
 
 **Files:**
-- Restore temporary board-test changes from `Core/Src/freertos.c` and any temporary ISR hook.
 - Modify: `00_Doc/04_Agent/handoff.md`
 
-- [ ] Restore normal runtime code; do not leave test tasks, buffers, or test flags in production source.
+- [ ] **Step 1: Record implementation result**
 
-- [ ] Run final local Keil:
-
-```text
-Clean Targets
-→ Rebuild all target files
-```
-
-Expected: `0 Error(s)`.
-
-- [ ] Update `handoff.md` with actual:
-  - files changed;
-  - Host test results;
-  - Keil result;
-  - Thread/Mutex/Semaphore/Queue/Notify/Timer/Time board results;
-  - ISR notification evidence;
-  - temporary test restore result;
-  - final rebuild result;
-  - deviations and remaining warnings.
-
-### Completion status
-
-Only after all verification:
+Append a RingBuffer Phase 1 section including:
 
 ```text
-RTOS Platform Phase 1 = COMPLETED
+Status
+Files changed
+Frozen public API
+SPSC ownership rule
+Storage / usable capacity rule
+Partial-write overflow semantics
+Host Test result
+Stress Test result
+Existing regression result
+Coding Standard Review
+Keil integration status
+Keil build status
+Deviations
+Blockers
 ```
 
-Code + Host test complete but no board verification:
+- [ ] **Step 2: Use evidence-based status**
+
+If Host tests pass but Keil has not been run:
 
 ```text
-CODE_COMPLETE_PENDING_HARDWARE_VERIFICATION
+CODE_COMPLETE_PENDING_KEIL_VERIFICATION
 ```
 
-Frozen API cannot be correctly implemented without architecture change:
+Only after real Keil `0 Error(s)` evidence may the handoff say:
 
 ```text
-BLOCKED
+RingBuffer Phase 1 = COMPLETED
 ```
 
-After `COMPLETED`, return to Sol design for:
+No board-test evidence is required for this pure software phase.
+
+- [ ] **Step 3: Record next phase without implementing it**
+
+The handoff may state only:
 
 ```text
-UART Service
-+ SPSC RingBuffer
-+ Platform UART RX_DATA
-+ Platform Notify ISR→Task
+Next candidate phase:
+UART Service integration
+    = Platform UART RX_DATA
+    + RingBuffer
+    + Platform Notify
 ```
+
+Do not create UART Service files in this phase.
+
+- [ ] **Step 4: Commit handoff**
+
+```bash
+git add RTT_elog_DMA_UART_ring_project/00_Doc/04_Agent/handoff.md
+git commit -m "docs(ring): record ring buffer phase 1 result"
+```
+
+---
+
+# Final Completion Checklist
+
+Before claiming `RingBuffer Phase 1 = COMPLETED`, verify all boxes:
+
+- [ ] `ring_buffer.h` exists and matches frozen API.
+- [ ] `ring_buffer.c` exists and contains no UART/RTOS/log/statistics dependencies.
+- [ ] Caller-owned storage; no dynamic allocation.
+- [ ] Usable capacity is `storageSize - 1`.
+- [ ] Producer only writes `writeIndex`.
+- [ ] Consumer only writes `readIndex`.
+- [ ] No shared count/full flag.
+- [ ] Partial write preserves old data and returns `PLATFORM_ERR_OVERFLOW`.
+- [ ] Empty non-zero read returns `PLATFORM_ERR_EMPTY`.
+- [ ] Zero-length read/write semantics match spec.
+- [ ] Wrap Write PASS.
+- [ ] Wrap Read PASS.
+- [ ] Deterministic 100000-operation reference-model stress PASS.
+- [ ] RingBuffer host build uses `-Wall -Wextra -Werror` and PASS.
+- [ ] Existing UART / Platform OS / Log host regressions PASS.
+- [ ] Coding Standard Review = PASS.
+- [ ] Keil project includes `../02_Service/service_common`.
+- [ ] Keil project compiles `ring_buffer.c`.
+- [ ] Full Keil Rebuild = `0 Error(s)`.
+- [ ] No temporary board-test code exists.
+- [ ] `handoff.md` records the real result.
+
+# STOP / BLOCKED Conditions
+
+Stop and return to design review if implementation requires any of the following:
+
+```text
+changing the frozen public API
+adding a shared count/isFull modified by both sides
+adding mutex/semaphore/critical section/IRQ masking
+adding CMSIS/FreeRTOS dependencies
+changing overflow from partial-write semantics
+adding statistics to ring_buffer_t
+adding zero-copy pointer lifetime semantics
+making reset concurrent-safe through hidden synchronization
+supporting MPSC/MPMC
+```
+
+Do not solve those cases by silently expanding the RingBuffer Phase 1 scope.
