@@ -13,7 +13,7 @@
 - 工程根目录：`RTT_elog_DMA_UART_ring_project/`
 - 当前分支：`main`
 - 当前活动阶段：`UART Service Phase 1`
-- 当前状态：`READY_FOR_IMPLEMENTATION`
+- 当前状态：`CODE_COMPLETE_PENDING_KEIL_VERIFICATION`
 - MCU：STM32F411CEU6，Cortex-M4F
 - 软件环境：STM32 HAL、CMSIS-RTOS2 / FreeRTOS、Keil MDK-ARM、EasyLogger、SEGGER RTT
 
@@ -620,6 +620,94 @@ Notification wake-up semantics
 只有 Host Test、既有 Regression、Coding Standard Review、Keil Full Rebuild、真实板级
 ISR -> Service -> Task Smoke Test 及恢复后 Keil Rebuild 均具备真实证据时，
 UART Service Phase 1 才可标记为 `COMPLETED`。
+
+### 10.1 执行记录（2026-08-30）
+
+当前状态：
+
+```text
+CODE_COMPLETE_PENDING_KEIL_VERIFICATION
+```
+
+UART Service Phase 1 的代码、Host Test、既有 Host Regression 和 Keil 工程静态集成已完成；
+当前环境未找到可实际调用的 Keil `UV4.exe`，且无可访问的真实板卡/串口链路。
+因此 Keil Full Rebuild、真实板级 Smoke Test 和恢复后的 Keil Rebuild 均未执行，
+不得将本阶段标记为 `COMPLETED`。
+
+本阶段实际修改或新增：
+
+```text
+02_Service/service_uart/service_uart.h
+02_Service/service_uart/service_uart.c
+03_Platform/platform_mcu/uart/platform_uart.h
+03_Platform/platform_mcu/uart/platform_uart.c
+Tests/service_uart/test_service_uart.c
+Tests/platform_uart/test_platform_uart.c
+MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx
+00_Doc/04_Agent/handoff.md
+```
+
+主要提交：
+
+```text
+376aa07 docs: start uart service phase1
+7f055c9 feat(uart): add callback binding api
+09fecb5 feat(service-uart): add service object lifecycle
+7764e9c docs(service-uart): document public api
+1ce857b docs(service-uart): document service data model
+da7b072 feat(service-uart): add rx session lifecycle
+37cb914 feat(service-uart): buffer rx events and statistics
+007a252 feat(service-uart): add read status and statistics api
+5864ebf feat(service-uart): add wait events and error handling
+214b07f build: integrate uart service into keil
+```
+
+真实验证记录：
+
+```text
+UART Service Host Test                         PASS
+RingBuffer Host Regression                     PASS
+Platform UART Host Regression                  PASS
+Platform UART Type Contract                    PASS
+Impl Platform UART Host Regression             PASS
+Platform OS Host Regression                    PASS
+Platform OS Header Isolation                   PASS
+Platform Log Host Regression                   PASS
+Coding Standard Review: PASS
+Keil 工程静态集成（Include Path / Source Group） PASS
+Keil Clean Targets / Rebuild all target files PENDING_MANUAL_VERIFICATION
+Board ISR -> Service -> Task Smoke Test        PENDING_MANUAL_VERIFICATION
+Post-test restored Keil Rebuild                PENDING_MANUAL_VERIFICATION
+```
+
+`MDK-ARM/uart_phase1_baseline_rebuild.log` 和 `MDK-ARM/uart_phase1_smoke_rebuild.log`
+属于仓库既有日志，不能作为本次 UART Service 集成后的 Keil 验收依据；其中 smoke 日志末尾记录了
+`Error: C4051E: couldn't write file ... elog_port.o` 及 `Target not created.`。
+
+冻结生命周期：
+
+```text
+construct Platform UART
+-> service_uart_init(bind)
+-> Platform hardware start
+-> service_uart_start
+-> service_uart_stop
+-> Platform hardware stop
+-> service_uart_deinit(unbind)
+-> Platform hardware deinit
+```
+
+受控 Platform API 变更仅为：
+
+```text
+platform_uart_set_callback()
+```
+
+该 API 用于上层绑定异步事件所有者；除此以外没有改变任何 Platform UART 公共合同。
+
+生命周期补充语义：`service_uart_stop()` 若在 `cancel()` 已使 Service 进入 `STOPPED` 后，
+于通知阶段失败，则返回该通知错误。调用者不得仅凭该返回值推断 Service 仍处于运行状态，
+应调用 `service_uart_get_status()` 获取真实状态。
 
 ---
 
