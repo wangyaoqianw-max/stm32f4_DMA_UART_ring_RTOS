@@ -780,3 +780,36 @@ Board Smoke Test: PENDING
 - Warnings：Host 编译按 `-Wall -Wextra -Werror` 通过；Keil 编译警告待真实构建确认。
 - Deviations：无。
 - Blockers：无代码阻塞，仅等待 Keil 人工构建验证与后续板测。
+
+---
+
+## 21. RTOS Platform Phase 1 — Keil Build Verification — 2026-08-30
+
+状态：
+
+```text
+CODE_COMPLETE_PENDING_HARDWARE_VERIFICATION
+```
+
+### Keil Build
+
+用户已完成当前 MDK 工程编译并确认：
+
+```text
+0 Error(s)
+```
+
+- Keil Integration 已完成；当前阶段不再处于 `CODE_COMPLETE_PENDING_KEIL_VERIFICATION`。
+- Board Smoke Test 尚未执行，仍不得将 RTOS Platform Phase 1 标记为 `COMPLETED`。
+- 本轮仅更新验证记录，未改动任何 C 源码、CubeMX、Vendor、UART DMA Impl、UART Service、RingBuffer
+  或 service_log。
+
+### UART Phase 2A 恢复后构建记录
+
+本次当前工程 Keil `0 Error(s)` 发生在 UART Phase 2A 临时板测代码已恢复之后，补齐了其最后一项
+恢复后构建验证。因此 UART Phase 2A 满足既有 Host、Keil、真实板测、临时测试恢复和恢复后 Rebuild
+验收条件，状态更新为：
+
+```text
+COMPLETED
+```
