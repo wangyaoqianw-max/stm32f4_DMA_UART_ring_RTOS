@@ -76,5 +76,13 @@ typedef osMutexAttr_t osTimerAttr_t;
 uint32_t osKernelGetTickFreq(void);
 uint32_t osKernelGetTickCount(void);
 osStatus_t osDelay(uint32_t ticks);
+osTimerId_t osTimerNew(osTimerFunc_t function,
+                       osTimerType_t type,
+                       void *argument,
+                       const osTimerAttr_t *attributes);
+osStatus_t osTimerStart(osTimerId_t timerId, uint32_t ticks);
+osStatus_t osTimerStop(osTimerId_t timerId);
+uint32_t osTimerIsRunning(osTimerId_t timerId);
+osStatus_t osTimerDelete(osTimerId_t timerId);
 
 #endif
