@@ -5,7 +5,7 @@
  *
  * @file app_communication.c
  * @brief 实现通信 APP 的对象初始化与可观测性接口。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *

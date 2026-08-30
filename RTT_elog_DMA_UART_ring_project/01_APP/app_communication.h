@@ -5,7 +5,7 @@
  *
  * @file app_communication.h
  * @brief 定义通信 APP 的运行状态和任务接口。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *
