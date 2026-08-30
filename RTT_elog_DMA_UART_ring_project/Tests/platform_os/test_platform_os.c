@@ -148,13 +148,13 @@ osStatus_t osTimerDelete(osTimerId_t timerId)
 static int test_timeout_conversion(void)
 {
     s_tickFrequency = 1000U;
-    TEST_ASSERT(1U == impl_freertos_timeout_to_ticks(1U));
+    TEST_ASSERT(impl_freertos_timeout_to_ticks(1U) == 1U);
     s_tickFrequency = 250U;
-    TEST_ASSERT(1U == impl_freertos_timeout_to_ticks(1U));
-    TEST_ASSERT(2U == impl_freertos_timeout_to_ticks(5U));
-    TEST_ASSERT(250U == impl_freertos_timeout_to_ticks(1000U));
-    TEST_ASSERT(osWaitForever ==
-                impl_freertos_timeout_to_ticks(PLATFORM_OS_WAIT_FOREVER));
+    TEST_ASSERT(impl_freertos_timeout_to_ticks(1U) == 1U);
+    TEST_ASSERT(impl_freertos_timeout_to_ticks(5U) == 2U);
+    TEST_ASSERT(impl_freertos_timeout_to_ticks(1000U) == 250U);
+    TEST_ASSERT(impl_freertos_timeout_to_ticks(PLATFORM_OS_WAIT_FOREVER) ==
+                osWaitForever);
     return 0;
 }
 
@@ -164,10 +164,10 @@ static int test_time_adapter(void)
     s_tickFrequency = 250U;
     s_delayStatus = osOK;
     TEST_ASSERT(platform_time_delay_ms(5U) == PLATFORM_ERR_OK);
-    TEST_ASSERT(2U == s_delayTicks);
+    TEST_ASSERT(s_delayTicks == 2U);
     s_tickCount = 500U;
     TEST_ASSERT(platform_time_get_ms(&timeMs) == PLATFORM_ERR_OK);
-    TEST_ASSERT(2000U == timeMs);
+    TEST_ASSERT(timeMs == 2000U);
     s_delayStatus = osErrorISR;
     TEST_ASSERT(platform_time_delay_ms(1U) == PLATFORM_ERR_INVALID_STATE);
     return 0;
