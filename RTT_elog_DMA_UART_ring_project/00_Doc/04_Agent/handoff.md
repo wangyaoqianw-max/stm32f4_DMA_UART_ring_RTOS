@@ -862,3 +862,46 @@ Coding Standard Review: PASS
 - 未执行本轮 Keil 构建，未下载，未取得任何新的 RTT 或板测结果。
 - 临时代码尚未恢复，RTOS Platform Phase 1 仍为
   `CODE_COMPLETE_PENDING_HARDWARE_VERIFICATION`，不得标记 `COMPLETED`。
+
+---
+
+## 23. RTOS Platform Phase 1 — Board Smoke Test PASS / Restore Complete — 2026-08-30
+
+状态：
+
+```text
+CODE_COMPLETE_PENDING_KEIL_VERIFICATION
+```
+
+### Board Verification
+
+用户提供的真实 RTT 输出确认第二轮板测完整通过：
+
+```text
+TIME                PASS
+THREAD              PASS
+MUTEX               PASS
+SEMAPHORE           PASS
+QUEUE               PASS
+NOTIFY TASK         PASS
+TIMER               PASS
+NOTIFY ISR          PASS
+RTOS PLATFORM BOARD TEST: PASS
+```
+
+- `NOTIFY ISR PASS` 表明用户在 `NOTIFY ISR READY` 后发送的短 USART1 数据，经既有 Platform UART
+  RX_DATA ISR 回调调用 `platform_notify_set_from_isr()` 后成功唤醒 Task。
+- 首轮输出停在 ISR 等待阶段；第二轮在约 20571 ms 收到 ISR 通知，并在约 20572 ms 输出最终 PASS。
+
+### Temporary Test Restore
+
+- `Core/Src/freertos.c` 的临时 RTOS Board Test 已全部移除。
+- 恢复后的 `freertos.c` 已与板测前 commit `03c6d98` 完全一致；无遗留 Thread、Timer、Queue、
+  Buffer、Flag、UART Callback 或临时日志。
+- `git diff --check`：PASS。
+
+### Remaining Verification
+
+- 仍需对恢复后的当前 MDK 工程执行 `Clean Targets -> Rebuild all target files` 并确认实际
+  `0 Error(s)`。
+- 仅完成这次恢复后 Rebuild，RTOS Platform Phase 1 才可标记为 `COMPLETED`。
