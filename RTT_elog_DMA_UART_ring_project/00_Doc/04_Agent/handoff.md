@@ -139,9 +139,10 @@ Platform BSP UART Binding Phase 1   COMPLETED
 Communication UART Binding          VERIFIED
 UART Service Phase 1                COMPLETED
 Base RX Vertical Slice              VERIFIED
+APP Phase 1 Design                   FROZEN
 Production APP Layer                NOT IMPLEMENTED
-Next Phase                          APP Phase 1 Design
-Next State                          READY_FOR_APP_DESIGN
+Current Phase                        APP Phase 1 Implementation
+Current State                        READY_FOR_IMPLEMENTATION
 ```
 
 当前真实 RX 链路已经完成到 Task Context：
@@ -178,8 +179,17 @@ Keil Full Rebuild             PASS (0 Error(s))
 Target Board Test             NOT REQUIRED
 ```
 
-当前 `00_Doc/04_Agent/implementation_plan.md` 属于已完成的 UART Service Phase 1 实施计划。
-在新的 APP 专项设计完成前，不得继续把该旧计划当作当前执行计划。
+当前执行依据：
+
+```text
+Frozen Design:
+00_Doc/02_架构设计/APP_Phase1设计.md
+
+Current Implementation Plan:
+00_Doc/04_Agent/implementation_plan.md
+```
+
+`implementation_plan.md` 已切换为 APP Phase 1 当前实施计划；旧 UART Service / Platform BSP 实施计划仅通过 Git history 追溯，不再作为当前执行入口。
 
 ---
 
@@ -769,37 +779,61 @@ Not Yet Verified
 
 # 10. 下一阶段入口
 
-下一阶段：
+当前阶段：
 
 ```text
-APP Phase 1 Design
+APP Phase 1 Implementation
 ```
 
-当前不是生产代码实施阶段。
+当前已经进入生产代码实施阶段。
 
-APP Phase 1 的设计目标应是：
+冻结设计：
+
+```text
+00_Doc/02_架构设计/APP_Phase1设计.md
+```
+
+当前执行计划：
+
+```text
+00_Doc/04_Agent/implementation_plan.md
+```
+
+本阶段目标：
 
 ```text
 将已经验证的 UART Service 垂直链路
 从“临时板测 Task”正式接入 01_APP/
 ```
 
-设计时重点回答：
+实施重点：
 
-- APP 如何作为 Composition Root 持有 UART / Service / Task / backing storage；
-- Communication Task 的正式生命周期由谁管理；
-- APP 如何 `wait_event()` / drain RingBuffer；
-- RX_AVAILABLE / DATA_LOSS / ERROR / STOPPED 如何进入产品级行为；
-- CubeMX `freertos.c` 如何保持薄适配；
-- APP Phase 1 是否只做字节流消费，暂不引入 Protocol Parser / Async TX；
-- 如何建立 Host / Keil / Board 验收门禁。
+- `app_system` 作为 Composition Root 持有 UART / Service / Task / backing storage；
+- Pre-Scheduler 只做对象装配，不启动 DMA RX；
+- Scheduler 启动后由正式 Communication Task 执行 UART lifecycle init/start 和 `service_uart_start()`；
+- APP 通过 `wait_event()` / `service_uart_read()` drain 连续字节流；
+- `RX_AVAILABLE` 先 drain，再按 `ERROR > DATA_LOSS > STOPPED` 处理恢复；
+- ERROR 直接启动新 Service Session，不重复 cancel；
+- DATA_LOSS 使用 stop/status/start 清除 sticky 状态；
+- CubeMX `freertos.c` 保持薄适配；
+- Phase 1 暂不引入 Protocol Parser / Async TX / 多 UART。
 
-在 APP 专项设计冻结之前：
+实施期间：
 
 ```text
-DO NOT implement production APP code.
-DO NOT modify completed UART / RingBuffer / OS contracts for APP convenience.
+DO NOT change frozen lower-layer contracts for APP convenience.
+DO NOT expose Impl / HAL / CMSIS / FreeRTOS concrete types to APP.
+DO NOT continue into Protocol Parser or async TX after APP Phase 1 completion.
 ```
+
+如 Host / Keil 完成但真实板验证尚未完成，只能记录为：
+
+```text
+IMPLEMENTED / HOST_KEIL_VERIFIED
+BOARD_VERIFICATION_PENDING
+```
+
+不得提前标记 APP Phase 1 `COMPLETED`。
 
 ---
 
