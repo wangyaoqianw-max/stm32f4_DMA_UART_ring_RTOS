@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F411xE</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;../05_vendors/RTT;../05_vendors/easylogger/inc;../05_vendors/easylogger/plugins/file;../05_vendors/easylogger/plugins/flash;../04_Impl/impl_middleware/impl_log;../03_Platform/platform_middleware;../03_Platform/platform_common;../03_Platform/platform_mcu/uart;../04_Impl/impl_mcu;../04_Impl/impl_board</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;../05_vendors/RTT;../05_vendors/easylogger/inc;../05_vendors/easylogger/plugins/file;../05_vendors/easylogger/plugins/flash;../04_Impl/impl_middleware/impl_log;../03_Platform/platform_middleware;../03_Platform/platform_common;../03_Platform/platform_os;../03_Platform/platform_mcu/uart;../04_Impl/impl_mcu;../04_Impl/impl_os/freertos;../04_Impl/impl_board</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -675,6 +675,46 @@
               <FileName>impl_platform_uart.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\04_Impl\impl_mcu\impl_platform_uart.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>impl/impl_os/freertos</GroupName>
+          <Files>
+            <File>
+              <FileName>impl_freertos_time.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\04_Impl\impl_os\freertos\impl_freertos_time.c</FilePath>
+            </File>
+            <File>
+              <FileName>impl_freertos_thread.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\04_Impl\impl_os\freertos\impl_freertos_thread.c</FilePath>
+            </File>
+            <File>
+              <FileName>impl_freertos_mutex.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\04_Impl\impl_os\freertos\impl_freertos_mutex.c</FilePath>
+            </File>
+            <File>
+              <FileName>impl_freertos_semaphore.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\04_Impl\impl_os\freertos\impl_freertos_semaphore.c</FilePath>
+            </File>
+            <File>
+              <FileName>impl_freertos_queue.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\04_Impl\impl_os\freertos\impl_freertos_queue.c</FilePath>
+            </File>
+            <File>
+              <FileName>impl_freertos_notify.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\04_Impl\impl_os\freertos\impl_freertos_notify.c</FilePath>
+            </File>
+            <File>
+              <FileName>impl_freertos_timer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\04_Impl\impl_os\freertos\impl_freertos_timer.c</FilePath>
             </File>
           </Files>
         </Group>

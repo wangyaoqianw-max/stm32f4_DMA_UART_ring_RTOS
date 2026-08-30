@@ -701,3 +701,82 @@ Review 范围：本阶段已创建或修改的 `03_Platform/platform_os/`、
 
 当前 RTOS Platform Phase 1 仍处于实现中；已完成 Public Header、Time/Delay、Thread、
 Software Timer，尚未完成 Mutex、Semaphore、Queue、Notification、Keil 集成和板测。
+
+---
+
+## 20. RTOS Platform Phase 1 — Host Complete / Keil Integration — 2026-08-30
+
+状态：
+
+```text
+CODE_COMPLETE_PENDING_KEIL_VERIFICATION
+```
+
+### 本轮完成范围
+
+- 完成 Mutex、Binary/Counting Semaphore、Queue、Thread Notification 的 CMSIS-RTOS2
+  适配实现与 Host Test；至此冻结的七类 Platform OS 能力均已实现。
+- `MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx` 已加入
+  `03_Platform/platform_os`、`04_Impl/impl_os/freertos` 的 include path，并新增
+  `impl/impl_os/freertos` Group，包含七个 `impl_freertos_*.c` 源文件。
+- 未创建 UART Service、RingBuffer、service_log；未修改 UART DMA Impl、Vendor FreeRTOS/CMSIS
+  或 CubeMX 生成代码。
+
+### 公共 API / Backend
+
+- 公共 Platform OS API：Thread、Mutex、Semaphore、Queue、Thread Notification、Software Timer、
+  Time/Delay；公共 Handle 均保持 opaque，未暴露 CMSIS-RTOS2 或 FreeRTOS 类型。
+- Backend：全部通过 CMSIS-RTOS2；未直接调用原生 FreeRTOS API。
+- Timer 直接将 Platform `callback`、`argument`、`name` 映射到 `osTimerNew()`；未增加私有 Timer
+  context、分配器、registry 或额外 Handle 指针。
+
+### Host Test / Regression
+
+```text
+PASS  Tests/platform_os/test_platform_os.c          (-Wall -Wextra -Werror)
+PASS  Tests/platform_os/test_platform_os_headers.c  (Header Isolation)
+PASS  Tests/platform_uart/test_platform_uart.c
+PASS  Tests/platform_uart/test_platform_uart_types.c
+PASS  Tests/impl_platform_uart/test_impl_platform_uart.c
+PASS  Tests/platform_log/test_platform_log.c
+PASS  git diff --check
+```
+
+- Host Fake CMSIS 覆盖 timeout 向上取整、Thread、Mutex/Semaphore、Queue、Notification、Timer
+  的参数映射、错误映射、ISR 路由和对象生命周期。
+- Header Isolation 检查确认 Platform OS 公共 Header 不包含也不暴露 CMSIS-RTOS2 / FreeRTOS
+  具体 Header 或 Handle 类型。
+
+### Coding Standard Review
+
+```text
+Coding Standard Review: PASS
+```
+
+- 本阶段自研 C/H 与 Host Test 已复查文件头、公共 API Doxygen 位置、中文设计注释、命名、
+  大括号、Yoda Condition、NULL/timeout/资源生命周期、ISR/Task 边界。
+- 未为统一风格修改既有 Vendor 或 CubeMX 代码。
+
+### Keil / Board Verification
+
+```text
+Keil Build: PENDING
+Board Smoke Test: PENDING
+```
+
+- 当前环境未发现可调用 `UV4.exe`，未执行真实 `Clean Targets -> Rebuild all target files`，
+  因此不能声称 Keil `0 Error(s)`。
+- 已按计划在板测前停止；未写入 `Core/Src/freertos.c` 临时板测代码。
+- 下一步人工操作：打开 MDK 工程，执行 `Clean Targets -> Rebuild all target files`；仅在实际
+  取得 `0 Error(s)` 后，才进入最小 RTOS Platform Board Smoke Test。
+
+### UART Phase 2A 历史状态
+
+- UART Phase 2A 真实板测仍为 PASS，临时板测代码已恢复；恢复后的 Keil `0 Error(s)` 仍无真实
+  记录，故其状态保持 `CODE_COMPLETE_PENDING_KEIL_VERIFICATION`，未改为 `COMPLETED`。
+
+### Warnings / Deviations / Blockers
+
+- Warnings：Host 编译按 `-Wall -Wextra -Werror` 通过；Keil 编译警告待真实构建确认。
+- Deviations：无。
+- Blockers：无代码阻塞，仅等待 Keil 人工构建验证与后续板测。
