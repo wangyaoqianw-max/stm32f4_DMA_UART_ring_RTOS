@@ -33,7 +33,7 @@ platform_error_t platform_bsp_uart_construct_communication(
     /**
      * BSP 契约在本层拒绝无效的调用者组合输入。
      **/
-    if ((NULL == uart) || (NULL == config)) {
+    if ((uart == NULL) || (config == NULL)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 

@@ -8,9 +8,9 @@
  * @author YaoQian Wang
  * @date 2026-08-27
  * @version V1.0
- * @note 
- * @warning 
- * @history 
+ * @note
+ * @warning
+ * @history
  * 1. 2026-08-27 创建项目
  *
  *****************************************************************************/
@@ -30,31 +30,31 @@
  *
  * @return platform_error_t : 函数执行状态
  */
-platform_error_t platform_service_init(platform_service_t *p_svc,
-                                       const char *p_name,
-                                       platform_service_class_t service_class,
-                                       const platform_lifecycle_ops_t *p_lifecycle)
+platform_error_t platform_service_init(platform_service_t *service,
+                                       const char *name,
+                                       platform_service_class_t serviceClass,
+                                       const platform_lifecycle_ops_t *lifecycle)
 {
-    platform_error_t ret = PLATFORM_ERR_OK;
-    /*1.参数校验*/
-    if(NULL == p_svc)
-    {
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    /* 参数校验。 */
+    if (service == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
-    
-    if(service_class >= PLATFORM_SERVICE_CLASS_MAX)
-    {
+
+    if (serviceClass >= PLATFORM_SERVICE_CLASS_MAX) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
-    /*2.初始化基类*/
-    ret = platform_object_init(&p_svc->object,p_name,PLATFORM_OBJECT_SERVICE,NULL);
-    if(PLATFORM_ERR_OK != ret) 
-    {
-        return ret;
+
+    /* 初始化基类。 */
+    result = platform_object_init(&service->object, name, PLATFORM_OBJECT_SERVICE, NULL);
+    if (result != PLATFORM_ERR_OK) {
+        return result;
     }
-    /*3.初始化其他值*/
-    p_svc->service_class = service_class;
-    p_svc->lifecycle = p_lifecycle;
+
+    /* 初始化服务字段。 */
+    service->service_class = serviceClass;
+    service->lifecycle = lifecycle;
 
     return PLATFORM_ERR_OK;
 }

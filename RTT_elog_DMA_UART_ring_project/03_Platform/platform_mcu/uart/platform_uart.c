@@ -28,13 +28,13 @@ static platform_error_t platform_uart_validate_config(
     /**
      * 按公共契约逐项校验，不假设枚举值必然连续。
      **/
-    if ((NULL == config) || (0U == config->baudRate)) {
+    if ((config == NULL) || (config->baudRate == 0U)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
-    if ((PLATFORM_UART_DATA_BITS_7 != config->dataBits) &&
-        (PLATFORM_UART_DATA_BITS_8 != config->dataBits) &&
-        (PLATFORM_UART_DATA_BITS_9 != config->dataBits)) {
+    if ((config->dataBits != PLATFORM_UART_DATA_BITS_7) &&
+        (config->dataBits != PLATFORM_UART_DATA_BITS_8) &&
+        (config->dataBits != PLATFORM_UART_DATA_BITS_9)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
@@ -53,7 +53,7 @@ static platform_error_t platform_uart_validate_config(
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
-    if (PLATFORM_UART_TIMEOUT_USE_DEFAULT == config->defaultTimeoutMs) {
+    if (config->defaultTimeoutMs == PLATFORM_UART_TIMEOUT_USE_DEFAULT) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
@@ -71,17 +71,17 @@ static platform_error_t platform_uart_validate_ready(const platform_uart_t *uart
     /**
      * 先区分空指针、未构造对象和生命周期状态错误。
      **/
-    if (NULL == uart) {
+    if (uart == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
     if ((PLATFORM_TRUE !=
          platform_object_is_valid(&uart->device.object, PLATFORM_OBJECT_DEVICE)) ||
-        (PLATFORM_DEVICE_CLASS_UART != uart->device.dev_class)) {
+        (uart->device.dev_class != PLATFORM_DEVICE_CLASS_UART)) {
         return PLATFORM_ERR_NOT_INITIALIZED;
     }
 
-    if (PLATFORM_OBJECT_STARTED != uart->device.object.state) {
+    if (uart->device.object.state != PLATFORM_OBJECT_STARTED) {
         return PLATFORM_ERR_INVALID_STATE;
     }
 
@@ -100,13 +100,13 @@ static platform_error_t platform_uart_validate_constructed(
     /**
      * 回调绑定允许发生在多个非运行生命周期状态，不复用仅允许 STARTED 的数据操作校验。
      **/
-    if (NULL == uart) {
+    if (uart == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
     if ((PLATFORM_TRUE !=
          platform_object_is_valid(&uart->device.object, PLATFORM_OBJECT_DEVICE)) ||
-        (PLATFORM_DEVICE_CLASS_UART != uart->device.dev_class)) {
+        (uart->device.dev_class != PLATFORM_DEVICE_CLASS_UART)) {
         return PLATFORM_ERR_NOT_INITIALIZED;
     }
 
@@ -126,7 +126,7 @@ static uint32_t platform_uart_resolve_timeout(const platform_uart_t *uart,
     /**
      * 仅对显式默认标记做替换，0 和永久等待值原样传递。
      **/
-    if (PLATFORM_UART_TIMEOUT_USE_DEFAULT == timeoutMs) {
+    if (timeoutMs == PLATFORM_UART_TIMEOUT_USE_DEFAULT) {
         return uart->config.defaultTimeoutMs;
     }
 
@@ -145,7 +145,7 @@ static platform_error_t platform_uart_validate_event(
     /**
      * 先校验公共枚举范围，再校验每类事件的专用约束。
      **/
-    if ((NULL == event) ||
+    if ((event == NULL) ||
         (event->type < PLATFORM_UART_EVENT_TX_COMPLETE) ||
         (event->type >= PLATFORM_UART_EVENT_MAX) ||
         (event->direction < PLATFORM_UART_DIRECTION_TX) ||
@@ -155,29 +155,29 @@ static platform_error_t platform_uart_validate_event(
 
     switch (event->type) {
         case PLATFORM_UART_EVENT_TX_COMPLETE:
-            if ((PLATFORM_UART_DIRECTION_TX != event->direction) ||
-                (NULL == event->data) || (0U == event->dataLength) ||
-                (PLATFORM_ERR_OK != event->error)) {
+            if ((event->direction != PLATFORM_UART_DIRECTION_TX) ||
+                (event->data == NULL) || (event->dataLength == 0U) ||
+                (event->error != PLATFORM_ERR_OK)) {
                 return PLATFORM_ERR_INVALID_PARAM;
             }
             break;
 
         case PLATFORM_UART_EVENT_RX_DATA:
-            if ((PLATFORM_UART_DIRECTION_RX != event->direction) ||
-                (NULL == event->data) || (0U == event->dataLength) ||
-                (PLATFORM_ERR_OK != event->error)) {
+            if ((event->direction != PLATFORM_UART_DIRECTION_RX) ||
+                (event->data == NULL) || (event->dataLength == 0U) ||
+                (event->error != PLATFORM_ERR_OK)) {
                 return PLATFORM_ERR_INVALID_PARAM;
             }
             break;
 
         case PLATFORM_UART_EVENT_ERROR:
-            if (PLATFORM_ERR_OK == event->error) {
+            if (event->error == PLATFORM_ERR_OK) {
                 return PLATFORM_ERR_INVALID_PARAM;
             }
             break;
 
         case PLATFORM_UART_EVENT_CANCELED:
-            if (PLATFORM_ERR_CANCELED != event->error) {
+            if (event->error != PLATFORM_ERR_CANCELED) {
                 return PLATFORM_ERR_INVALID_PARAM;
             }
             break;
@@ -203,8 +203,8 @@ platform_error_t platform_uart_init(platform_uart_t *uart,
     /**
      * 对象基类和 Ops 是 UART 对象可用的必要条件。
      **/
-    if ((NULL == uart) || (NULL == params) || (NULL == params->name) ||
-        (NULL == params->lifecycle) || (NULL == params->ops)) {
+    if ((uart == NULL) || (params == NULL) || (params->name == NULL) ||
+        (params->lifecycle == NULL) || (params->ops == NULL)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
@@ -214,7 +214,7 @@ platform_error_t platform_uart_init(platform_uart_t *uart,
     }
 
     result = platform_uart_validate_config(&params->config);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
@@ -223,7 +223,7 @@ platform_error_t platform_uart_init(platform_uart_t *uart,
                                   PLATFORM_DEVICE_CLASS_UART,
                                   params->caps,
                                   params->lifecycle);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
@@ -256,16 +256,16 @@ platform_error_t platform_uart_set_callback(platform_uart_t *uart,
      * STARTED 状态可能有异步事件源，禁止替换或清除当前绑定。
      **/
     result = platform_uart_validate_constructed(uart);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if (PLATFORM_OBJECT_STARTED == uart->device.object.state) {
+    if (uart->device.object.state == PLATFORM_OBJECT_STARTED) {
         return PLATFORM_ERR_INVALID_STATE;
     }
 
     uart->callback = callback;
-    uart->callbackContext = (NULL == callback) ? NULL : callbackContext;
+    uart->callbackContext = (callback == NULL) ? NULL : callbackContext;
 
     return PLATFORM_ERR_OK;
 }
@@ -291,20 +291,20 @@ platform_error_t platform_uart_write(platform_uart_t *uart,
     /**
      * 所有退出路径都使可用的完成长度保持明确的零值。
      **/
-    if (NULL != writtenLength) {
+    if (writtenLength != NULL) {
         *writtenLength = 0U;
     }
 
-    if ((NULL == data) || (0U == dataLength) || (NULL == writtenLength)) {
+    if ((data == NULL) || (dataLength == 0U) || (writtenLength == NULL)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
     result = platform_uart_validate_ready(uart);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if (NULL == uart->ops->write) {
+    if (uart->ops->write == NULL) {
         return PLATFORM_ERR_NOT_SUPPORTED;
     }
 
@@ -313,7 +313,7 @@ platform_error_t platform_uart_write(platform_uart_t *uart,
                               dataLength,
                               platform_uart_resolve_timeout(uart, timeoutMs),
                               &completedLength);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
@@ -346,20 +346,20 @@ platform_error_t platform_uart_read(platform_uart_t *uart,
     /**
      * 所有退出路径都使可用的完成长度保持明确的零值。
      **/
-    if (NULL != readLength) {
+    if (readLength != NULL) {
         *readLength = 0U;
     }
 
-    if ((NULL == buffer) || (0U == bufferSize) || (NULL == readLength)) {
+    if ((buffer == NULL) || (bufferSize == 0U) || (readLength == NULL)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
     result = platform_uart_validate_ready(uart);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if (NULL == uart->ops->read) {
+    if (uart->ops->read == NULL) {
         return PLATFORM_ERR_NOT_SUPPORTED;
     }
 
@@ -368,7 +368,7 @@ platform_error_t platform_uart_read(platform_uart_t *uart,
                              bufferSize,
                              platform_uart_resolve_timeout(uart, timeoutMs),
                              &completedLength);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
@@ -396,20 +396,20 @@ platform_error_t platform_uart_write_async(platform_uart_t *uart,
     /**
      * 异步操作必须有结束事件接收者，否则 Buffer 所有权无法安全归还。
      **/
-    if ((NULL == data) || (0U == dataLength)) {
+    if ((data == NULL) || (dataLength == 0U)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
     result = platform_uart_validate_ready(uart);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if (NULL == uart->callback) {
+    if (uart->callback == NULL) {
         return PLATFORM_ERR_INVALID_STATE;
     }
 
-    if (NULL == uart->ops->writeAsync) {
+    if (uart->ops->writeAsync == NULL) {
         return PLATFORM_ERR_NOT_SUPPORTED;
     }
 
@@ -432,20 +432,20 @@ platform_error_t platform_uart_read_async(platform_uart_t *uart,
     /**
      * 异步接收不在 Platform 中创建或复制 Buffer。
      **/
-    if ((NULL == buffer) || (0U == bufferSize)) {
+    if ((buffer == NULL) || (bufferSize == 0U)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
     result = platform_uart_validate_ready(uart);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if (NULL == uart->callback) {
+    if (uart->callback == NULL) {
         return PLATFORM_ERR_INVALID_STATE;
     }
 
-    if (NULL == uart->ops->readAsync) {
+    if (uart->ops->readAsync == NULL) {
         return PLATFORM_ERR_NOT_SUPPORTED;
     }
 
@@ -472,11 +472,11 @@ platform_error_t platform_uart_cancel(platform_uart_t *uart,
     }
 
     result = platform_uart_validate_ready(uart);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if (NULL == uart->ops->cancel) {
+    if (uart->ops->cancel == NULL) {
         return PLATFORM_ERR_NOT_SUPPORTED;
     }
 
@@ -494,7 +494,7 @@ platform_error_t platform_uart_notify_event(platform_uart_t *uart,
 {
     platform_error_t result = PLATFORM_ERR_OK;
 
-    if (NULL == event) {
+    if (event == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
@@ -503,16 +503,16 @@ platform_error_t platform_uart_notify_event(platform_uart_t *uart,
      * 防止停止或反初始化后访问已失效的回调上下文。
      **/
     result = platform_uart_validate_ready(uart);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if (NULL == uart->callback) {
+    if (uart->callback == NULL) {
         return PLATFORM_ERR_INVALID_STATE;
     }
 
     result = platform_uart_validate_event(event);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 

@@ -35,24 +35,24 @@ static platform_error_t service_uart_rebuild_events(const service_uart_t *servic
 
     result = ring_buffer_get_readable_size(&service->context.rxRingBuffer,
                                            &readableSize);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
     *events = 0U;
-    if (0U != readableSize) {
+    if (readableSize != 0U) {
         *events |= SERVICE_UART_EVENT_RX_AVAILABLE;
     }
 
-    if (PLATFORM_TRUE == service->context.dataLossOccurred) {
+    if (service->context.dataLossOccurred == PLATFORM_TRUE) {
         *events |= SERVICE_UART_EVENT_DATA_LOSS;
     }
 
-    if (SERVICE_UART_STATE_ERROR == service->context.state) {
+    if (service->context.state == SERVICE_UART_STATE_ERROR) {
         *events |= SERVICE_UART_EVENT_ERROR;
     }
 
-    if (SERVICE_UART_STATE_STOPPED == service->context.state) {
+    if (service->context.state == SERVICE_UART_STATE_STOPPED) {
         *events |= SERVICE_UART_EVENT_STOPPED;
     }
 
@@ -80,20 +80,20 @@ static void service_uart_handle_platform_event(
      * CANCELED 可能来自 stop 的同步 Task Context，也可能是组合合同被破坏后的非预期事件；
      * 两种情况都不能在 callback 内调用 Notify，因为 callback 的执行上下文不可假设。
      **/
-    if ((NULL == service) || (NULL == uart) || (NULL == event) ||
+    if ((service == NULL) || (uart == NULL) || (event == NULL) ||
         (uart != service->config.uart) ||
-        (PLATFORM_UART_DIRECTION_RX != event->direction)) {
+        (event->direction != PLATFORM_UART_DIRECTION_RX)) {
         return;
     }
 
-    if (PLATFORM_UART_EVENT_CANCELED == event->type) {
+    if (event->type == PLATFORM_UART_EVENT_CANCELED) {
         service->statistics.cancelCount++;
         service->context.state = SERVICE_UART_STATE_STOPPED;
         return;
     }
 
-    if (PLATFORM_UART_EVENT_ERROR == event->type) {
-        if (SERVICE_UART_STATE_RUNNING != service->context.state) {
+    if (event->type == PLATFORM_UART_EVENT_ERROR) {
+        if (service->context.state != SERVICE_UART_STATE_RUNNING) {
             return;
         }
 
@@ -103,15 +103,15 @@ static void service_uart_handle_platform_event(
 
         result = platform_notify_set_from_isr(service->config.consumerThread,
                                               SERVICE_UART_NOTIFY_WAKE_FLAG);
-        if (PLATFORM_ERR_OK != result) {
+        if (result != PLATFORM_ERR_OK) {
             return;
         }
 
         return;
     }
 
-    if ((PLATFORM_UART_EVENT_RX_DATA != event->type) ||
-        (SERVICE_UART_STATE_RUNNING != service->context.state)) {
+    if ((event->type != PLATFORM_UART_EVENT_RX_DATA) ||
+        (service->context.state != SERVICE_UART_STATE_RUNNING)) {
         return;
     }
 
@@ -121,7 +121,7 @@ static void service_uart_handle_platform_event(
                                event->data,
                                event->dataLength,
                                &writtenLength);
-    if ((PLATFORM_ERR_OK != result) && (PLATFORM_ERR_OVERFLOW != result)) {
+    if ((result != PLATFORM_ERR_OK) && (result != PLATFORM_ERR_OVERFLOW)) {
         return;
     }
 
@@ -134,7 +134,7 @@ static void service_uart_handle_platform_event(
 
     result = ring_buffer_get_readable_size(&service->context.rxRingBuffer,
                                            &readableSize);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return;
     }
 
@@ -144,7 +144,7 @@ static void service_uart_handle_platform_event(
 
     result = platform_notify_set_from_isr(service->config.consumerThread,
                                           SERVICE_UART_NOTIFY_WAKE_FLAG);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         /**
          * ISR 中没有安全的同步恢复路径；状态和 RingBuffer 仍是真值，Consumer 可由后续唤醒发现。
          **/
@@ -166,11 +166,11 @@ static platform_error_t service_uart_validate_init_config(
     /**
      * 外部 UART、线程和两块调用者持有的存储都属于 Service 的必要依赖。
      **/
-    if ((NULL == service) || (NULL == config) || (NULL == config->uart) ||
-        (NULL == config->dmaRxBuffer) || (0U == config->dmaRxBufferSize) ||
-        (NULL == config->ringBufferStorage) ||
-        (2U > config->ringBufferStorageSize) ||
-        (NULL == config->consumerThread)) {
+    if ((service == NULL) || (config == NULL) || (config->uart == NULL) ||
+        (config->dmaRxBuffer == NULL) || (config->dmaRxBufferSize == 0U) ||
+        (config->ringBufferStorage == NULL) ||
+        (config->ringBufferStorageSize < 2U) ||
+        (config->consumerThread == NULL)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
@@ -186,11 +186,11 @@ static platform_error_t service_uart_validate_init_config(
 static platform_error_t service_uart_validate_initialized(
     const service_uart_t *service)
 {
-    if (NULL == service) {
+    if (service == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
-    if (SERVICE_UART_STATE_UNINITIALIZED == service->context.state) {
+    if (service->context.state == SERVICE_UART_STATE_UNINITIALIZED) {
         return PLATFORM_ERR_NOT_INITIALIZED;
     }
 
@@ -213,18 +213,18 @@ platform_error_t service_uart_init(service_uart_t *service,
      * 只有全部内部状态完成且回调绑定成功后，才对外发布 INITIALIZED。
      **/
     result = service_uart_validate_init_config(service, config);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if (SERVICE_UART_STATE_UNINITIALIZED != service->context.state) {
+    if (service->context.state != SERVICE_UART_STATE_UNINITIALIZED) {
         return PLATFORM_ERR_ALREADY_INITIALIZED;
     }
 
     result = ring_buffer_init(&service->context.rxRingBuffer,
                               config->ringBufferStorage,
                               config->ringBufferStorageSize);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
@@ -236,7 +236,7 @@ platform_error_t service_uart_init(service_uart_t *service,
     result = platform_uart_set_callback(service->config.uart,
                                         service_uart_handle_platform_event,
                                         service);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         *service = (service_uart_t)SERVICE_UART_INITIALIZER;
         return result;
     }
@@ -262,17 +262,17 @@ platform_error_t service_uart_start(service_uart_t *service)
     /**
      * RUNNING 必须在 read_async 前发布，避免 Impl 立即通知的首个 RX callback 被错误丢弃。
      **/
-    if (NULL == service) {
+    if (service == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
-    if (SERVICE_UART_STATE_UNINITIALIZED == service->context.state) {
+    if (service->context.state == SERVICE_UART_STATE_UNINITIALIZED) {
         return PLATFORM_ERR_NOT_INITIALIZED;
     }
 
-    if ((SERVICE_UART_STATE_INITIALIZED != service->context.state) &&
-        (SERVICE_UART_STATE_STOPPED != service->context.state) &&
-        (SERVICE_UART_STATE_ERROR != service->context.state)) {
+    if ((service->context.state != SERVICE_UART_STATE_INITIALIZED) &&
+        (service->context.state != SERVICE_UART_STATE_STOPPED) &&
+        (service->context.state != SERVICE_UART_STATE_ERROR)) {
         return PLATFORM_ERR_INVALID_STATE;
     }
 
@@ -281,7 +281,7 @@ platform_error_t service_uart_start(service_uart_t *service)
     previousDataLossOccurred = service->context.dataLossOccurred;
 
     result = ring_buffer_reset(&service->context.rxRingBuffer);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
@@ -292,7 +292,7 @@ platform_error_t service_uart_start(service_uart_t *service)
     result = platform_uart_read_async(service->config.uart,
                                       service->config.dmaRxBuffer,
                                       service->config.dmaRxBufferSize);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         service->context.state = previousState;
         service->context.lastError = previousLastError;
         service->context.dataLossOccurred = previousDataLossOccurred;
@@ -315,28 +315,28 @@ platform_error_t service_uart_stop(service_uart_t *service)
     /**
      * 当前 STM32 Impl 保证 cancel 在返回前同步触发 CANCELED，因此 STOPPING 由 callback 转为 STOPPED。
      **/
-    if (NULL == service) {
+    if (service == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
-    if (SERVICE_UART_STATE_UNINITIALIZED == service->context.state) {
+    if (service->context.state == SERVICE_UART_STATE_UNINITIALIZED) {
         return PLATFORM_ERR_NOT_INITIALIZED;
     }
 
-    if (SERVICE_UART_STATE_RUNNING != service->context.state) {
+    if (service->context.state != SERVICE_UART_STATE_RUNNING) {
         return PLATFORM_ERR_INVALID_STATE;
     }
 
     service->context.state = SERVICE_UART_STATE_STOPPING;
     result = platform_uart_cancel(service->config.uart, PLATFORM_UART_DIRECTION_RX);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         service->context.state = SERVICE_UART_STATE_RUNNING;
         return result;
     }
 
     result = platform_notify_set(service->config.consumerThread,
                                  SERVICE_UART_NOTIFY_WAKE_FLAG);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
@@ -356,22 +356,22 @@ platform_error_t service_uart_deinit(service_uart_t *service)
     /**
      * 运行中的 RX Session 必须先由 stop 完结，解绑失败时保留完整 Service 状态供调用者处理。
      **/
-    if (NULL == service) {
+    if (service == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
-    if (SERVICE_UART_STATE_UNINITIALIZED == service->context.state) {
+    if (service->context.state == SERVICE_UART_STATE_UNINITIALIZED) {
         return PLATFORM_ERR_NOT_INITIALIZED;
     }
 
-    if ((SERVICE_UART_STATE_INITIALIZED != service->context.state) &&
-        (SERVICE_UART_STATE_STOPPED != service->context.state) &&
-        (SERVICE_UART_STATE_ERROR != service->context.state)) {
+    if ((service->context.state != SERVICE_UART_STATE_INITIALIZED) &&
+        (service->context.state != SERVICE_UART_STATE_STOPPED) &&
+        (service->context.state != SERVICE_UART_STATE_ERROR)) {
         return PLATFORM_ERR_INVALID_STATE;
     }
 
     result = platform_uart_set_callback(service->config.uart, NULL, NULL);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
@@ -395,18 +395,18 @@ platform_error_t service_uart_read(service_uart_t *service,
 {
     platform_error_t result = PLATFORM_ERR_OK;
 
-    if (NULL == readLength) {
+    if (readLength == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
     result = service_uart_validate_initialized(service);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if ((SERVICE_UART_STATE_RUNNING != service->context.state) &&
-        (SERVICE_UART_STATE_STOPPED != service->context.state) &&
-        (SERVICE_UART_STATE_ERROR != service->context.state)) {
+    if ((service->context.state != SERVICE_UART_STATE_RUNNING) &&
+        (service->context.state != SERVICE_UART_STATE_STOPPED) &&
+        (service->context.state != SERVICE_UART_STATE_ERROR)) {
         return PLATFORM_ERR_INVALID_STATE;
     }
 
@@ -414,7 +414,7 @@ platform_error_t service_uart_read(service_uart_t *service,
                               buffer,
                               bufferSize,
                               readLength);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
@@ -438,33 +438,33 @@ platform_error_t service_uart_wait_event(service_uart_t *service,
     uint32_t previousFlags = 0U;
     uint32_t receivedFlags = 0U;
 
-    if (NULL == events) {
+    if (events == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
     result = service_uart_validate_initialized(service);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if ((SERVICE_UART_STATE_RUNNING != service->context.state) &&
-        (SERVICE_UART_STATE_STOPPED != service->context.state) &&
-        (SERVICE_UART_STATE_ERROR != service->context.state)) {
+    if ((service->context.state != SERVICE_UART_STATE_RUNNING) &&
+        (service->context.state != SERVICE_UART_STATE_STOPPED) &&
+        (service->context.state != SERVICE_UART_STATE_ERROR)) {
         return PLATFORM_ERR_INVALID_STATE;
     }
 
     *events = 0U;
     result = platform_notify_clear(SERVICE_UART_NOTIFY_WAKE_FLAG, &previousFlags);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
     result = service_uart_rebuild_events(service, events);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if (0U != *events) {
+    if (*events != 0U) {
         return PLATFORM_ERR_OK;
     }
 
@@ -473,16 +473,16 @@ platform_error_t service_uart_wait_event(service_uart_t *service,
                                   PLATFORM_TRUE,
                                   timeoutMs,
                                   &receivedFlags);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
     result = service_uart_rebuild_events(service, events);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if (0U == *events) {
+    if (*events == 0U) {
         return PLATFORM_ERR_EMPTY;
     }
 
@@ -501,12 +501,12 @@ platform_error_t service_uart_get_readable_size(
 {
     platform_error_t result = PLATFORM_ERR_OK;
 
-    if (NULL == readableSize) {
+    if (readableSize == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
     result = service_uart_validate_initialized(service);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
@@ -524,12 +524,12 @@ platform_error_t service_uart_get_status(const service_uart_t *service,
 {
     platform_error_t result = PLATFORM_ERR_OK;
 
-    if (NULL == status) {
+    if (status == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
     result = service_uart_validate_initialized(service);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
@@ -552,12 +552,12 @@ platform_error_t service_uart_get_statistics(
 {
     platform_error_t result = PLATFORM_ERR_OK;
 
-    if (NULL == statistics) {
+    if (statistics == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
     result = service_uart_validate_initialized(service);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
@@ -585,13 +585,13 @@ platform_error_t service_uart_clear_statistics(service_uart_t *service)
     platform_error_t result = PLATFORM_ERR_OK;
 
     result = service_uart_validate_initialized(service);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
-    if ((SERVICE_UART_STATE_INITIALIZED != service->context.state) &&
-        (SERVICE_UART_STATE_STOPPED != service->context.state) &&
-        (SERVICE_UART_STATE_ERROR != service->context.state)) {
+    if ((service->context.state != SERVICE_UART_STATE_INITIALIZED) &&
+        (service->context.state != SERVICE_UART_STATE_STOPPED) &&
+        (service->context.state != SERVICE_UART_STATE_ERROR)) {
         return PLATFORM_ERR_INVALID_STATE;
     }
 

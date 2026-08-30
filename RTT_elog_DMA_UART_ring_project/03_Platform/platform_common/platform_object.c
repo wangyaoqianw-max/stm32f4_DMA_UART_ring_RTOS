@@ -8,9 +8,9 @@
  * @author YaoQian Wang
  * @date 2026-06-25
  * @version V1.0
- * @note 
- * @warning 
- * @history 
+ * @note
+ * @warning
+ * @history
  * 1. 2026-06-25 创建项目
  *
  *****************************************************************************/
@@ -22,11 +22,6 @@
 //******************************** Functions *********************************//
 /**
  * @brief 初始化平台对象的公共基础字段
- *
- * Steps:
- *  1. 检查对象指针是否有效
- *  2. 写入对象的magic，名称，类型和初始状态
- *  3. 清除标志位和数据
  *
  * @param[in] obj    : 指向对象本体的指针
  * @param[in] name   : 对象的名称
@@ -40,18 +35,18 @@ platform_error_t platform_object_init(platform_object_t *obj,
                                       platform_object_type_t type,
                                       void *parent)
 {
-    /*1.检查指针对象是否有效*/
-    if((NULL == obj)||(NULL == name)||(type >= PLATFORM_OBJECT_TYPE_MAX)){
+    /* 检查对象参数是否有效。 */
+    if ((obj == NULL) || (name == NULL) || (type >= PLATFORM_OBJECT_TYPE_MAX)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
-    /*2.写入对象的magic，名称，类型和初始状态*/
-    obj->magic     = PLATFORM_OBJECT_MAGIC;
-    obj->name      = name;
-    obj->type      = type;
-    obj->parent    = parent;
-    /*3.清除标志位和数据*/
-    obj->state     = PLATFORM_OBJECT_CREATED;
-    obj->flags     = 0u;
+
+    /* 写入对象的 magic、名称、类型和初始状态。 */
+    obj->magic = PLATFORM_OBJECT_MAGIC;
+    obj->name = name;
+    obj->type = type;
+    obj->parent = parent;
+    obj->state = PLATFORM_OBJECT_CREATED;
+    obj->flags = 0U;
     obj->user_data = NULL;
 
     return PLATFORM_ERR_OK;
@@ -68,11 +63,10 @@ platform_error_t platform_object_init(platform_object_t *obj,
 platform_error_t platform_object_set_state(platform_object_t *obj,
                                            platform_object_state_t state)
 {
-    /*1.检查指针对象是否有效*/
-    if((NULL == obj)||(PLATFORM_OBJECT_MAGIC != obj->magic)){
+    if ((obj == NULL) || (obj->magic != PLATFORM_OBJECT_MAGIC)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
-    /*2.记录生命周期状态*/
+
     obj->state = state;
 
     return PLATFORM_ERR_OK;
@@ -84,13 +78,13 @@ platform_error_t platform_object_set_state(platform_object_t *obj,
  * @param[in] obj   : 指向对象本体的指针
  * @param[in] type  : 期望的平台对象高层类型
  *
- * @return platform_bool_t : 如果对象指针有效返回true
+ * @return platform_bool_t : 如果对象指针有效返回 PLATFORM_TRUE
  */
 platform_bool_t platform_object_is_valid(const platform_object_t *obj,
                                          platform_object_type_t type)
 {
-    return (NULL != obj)&&
-           (PLATFORM_OBJECT_MAGIC == obj->magic)&&
+    return (obj != NULL) &&
+           (obj->magic == PLATFORM_OBJECT_MAGIC) &&
            (obj->type == type);
 }
 //******************************** Functions *********************************//

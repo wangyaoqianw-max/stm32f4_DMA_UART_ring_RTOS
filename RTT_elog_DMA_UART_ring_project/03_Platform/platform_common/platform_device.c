@@ -8,9 +8,9 @@
  * @author YaoQian Wang
  * @date 2026-06-25
  * @version V1.0
- * @note 
- * @warning 
- * @history 
+ * @note
+ * @warning
+ * @history
  * 1. 2026-06-25 创建项目
  *
  *****************************************************************************/
@@ -30,33 +30,34 @@
  *
  * @return platform_error_t : 函数执行状态
  */
-platform_error_t platform_device_init(platform_device_t *p_dev,
-                                      const char *p_name,
-                                      platform_device_class_t dev_class,
-                                      uint32_t caps,
-                                      const platform_lifecycle_ops_t *p_lifecycle)
+platform_error_t platform_device_init(platform_device_t *device,
+                                      const char *name,
+                                      platform_device_class_t deviceClass,
+                                      uint32_t capabilities,
+                                      const platform_lifecycle_ops_t *lifecycle)
 {
-    platform_error_t ret = PLATFORM_ERR_OK;
-    /*1.参数校验*/
-    if(NULL == p_dev){
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    /* 参数校验。 */
+    if (device == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
-    if (dev_class >= PLATFORM_DEVICE_CLASS_MAX)
-    {
+    if (deviceClass >= PLATFORM_DEVICE_CLASS_MAX) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
-    /*2.初始化基类*/
-    ret = platform_object_init(&p_dev->object,p_name,PLATFORM_OBJECT_DEVICE,NULL);
-    if(PLATFORM_ERR_OK != ret) 
-    {
-        return ret;
+
+    /* 初始化基类。 */
+    result = platform_object_init(&device->object, name, PLATFORM_OBJECT_DEVICE, NULL);
+    if (result != PLATFORM_ERR_OK) {
+        return result;
     }
-    /*3.初始化其他值*/
-    p_dev->dev_class = dev_class;
-    p_dev->caps = caps;
-    p_dev->power_state = PLATFORM_DEVICE_POWER_OFF;
-    p_dev->lifecycle = p_lifecycle;
+
+    /* 初始化设备字段。 */
+    device->dev_class = deviceClass;
+    device->caps = capabilities;
+    device->power_state = PLATFORM_DEVICE_POWER_OFF;
+    device->lifecycle = lifecycle;
 
     return PLATFORM_ERR_OK;
 }
@@ -69,24 +70,22 @@ platform_error_t platform_device_init(platform_device_t *p_dev,
  *
  * @return platform_error_t : 函数执行状态
  */
-platform_error_t platform_device_set_power_state(
-                                platform_device_t *p_dev,
-                                platform_device_power_state_t power_state)
+platform_error_t platform_device_set_power_state(platform_device_t *device,
+                                                 platform_device_power_state_t powerState)
 {
-    if(NULL == p_dev) return PLATFORM_ERR_INVALID_PARAM;
-    
-    if (PLATFORM_TRUE !=
-        platform_object_is_valid(&p_dev->object, PLATFORM_OBJECT_DEVICE))
-    {
+    if (device == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
-    if (power_state >= PLATFORM_DEVICE_POWER_STATE_MAX)
-    {
+    if (platform_object_is_valid(&device->object, PLATFORM_OBJECT_DEVICE) != PLATFORM_TRUE) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
-    p_dev->power_state = power_state;
+    if (powerState >= PLATFORM_DEVICE_POWER_STATE_MAX) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    device->power_state = powerState;
 
     return PLATFORM_ERR_OK;
 }

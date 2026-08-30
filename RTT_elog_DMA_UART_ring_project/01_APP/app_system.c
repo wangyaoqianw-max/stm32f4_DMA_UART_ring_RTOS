@@ -64,28 +64,28 @@ platform_error_t app_system_init(void)
     };
     platform_error_t result = PLATFORM_ERR_OK;
 
-    if (PLATFORM_TRUE == g_isInitialized) {
+    if (g_isInitialized == PLATFORM_TRUE) {
         return PLATFORM_ERR_ALREADY_INITIALIZED;
     }
 
     result = platform_bsp_uart_construct_communication(&g_communicationUart,
                                                         &g_communicationUartConfig);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
     result = app_communication_init(&g_appCommunication, &communicationConfig);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
     result = platform_thread_create(&g_communicationThread, &threadConfig);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
     result = service_uart_init(&g_uartService, &serviceConfig);
-    if (PLATFORM_ERR_OK != result) {
+    if (result != PLATFORM_ERR_OK) {
         (void)platform_thread_terminate(&g_communicationThread);
         return result;
     }
