@@ -1,3 +1,13 @@
+/******************************************************************************
+ * Copyright (C) 2026 YaoQian Wang
+ *
+ * @file platform_os.h
+ * @brief Platform OS 公共聚合头文件。
+ * @author Codex
+ * @date 2026-08-30
+ * @version V1.0
+ *****************************************************************************/
+
 #ifndef PLATFORM_OS_H
 #define PLATFORM_OS_H
 

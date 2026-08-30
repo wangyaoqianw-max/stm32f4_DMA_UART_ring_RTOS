@@ -1,6 +1,13 @@
 /******************************************************************************
+ * Copyright (C) 2026 YaoQian Wang
+ *
+ * All Rights Reserved.
+ *
  * @file impl_freertos_time.c
- * @brief CMSIS-RTOS2 time and delay adapter
+ * @brief 实现 CMSIS-RTOS2 Time / Delay Adapter。
+ * @author Codex
+ * @date 2026-08-30
+ * @version V1.0
  *****************************************************************************/
 
 #include "impl_freertos_common.h"
@@ -10,19 +17,20 @@ uint32_t impl_freertos_timeout_to_ticks(uint32_t timeoutMs)
     uint64_t ticks;
     uint32_t frequency;
 
-    if (PLATFORM_OS_WAIT_FOREVER == timeoutMs) {
+    if (timeoutMs == PLATFORM_OS_WAIT_FOREVER) {
         return osWaitForever;
     }
 
-    if (PLATFORM_OS_NO_WAIT == timeoutMs) {
+    if (timeoutMs == PLATFORM_OS_NO_WAIT) {
         return 0U;
     }
 
     frequency = osKernelGetTickFreq();
-    if (0U == frequency) {
+    if (frequency == 0U) {
         return 0U;
     }
 
+    /* 使用 64-bit 中间值并向上取整，保证非零毫秒不会变成零 tick。 */
     ticks = (((uint64_t)timeoutMs * frequency) + 999U) / 1000U;
     return (ticks > 0xFFFFFFFEULL) ? 0xFFFFFFFEU : (uint32_t)ticks;
 }
@@ -49,11 +57,11 @@ platform_error_t impl_freertos_map_status(osStatus_t status)
 
 platform_error_t platform_time_delay_ms(uint32_t delayMs)
 {
-    if (0U == delayMs) {
+    if (delayMs == 0U) {
         return PLATFORM_ERR_OK;
     }
 
-    if (PLATFORM_OS_WAIT_FOREVER == delayMs) {
+    if (delayMs == PLATFORM_OS_WAIT_FOREVER) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
@@ -64,12 +72,12 @@ platform_error_t platform_time_get_ms(uint32_t *timeMs)
 {
     uint32_t frequency;
 
-    if ((void *)0 == timeMs) {
+    if (timeMs == (void *)0) {
         return PLATFORM_ERR_NULL_POINTER;
     }
 
     frequency = osKernelGetTickFreq();
-    if (0U == frequency) {
+    if (frequency == 0U) {
         return PLATFORM_ERR_INVALID_STATE;
     }
 

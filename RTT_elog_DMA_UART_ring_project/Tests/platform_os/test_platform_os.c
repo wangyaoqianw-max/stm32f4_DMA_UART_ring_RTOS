@@ -1,4 +1,15 @@
+/******************************************************************************
+ * Copyright (C) 2026 YaoQian Wang
+ *
+ * @file test_platform_os.c
+ * @brief 验证 FreeRTOS Platform OS Adapter 的时间映射与错误语义。
+ * @author Codex
+ * @date 2026-08-30
+ * @version V1.0
+ *****************************************************************************/
+
 #include "platform_os.h"
+
 #include "impl_freertos_common.h"
 
 static uint32_t s_tickFrequency;
@@ -6,11 +17,28 @@ static uint32_t s_tickCount;
 static uint32_t s_delayTicks;
 static osStatus_t s_delayStatus;
 
-uint32_t osKernelGetTickFreq(void) { return s_tickFrequency; }
-uint32_t osKernelGetTickCount(void) { return s_tickCount; }
-osStatus_t osDelay(uint32_t ticks) { s_delayTicks = ticks; return s_delayStatus; }
+uint32_t osKernelGetTickFreq(void)
+{
+    return s_tickFrequency;
+}
 
-#define TEST_ASSERT(expression) do { if (!(expression)) { return __LINE__; } } while (0)
+uint32_t osKernelGetTickCount(void)
+{
+    return s_tickCount;
+}
+
+osStatus_t osDelay(uint32_t ticks)
+{
+    s_delayTicks = ticks;
+    return s_delayStatus;
+}
+
+#define TEST_ASSERT(expression)              \
+    do {                                     \
+        if (!(expression)) {                 \
+            return __LINE__;                 \
+        }                                    \
+    } while (0)
 
 static int test_timeout_conversion(void)
 {
@@ -20,7 +48,8 @@ static int test_timeout_conversion(void)
     TEST_ASSERT(1U == impl_freertos_timeout_to_ticks(1U));
     TEST_ASSERT(2U == impl_freertos_timeout_to_ticks(5U));
     TEST_ASSERT(250U == impl_freertos_timeout_to_ticks(1000U));
-    TEST_ASSERT(osWaitForever == impl_freertos_timeout_to_ticks(PLATFORM_OS_WAIT_FOREVER));
+    TEST_ASSERT(osWaitForever ==
+                impl_freertos_timeout_to_ticks(PLATFORM_OS_WAIT_FOREVER));
     return 0;
 }
 
@@ -42,5 +71,10 @@ static int test_time_adapter(void)
 int main(void)
 {
     int result = test_timeout_conversion();
-    return (0 == result) ? test_time_adapter() : result;
+
+    if (result != 0) {
+        return result;
+    }
+
+    return test_time_adapter();
 }

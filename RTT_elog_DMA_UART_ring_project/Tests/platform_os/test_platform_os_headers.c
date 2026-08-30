@@ -1,3 +1,15 @@
+/******************************************************************************
+ * Copyright (C) 2026 YaoQian Wang
+ *
+ * All Rights Reserved.
+ *
+ * @file test_platform_os_headers.c
+ * @brief 验证 Platform OS 公共头文件不依赖 CMSIS 或 FreeRTOS 头文件。
+ * @author Codex
+ * @date 2026-08-30
+ * @version V1.0
+ *****************************************************************************/
+
 #include "platform_os.h"
 
 int main(void)
@@ -8,6 +20,9 @@ int main(void)
     platform_queue_t queue = PLATFORM_OS_OBJECT_INITIALIZER;
     platform_timer_t timer = PLATFORM_OS_OBJECT_INITIALIZER;
 
-    return (thread.native != 0) || (mutex.native != 0) || (semaphore.native != 0) ||
-           (queue.native != 0) || (timer.native != 0);
+    return ((thread.native != (void *)0) ||
+            (mutex.native != (void *)0) ||
+            (semaphore.native != (void *)0) ||
+            (queue.native != (void *)0) ||
+            (timer.native != (void *)0));
 }
