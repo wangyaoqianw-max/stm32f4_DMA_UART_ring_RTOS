@@ -11,12 +11,16 @@
  *
  *****************************************************************************/
 
+//******************************** Includes *********************************//
 #include "app_communication.h"
+//******************************** Includes *********************************//
 
+//******************************** Functions *********************************//
 platform_error_t app_communication_init(
     app_communication_t *communication,
     const app_communication_config_t *config)
 {
+    /* 依赖对象必须在复制前有效，避免后续启动阶段发生空指针解引用。 */
     if ((NULL == communication) || (NULL == config) || (NULL == config->uart) ||
         (NULL == config->service)) {
         return PLATFORM_ERR_INVALID_PARAM;
@@ -38,6 +42,7 @@ platform_error_t app_communication_get_status(
     const app_communication_t *communication,
     app_communication_status_t *status)
 {
+    /* 未初始化对象不向调用者暴露零初始化存储的伪状态。 */
     if ((NULL == communication) || (NULL == status)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
@@ -56,6 +61,7 @@ platform_error_t app_communication_get_statistics(
     const app_communication_t *communication,
     app_communication_statistics_t *statistics)
 {
+    /* 统计仅通过快照返回，调用者不能修改 APP 内部累计值。 */
     if ((NULL == communication) || (NULL == statistics)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
@@ -68,3 +74,4 @@ platform_error_t app_communication_get_statistics(
 
     return PLATFORM_ERR_OK;
 }
+//******************************** Functions *********************************//
