@@ -176,16 +176,16 @@ APP System Host Test                 PASS
 Dependency Boundary Scan             PASS
 Coding Standard Review               PARTIAL (new APP files reviewed)
 Keil Full Rebuild                    PASS (0 Error(s), user-verified)
-Production APP Board RX Test         PENDING MANUAL TEST
-Content Integrity Hook               PENDING MANUAL TEST
-Cleanup Rebuild                      PENDING MANUAL TEST
+Production APP Board RX Test         PASS (1280-byte 00..FF x5, user-verified)
+Content Integrity Hook               PASS (compared=1280, mismatch=0, RTT evidence)
+Cleanup Rebuild                      PENDING (temporary Hook removed; Keil rebuild required)
 ```
 
 当前阶段状态必须保持为：
 
 ```text
-APP Phase 1                    IMPLEMENTED / HOST_VERIFIED
-Production APP RX Vertical     BOARD_VERIFICATION_PENDING
+APP Phase 1                    IMPLEMENTED / BOARD_VERIFIED / CLEANUP_PENDING
+Production APP RX Vertical     VERIFIED (temporary Hook removed)
 ```
 
 Platform BSP UART Binding Phase 1 验证记录：
