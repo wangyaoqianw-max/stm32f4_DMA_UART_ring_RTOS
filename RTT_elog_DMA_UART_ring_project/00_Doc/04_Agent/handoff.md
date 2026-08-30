@@ -135,11 +135,13 @@ ba1d877  docs: complete uart service phase1 verification
 当前状态：
 
 ```text
-UART Service Phase 1       COMPLETED
-Base RX Vertical Slice     VERIFIED
-Production APP Layer       NOT IMPLEMENTED
-Next Phase                 APP Phase 1 Design
-Next State                 READY_FOR_APP_DESIGN
+Platform BSP UART Binding Phase 1   COMPLETED
+Communication UART Binding          VERIFIED
+UART Service Phase 1                COMPLETED
+Base RX Vertical Slice              VERIFIED
+Production APP Layer                NOT IMPLEMENTED
+Next Phase                          APP Phase 1 Design
+Next State                          READY_FOR_APP_DESIGN
 ```
 
 当前真实 RX 链路已经完成到 Task Context：
@@ -164,6 +166,18 @@ Dedicated Consumer Task
 
 `01_APP/` 当前仍没有正式生产 APP 实现。
 
+Platform BSP UART Binding Phase 1 验证记录：
+
+```text
+Platform BSP UART Host Test   PASS
+Header Isolation              PASS
+Platform UART Regression      PASS
+UART Service Regression       PASS
+Coding Standard Review        PASS
+Keil Full Rebuild             PASS (0 Error(s))
+Target Board Test             NOT REQUIRED
+```
+
 当前 `00_Doc/04_Agent/implementation_plan.md` 属于已完成的 UART Service Phase 1 实施计划。
 在新的 APP 专项设计完成前，不得继续把该旧计划当作当前执行计划。
 
@@ -174,8 +188,23 @@ Dedicated Consumer Task
 固定依赖方向：
 
 ```text
-APP -> Service -> Platform -> Impl -> Vendor / HAL / RTOS / Hardware
+APP -> Service       ALLOWED
+APP -> Platform      ALLOWED
+Service -> Platform  ALLOWED
+Platform -> Impl     ALLOWED
+APP -> Impl          FORBIDDEN
+Service -> Impl      FORBIDDEN
 ```
+
+通信串口的稳定装配规则：
+
+```text
+Communication UART logical role -> Platform BSP -> USART1
+```
+
+APP 可依赖 Service 与 Platform，但 APP / Service 不得直接依赖 Impl。
+`platform_bsp_uart_construct_communication()` 是当前唯一的通信串口逻辑角色构造入口；
+调用者拥有 `platform_uart_t` 存储，当前板级绑定固定为 `Communication UART -> USART1`。
 
 ## 3.1 APP
 
