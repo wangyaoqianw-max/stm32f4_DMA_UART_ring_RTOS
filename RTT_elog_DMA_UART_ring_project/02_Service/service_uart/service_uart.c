@@ -22,6 +22,44 @@
 
 //******************************** Functions *********************************//
 /**
+ * @brief 根据 RingBuffer 和运行上下文重建 Consumer 可观察的 Service 事件
+ * @param[in] service : 已初始化且处于允许等待状态的 Service 对象
+ * @param[out] events : 重建后的 Service 事件位
+ * @return platform_error_t : RingBuffer 查询结果
+ */
+static platform_error_t service_uart_rebuild_events(const service_uart_t *service,
+                                                    uint32_t *events)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+    platform_size_t readableSize = 0U;
+
+    result = ring_buffer_get_readable_size(&service->context.rxRingBuffer,
+                                           &readableSize);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    *events = 0U;
+    if (0U != readableSize) {
+        *events |= SERVICE_UART_EVENT_RX_AVAILABLE;
+    }
+
+    if (PLATFORM_TRUE == service->context.dataLossOccurred) {
+        *events |= SERVICE_UART_EVENT_DATA_LOSS;
+    }
+
+    if (SERVICE_UART_STATE_ERROR == service->context.state) {
+        *events |= SERVICE_UART_EVENT_ERROR;
+    }
+
+    if (SERVICE_UART_STATE_STOPPED == service->context.state) {
+        *events |= SERVICE_UART_EVENT_STOPPED;
+    }
+
+    return PLATFORM_ERR_OK;
+}
+
+/**
  * @brief 接收 Platform UART 异步事件
  * @param[in] uart            : 产生事件的 UART 对象
  * @param[in] event           : 异步事件
@@ -51,6 +89,24 @@ static void service_uart_handle_platform_event(
     if (PLATFORM_UART_EVENT_CANCELED == event->type) {
         service->statistics.cancelCount++;
         service->context.state = SERVICE_UART_STATE_STOPPED;
+        return;
+    }
+
+    if (PLATFORM_UART_EVENT_ERROR == event->type) {
+        if (SERVICE_UART_STATE_RUNNING != service->context.state) {
+            return;
+        }
+
+        service->context.lastError = event->error;
+        service->statistics.uartErrorCount++;
+        service->context.state = SERVICE_UART_STATE_ERROR;
+
+        result = platform_notify_set_from_isr(service->config.consumerThread,
+                                              SERVICE_UART_NOTIFY_WAKE_FLAG);
+        if (PLATFORM_ERR_OK != result) {
+            return;
+        }
+
         return;
     }
 
@@ -363,6 +419,72 @@ platform_error_t service_uart_read(service_uart_t *service,
     }
 
     service->statistics.rxBytesRead += *readLength;
+
+    return PLATFORM_ERR_OK;
+}
+
+/**
+ * @brief 等待私有唤醒提示并返回由 Service 真值重建的事件
+ * @param[in,out] service : 已初始化的 Service 对象
+ * @param[in] timeoutMs   : 最大等待时间，单位为毫秒
+ * @param[out] events     : 收到的 Service 事件位
+ * @return platform_error_t : 函数执行状态
+ */
+platform_error_t service_uart_wait_event(service_uart_t *service,
+                                         uint32_t timeoutMs,
+                                         uint32_t *events)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+    uint32_t previousFlags = 0U;
+    uint32_t receivedFlags = 0U;
+
+    if (NULL == events) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    result = service_uart_validate_initialized(service);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    if ((SERVICE_UART_STATE_RUNNING != service->context.state) &&
+        (SERVICE_UART_STATE_STOPPED != service->context.state) &&
+        (SERVICE_UART_STATE_ERROR != service->context.state)) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    *events = 0U;
+    result = platform_notify_clear(SERVICE_UART_NOTIFY_WAKE_FLAG, &previousFlags);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    result = service_uart_rebuild_events(service, events);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    if (0U != *events) {
+        return PLATFORM_ERR_OK;
+    }
+
+    result = platform_notify_wait(SERVICE_UART_NOTIFY_WAKE_FLAG,
+                                  PLATFORM_FALSE,
+                                  PLATFORM_TRUE,
+                                  timeoutMs,
+                                  &receivedFlags);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    result = service_uart_rebuild_events(service, events);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    if (0U == *events) {
+        return PLATFORM_ERR_EMPTY;
+    }
 
     return PLATFORM_ERR_OK;
 }

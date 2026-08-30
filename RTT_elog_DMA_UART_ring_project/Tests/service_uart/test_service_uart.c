@@ -32,8 +32,13 @@ typedef struct
     platform_error_t readAsyncResult;
     platform_error_t cancelResult;
     platform_error_t notifySetResult;
+    platform_error_t notifySetFromIsrResult;
+    platform_error_t notifyClearResult;
+    platform_error_t notifyWaitResult;
     uint32_t notifySetCount;
     uint32_t notifySetFromIsrCount;
+    uint32_t notifyClearCount;
+    uint32_t notifyWaitCount;
     uint32_t setCallbackCallCount;
     uint32_t readAsyncCallCount;
     uint32_t cancelCallCount;
@@ -44,9 +49,24 @@ typedef struct
     platform_bool_t emitCanceledOnCancel;
     platform_thread_t *notifySetThread;
     uint32_t notifySetFlags;
+    uint32_t pendingNotifyFlags;
+    uint32_t notifyClearFlags;
+    uint32_t notifyWaitFlags;
+    uint32_t notifyWaitTimeoutMs;
+    platform_bool_t notifyWaitAll;
+    platform_bool_t notifyWaitClearOnExit;
+    platform_bool_t invokeRxDataAfterClear;
+    platform_bool_t invokeRxDataBeforeWait;
+    platform_uart_t *hookUart;
+    const uint8_t *hookData;
+    platform_size_t hookDataLength;
 } fake_service_platform_t;
 
 static fake_service_platform_t g_fakePlatform;
+
+static void fake_service_platform_invoke_rx_data(platform_uart_t *uart,
+                                                 const uint8_t *data,
+                                                 platform_size_t dataLength);
 
 /**
  * @brief 重置 Platform 测试替身状态
@@ -64,6 +84,9 @@ static void fake_service_platform_reset(void)
     g_fakePlatform.readAsyncResult = PLATFORM_ERR_OK;
     g_fakePlatform.cancelResult = PLATFORM_ERR_OK;
     g_fakePlatform.notifySetResult = PLATFORM_ERR_OK;
+    g_fakePlatform.notifySetFromIsrResult = PLATFORM_ERR_OK;
+    g_fakePlatform.notifyClearResult = PLATFORM_ERR_OK;
+    g_fakePlatform.notifyWaitResult = PLATFORM_ERR_TIMEOUT;
 }
 
 /**
@@ -164,6 +187,10 @@ platform_error_t platform_notify_set(platform_thread_t *thread, uint32_t flags)
     g_fakePlatform.notifySetThread = thread;
     g_fakePlatform.notifySetFlags = flags;
 
+    if (PLATFORM_ERR_OK == g_fakePlatform.notifySetResult) {
+        g_fakePlatform.pendingNotifyFlags |= flags;
+    }
+
     return g_fakePlatform.notifySetResult;
 }
 
@@ -177,8 +204,85 @@ platform_error_t platform_notify_set(platform_thread_t *thread, uint32_t flags)
 platform_error_t platform_notify_set_from_isr(platform_thread_t *thread, uint32_t flags)
 {
     (void)thread;
-    (void)flags;
     g_fakePlatform.notifySetFromIsrCount++;
+
+    if (PLATFORM_ERR_OK == g_fakePlatform.notifySetFromIsrResult) {
+        g_fakePlatform.pendingNotifyFlags |= flags;
+    }
+
+    return g_fakePlatform.notifySetFromIsrResult;
+}
+
+/**
+ * @brief 清除并记录 Consumer 当前的私有唤醒位
+ * @param[in] flags         : 待清除的通知位
+ * @param[out] previousFlags : 清除前的通知位
+ * @return 预设的测试替身结果
+ */
+platform_error_t platform_notify_clear(uint32_t flags, uint32_t *previousFlags)
+{
+    g_fakePlatform.notifyClearCount++;
+    g_fakePlatform.notifyClearFlags = flags;
+
+    if (PLATFORM_ERR_OK != g_fakePlatform.notifyClearResult) {
+        return g_fakePlatform.notifyClearResult;
+    }
+
+    *previousFlags = g_fakePlatform.pendingNotifyFlags & flags;
+    g_fakePlatform.pendingNotifyFlags &= ~flags;
+
+    if (PLATFORM_TRUE == g_fakePlatform.invokeRxDataAfterClear) {
+        fake_service_platform_invoke_rx_data(g_fakePlatform.hookUart,
+                                             g_fakePlatform.hookData,
+                                             g_fakePlatform.hookDataLength);
+    }
+
+    return PLATFORM_ERR_OK;
+}
+
+/**
+ * @brief 等待并记录 Consumer 当前的私有唤醒位
+ * @param[in] flags          : 等待的通知位
+ * @param[in] waitAll        : 是否等待全部通知位
+ * @param[in] clearOnExit    : 返回时是否清除通知位
+ * @param[in] timeoutMs      : 等待超时时间
+ * @param[out] receivedFlags : 收到的通知位
+ * @return 预设的测试替身结果
+ */
+platform_error_t platform_notify_wait(uint32_t flags,
+                                      platform_bool_t waitAll,
+                                      platform_bool_t clearOnExit,
+                                      uint32_t timeoutMs,
+                                      uint32_t *receivedFlags)
+{
+    uint32_t availableFlags = 0U;
+
+    g_fakePlatform.notifyWaitCount++;
+    g_fakePlatform.notifyWaitFlags = flags;
+    g_fakePlatform.notifyWaitAll = waitAll;
+    g_fakePlatform.notifyWaitClearOnExit = clearOnExit;
+    g_fakePlatform.notifyWaitTimeoutMs = timeoutMs;
+
+    if (PLATFORM_TRUE == g_fakePlatform.invokeRxDataBeforeWait) {
+        fake_service_platform_invoke_rx_data(g_fakePlatform.hookUart,
+                                             g_fakePlatform.hookData,
+                                             g_fakePlatform.hookDataLength);
+    }
+
+    if (PLATFORM_ERR_TIMEOUT != g_fakePlatform.notifyWaitResult) {
+        *receivedFlags = g_fakePlatform.pendingNotifyFlags & flags;
+        return g_fakePlatform.notifyWaitResult;
+    }
+
+    availableFlags = g_fakePlatform.pendingNotifyFlags & flags;
+    if (0U == availableFlags) {
+        return PLATFORM_ERR_TIMEOUT;
+    }
+
+    *receivedFlags = availableFlags;
+    if (PLATFORM_TRUE == clearOnExit) {
+        g_fakePlatform.pendingNotifyFlags &= ~availableFlags;
+    }
 
     return PLATFORM_ERR_OK;
 }
@@ -219,6 +323,24 @@ static void fake_service_platform_invoke_rx_data(platform_uart_t *uart,
     event.data = data;
     event.dataLength = dataLength;
     event.error = PLATFORM_ERR_OK;
+    g_fakePlatform.callback(uart, &event, g_fakePlatform.callbackContext);
+}
+
+/**
+ * @brief 向已绑定的 UART Service 回调显式注入 ERROR 事件
+ * @param[in] uart  : 产生 ERROR 的 UART 对象
+ * @param[in] error : Platform UART 错误码
+ * @param[out] 无
+ * @return 无
+ */
+static void fake_service_platform_invoke_error(platform_uart_t *uart,
+                                               platform_error_t error)
+{
+    platform_uart_event_t event = {0};
+
+    event.type = PLATFORM_UART_EVENT_ERROR;
+    event.direction = PLATFORM_UART_DIRECTION_RX;
+    event.error = error;
     g_fakePlatform.callback(uart, &event, g_fakePlatform.callbackContext);
 }
 
@@ -1157,6 +1279,274 @@ static int test_clear_statistics_preserves_runtime_and_buffer(void)
 }
 
 /**
+ * @brief 验证 wait_event 直接根据 Service 真值重建事件而不阻塞
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_wait_event_returns_immediate_service_truth(void)
+{
+    service_uart_t service = SERVICE_UART_INITIALIZER;
+    platform_uart_t uart = {0};
+    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    uint8_t dmaRxBuffer[8] = {0};
+    uint8_t ringBufferStorage[16] = {0};
+    uint8_t receivedData[] = {0xC1U, 0xC2U};
+    uint32_t events = 0U;
+    service_uart_config_t config = make_valid_config(&uart,
+                                                      dmaRxBuffer,
+                                                      ringBufferStorage,
+                                                      &consumerThread);
+
+    fake_service_platform_reset();
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_start(&service));
+    fake_service_platform_invoke_rx_data(&uart, receivedData, sizeof(receivedData));
+    service.context.dataLossOccurred = PLATFORM_TRUE;
+
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_wait_event(&service, 37U, &events));
+    TEST_ASSERT((SERVICE_UART_EVENT_RX_AVAILABLE | SERVICE_UART_EVENT_DATA_LOSS) == events);
+    TEST_ASSERT(1U == g_fakePlatform.notifyClearCount);
+    TEST_ASSERT(0U == g_fakePlatform.notifyWaitCount);
+
+    service.context.state = SERVICE_UART_STATE_ERROR;
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_wait_event(&service, 37U, &events));
+    TEST_ASSERT((SERVICE_UART_EVENT_RX_AVAILABLE | SERVICE_UART_EVENT_DATA_LOSS |
+                 SERVICE_UART_EVENT_ERROR) == events);
+    TEST_ASSERT(0U == g_fakePlatform.notifyWaitCount);
+
+    service.context.state = SERVICE_UART_STATE_STOPPED;
+    service.context.dataLossOccurred = PLATFORM_FALSE;
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_wait_event(&service, 37U, &events));
+    TEST_ASSERT((SERVICE_UART_EVENT_RX_AVAILABLE | SERVICE_UART_EVENT_STOPPED) == events);
+    TEST_ASSERT(0U == g_fakePlatform.notifyWaitCount);
+
+    return 0;
+}
+
+/**
+ * @brief 验证 wait_event 的状态和参数限制
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_wait_event_validates_state_and_events_pointer(void)
+{
+    service_uart_t service = SERVICE_UART_INITIALIZER;
+    platform_uart_t uart = {0};
+    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    uint8_t dmaRxBuffer[8] = {0};
+    uint8_t ringBufferStorage[16] = {0};
+    uint32_t events = 0U;
+    service_uart_config_t config = make_valid_config(&uart,
+                                                      dmaRxBuffer,
+                                                      ringBufferStorage,
+                                                      &consumerThread);
+
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == service_uart_wait_event(NULL, 1U, &events));
+    TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED == service_uart_wait_event(&service, 1U, &events));
+
+    fake_service_platform_reset();
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == service_uart_wait_event(&service, 1U, NULL));
+    TEST_ASSERT(PLATFORM_ERR_INVALID_STATE == service_uart_wait_event(&service, 1U, &events));
+
+    service.context.state = SERVICE_UART_STATE_STOPPING;
+    TEST_ASSERT(PLATFORM_ERR_INVALID_STATE == service_uart_wait_event(&service, 1U, &events));
+
+    return 0;
+}
+
+/**
+ * @brief 验证 clear 后首次真值检查能够发现新到达的 RX 数据
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_wait_event_detects_rx_arriving_after_clear(void)
+{
+    service_uart_t service = SERVICE_UART_INITIALIZER;
+    platform_uart_t uart = {0};
+    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    uint8_t dmaRxBuffer[8] = {0};
+    uint8_t ringBufferStorage[16] = {0};
+    uint8_t receivedData[] = {0xD1U};
+    uint32_t events = 0U;
+    service_uart_config_t config = make_valid_config(&uart,
+                                                      dmaRxBuffer,
+                                                      ringBufferStorage,
+                                                      &consumerThread);
+
+    fake_service_platform_reset();
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_start(&service));
+    g_fakePlatform.invokeRxDataAfterClear = PLATFORM_TRUE;
+    g_fakePlatform.hookUart = &uart;
+    g_fakePlatform.hookData = receivedData;
+    g_fakePlatform.hookDataLength = sizeof(receivedData);
+
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_wait_event(&service, 51U, &events));
+    TEST_ASSERT(SERVICE_UART_EVENT_RX_AVAILABLE == events);
+    TEST_ASSERT(1U == g_fakePlatform.notifyClearCount);
+    TEST_ASSERT(0U == g_fakePlatform.notifyWaitCount);
+
+    return 0;
+}
+
+/**
+ * @brief 验证首次检查与 wait 之间到达的 RX 数据通过私有唤醒位返回
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_wait_event_detects_rx_arriving_before_wait(void)
+{
+    service_uart_t service = SERVICE_UART_INITIALIZER;
+    platform_uart_t uart = {0};
+    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    uint8_t dmaRxBuffer[8] = {0};
+    uint8_t ringBufferStorage[16] = {0};
+    uint8_t receivedData[] = {0xD2U};
+    uint32_t events = 0U;
+    service_uart_config_t config = make_valid_config(&uart,
+                                                      dmaRxBuffer,
+                                                      ringBufferStorage,
+                                                      &consumerThread);
+
+    fake_service_platform_reset();
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_start(&service));
+    g_fakePlatform.invokeRxDataBeforeWait = PLATFORM_TRUE;
+    g_fakePlatform.hookUart = &uart;
+    g_fakePlatform.hookData = receivedData;
+    g_fakePlatform.hookDataLength = sizeof(receivedData);
+
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_wait_event(&service, 53U, &events));
+    TEST_ASSERT(SERVICE_UART_EVENT_RX_AVAILABLE == events);
+    TEST_ASSERT(1U == g_fakePlatform.notifyClearCount);
+    TEST_ASSERT(1U == g_fakePlatform.notifyWaitCount);
+    TEST_ASSERT(1U == g_fakePlatform.notifyWaitFlags);
+    TEST_ASSERT(PLATFORM_FALSE == g_fakePlatform.notifyWaitAll);
+    TEST_ASSERT(PLATFORM_TRUE == g_fakePlatform.notifyWaitClearOnExit);
+    TEST_ASSERT(53U == g_fakePlatform.notifyWaitTimeoutMs);
+
+    return 0;
+}
+
+/**
+ * @brief 验证 stale wake 不会伪造 RX 事件
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_wait_event_rejects_stale_wake_without_service_truth(void)
+{
+    service_uart_t service = SERVICE_UART_INITIALIZER;
+    platform_uart_t uart = {0};
+    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    uint8_t dmaRxBuffer[8] = {0};
+    uint8_t ringBufferStorage[16] = {0};
+    uint32_t events = 0xFFFFFFFFU;
+    service_uart_config_t config = make_valid_config(&uart,
+                                                      dmaRxBuffer,
+                                                      ringBufferStorage,
+                                                      &consumerThread);
+
+    fake_service_platform_reset();
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_start(&service));
+    g_fakePlatform.pendingNotifyFlags = 1U;
+    g_fakePlatform.notifyWaitResult = PLATFORM_ERR_OK;
+
+    TEST_ASSERT(PLATFORM_ERR_EMPTY == service_uart_wait_event(&service, 59U, &events));
+    TEST_ASSERT(0U == events);
+    TEST_ASSERT(1U == g_fakePlatform.notifyClearCount);
+    TEST_ASSERT(1U == g_fakePlatform.notifyWaitCount);
+
+    return 0;
+}
+
+/**
+ * @brief 验证 wait_event 原样返回 Notify 清除和等待失败
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_wait_event_propagates_notify_errors(void)
+{
+    service_uart_t service = SERVICE_UART_INITIALIZER;
+    platform_uart_t uart = {0};
+    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    uint8_t dmaRxBuffer[8] = {0};
+    uint8_t ringBufferStorage[16] = {0};
+    uint32_t events = 0xFFFFFFFFU;
+    service_uart_config_t config = make_valid_config(&uart,
+                                                      dmaRxBuffer,
+                                                      ringBufferStorage,
+                                                      &consumerThread);
+
+    fake_service_platform_reset();
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_start(&service));
+    g_fakePlatform.notifyClearResult = PLATFORM_ERR_IO;
+    TEST_ASSERT(PLATFORM_ERR_IO == service_uart_wait_event(&service, 61U, &events));
+    TEST_ASSERT(0U == events);
+    TEST_ASSERT(0U == g_fakePlatform.notifyWaitCount);
+
+    g_fakePlatform.notifyClearResult = PLATFORM_ERR_OK;
+    g_fakePlatform.notifyWaitResult = PLATFORM_ERR_IO;
+    events = 0xFFFFFFFFU;
+    TEST_ASSERT(PLATFORM_ERR_IO == service_uart_wait_event(&service, 61U, &events));
+    TEST_ASSERT(0U == events);
+
+    return 0;
+}
+
+/**
+ * @brief 验证 RUNNING 状态的 ERROR callback 终止 Session 并保留已缓存数据
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_error_callback_sets_error_and_preserves_buffered_data(void)
+{
+    service_uart_t service = SERVICE_UART_INITIALIZER;
+    platform_uart_t uart = {0};
+    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    uint8_t dmaRxBuffer[8] = {0};
+    uint8_t ringBufferStorage[16] = {0};
+    uint8_t receivedData[] = {0xE1U, 0xE2U};
+    uint8_t readBuffer[2] = {0};
+    platform_size_t readLength = 0U;
+    platform_size_t readableSize = 0U;
+    service_uart_config_t config = make_valid_config(&uart,
+                                                      dmaRxBuffer,
+                                                      ringBufferStorage,
+                                                      &consumerThread);
+
+    fake_service_platform_reset();
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_start(&service));
+    fake_service_platform_invoke_rx_data(&uart, receivedData, sizeof(receivedData));
+    fake_service_platform_invoke_error(&uart, PLATFORM_ERR_IO);
+
+    TEST_ASSERT(SERVICE_UART_STATE_ERROR == service.context.state);
+    TEST_ASSERT(PLATFORM_ERR_IO == service.context.lastError);
+    TEST_ASSERT(1U == service.statistics.uartErrorCount);
+    TEST_ASSERT(2U == g_fakePlatform.notifySetFromIsrCount);
+    TEST_ASSERT(0U == g_fakePlatform.cancelCallCount);
+    TEST_ASSERT(1U == g_fakePlatform.readAsyncCallCount);
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_get_readable_size(&service, &readableSize));
+    TEST_ASSERT(sizeof(receivedData) == readableSize);
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                service_uart_read(&service, readBuffer, sizeof(readBuffer), &readLength));
+    TEST_ASSERT(sizeof(readBuffer) == readLength);
+    TEST_ASSERT(0 == memcmp(receivedData, readBuffer, sizeof(readBuffer)));
+
+    return 0;
+}
+
+/**
  * @brief 运行 UART Service 对象生命周期测试
  * @param[in] 无
  * @param[out] 无
@@ -1267,6 +1657,41 @@ int main(void)
     }
 
     result = test_clear_statistics_preserves_runtime_and_buffer();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_wait_event_returns_immediate_service_truth();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_wait_event_validates_state_and_events_pointer();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_wait_event_detects_rx_arriving_after_clear();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_wait_event_detects_rx_arriving_before_wait();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_wait_event_rejects_stale_wake_without_service_truth();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_wait_event_propagates_notify_errors();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_error_callback_sets_error_and_preserves_buffered_data();
     if (0 != result) {
         return result;
     }
