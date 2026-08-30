@@ -41,6 +41,13 @@ static uint32_t s_semaphoreMaximumCount;
 static uint32_t s_semaphoreInitialCount;
 static uint32_t s_semaphoreTimeout;
 static osStatus_t s_semaphoreStatus;
+static osMessageQueueId_t s_queueHandle;
+static uint32_t s_queueMessageCount;
+static uint32_t s_queueMessageSize;
+static uint32_t s_queueTimeout;
+static uint32_t s_queueCount;
+static uint32_t s_queueSpace;
+static osStatus_t s_queueStatus;
 
 uint32_t osKernelGetTickFreq(void)
 {
@@ -161,6 +168,58 @@ osStatus_t osSemaphoreDelete(osSemaphoreId_t semaphoreId)
 {
     (void)semaphoreId;
     return s_semaphoreStatus;
+}
+
+osMessageQueueId_t osMessageQueueNew(uint32_t messageCount,
+                                     uint32_t messageSize,
+                                     const osMessageQueueAttr_t *attributes)
+{
+    (void)attributes;
+    s_queueMessageCount = messageCount;
+    s_queueMessageSize = messageSize;
+    return s_queueHandle;
+}
+
+osStatus_t osMessageQueuePut(osMessageQueueId_t queueId,
+                             const void *message,
+                             uint8_t priority,
+                             uint32_t timeout)
+{
+    (void)queueId;
+    (void)message;
+    (void)priority;
+    s_queueTimeout = timeout;
+    return s_queueStatus;
+}
+
+osStatus_t osMessageQueueGet(osMessageQueueId_t queueId,
+                             void *message,
+                             uint8_t *priority,
+                             uint32_t timeout)
+{
+    (void)queueId;
+    (void)message;
+    (void)priority;
+    s_queueTimeout = timeout;
+    return s_queueStatus;
+}
+
+uint32_t osMessageQueueGetCount(osMessageQueueId_t queueId)
+{
+    (void)queueId;
+    return s_queueCount;
+}
+
+uint32_t osMessageQueueGetSpace(osMessageQueueId_t queueId)
+{
+    (void)queueId;
+    return s_queueSpace;
+}
+
+osStatus_t osMessageQueueDelete(osMessageQueueId_t queueId)
+{
+    (void)queueId;
+    return s_queueStatus;
 }
 
 osTimerId_t osTimerNew(osTimerFunc_t function,
@@ -363,6 +422,36 @@ static int test_mutex_and_semaphore_adapters(void)
     return 0;
 }
 
+static int test_queue_adapter(void)
+{
+    uint32_t message = 1U;
+    platform_size_t count = 0U;
+    platform_size_t space = 0U;
+    platform_queue_t queue = PLATFORM_OS_OBJECT_INITIALIZER;
+
+    s_tickFrequency = 250U;
+    s_queueHandle = (osMessageQueueId_t)0x1U;
+    s_queueStatus = osOK;
+    s_queueCount = 2U;
+    s_queueSpace = 3U;
+    TEST_ASSERT(platform_queue_create(&queue, 4U, sizeof(message)) == PLATFORM_ERR_OK);
+    TEST_ASSERT(s_queueMessageCount == 4U);
+    TEST_ASSERT(s_queueMessageSize == sizeof(message));
+    s_queueStatus = osErrorResource;
+    TEST_ASSERT(platform_queue_send(&queue, &message, 0U) == PLATFORM_ERR_FULL);
+    TEST_ASSERT(platform_queue_receive(&queue, &message, 0U) == PLATFORM_ERR_EMPTY);
+    s_queueStatus = osOK;
+    TEST_ASSERT(platform_queue_send_from_isr(&queue, &message) == PLATFORM_ERR_OK);
+    TEST_ASSERT(s_queueTimeout == 0U);
+    TEST_ASSERT(platform_queue_get_count(&queue, &count) == PLATFORM_ERR_OK);
+    TEST_ASSERT(platform_queue_get_space(&queue, &space) == PLATFORM_ERR_OK);
+    TEST_ASSERT(count == 2U);
+    TEST_ASSERT(space == 3U);
+    TEST_ASSERT(platform_queue_delete(&queue) == PLATFORM_ERR_OK);
+    TEST_ASSERT(queue.native == (void *)0);
+    return 0;
+}
+
 int main(void)
 {
     int result = test_timeout_conversion();
@@ -386,5 +475,10 @@ int main(void)
         return result;
     }
 
-    return test_mutex_and_semaphore_adapters();
+    result = test_mutex_and_semaphore_adapters();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_queue_adapter();
 }

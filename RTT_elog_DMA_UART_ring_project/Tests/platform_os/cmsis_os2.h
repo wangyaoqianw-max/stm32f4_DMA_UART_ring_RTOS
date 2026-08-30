@@ -96,6 +96,20 @@ osSemaphoreId_t osSemaphoreNew(uint32_t maximumCount,
 osStatus_t osSemaphoreAcquire(osSemaphoreId_t semaphoreId, uint32_t timeout);
 osStatus_t osSemaphoreRelease(osSemaphoreId_t semaphoreId);
 osStatus_t osSemaphoreDelete(osSemaphoreId_t semaphoreId);
+osMessageQueueId_t osMessageQueueNew(uint32_t messageCount,
+                                     uint32_t messageSize,
+                                     const osMessageQueueAttr_t *attributes);
+osStatus_t osMessageQueuePut(osMessageQueueId_t queueId,
+                             const void *message,
+                             uint8_t priority,
+                             uint32_t timeout);
+osStatus_t osMessageQueueGet(osMessageQueueId_t queueId,
+                             void *message,
+                             uint8_t *priority,
+                             uint32_t timeout);
+uint32_t osMessageQueueGetCount(osMessageQueueId_t queueId);
+uint32_t osMessageQueueGetSpace(osMessageQueueId_t queueId);
+osStatus_t osMessageQueueDelete(osMessageQueueId_t queueId);
 osTimerId_t osTimerNew(osTimerFunc_t function,
                        osTimerType_t type,
                        void *argument,
