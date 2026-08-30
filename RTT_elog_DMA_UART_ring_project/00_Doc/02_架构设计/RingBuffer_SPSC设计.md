@@ -509,18 +509,28 @@ Consumer quiescent
 
 # 14. 初始化状态检查
 
-除 `ring_buffer_init()` 外，其他 API 必须至少验证：
+除 `ring_buffer_init()` 外，其他 API 的校验顺序冻结为：
 
 ```text
-ringBuffer != NULL
-ringBuffer->storage != NULL
-ringBuffer->storageSize >= 2
+ringBuffer == NULL
+    -> PLATFORM_ERR_NULL_POINTER
+
+必需输出参数 == NULL
+    -> PLATFORM_ERR_NULL_POINTER
+
+ringBuffer->storage == NULL
+或 ringBuffer->storageSize < 2
+    -> PLATFORM_ERR_NOT_INITIALIZED
 ```
 
-未建立有效状态返回：
+Read / Write 的数据指针继续遵循各自的零长度规则：
 
 ```text
-PLATFORM_ERR_NOT_INITIALIZED
+length == 0
+    -> data/buffer 可以为 NULL
+
+length > 0 且 data/buffer == NULL
+    -> PLATFORM_ERR_NULL_POINTER
 ```
 
 本阶段不增加 magic number、生命周期状态机或平台对象基类。
