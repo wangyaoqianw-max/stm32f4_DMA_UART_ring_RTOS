@@ -163,13 +163,13 @@ static int test_time_adapter(void)
     uint32_t timeMs = 0U;
     s_tickFrequency = 250U;
     s_delayStatus = osOK;
-    TEST_ASSERT(PLATFORM_ERR_OK == platform_time_delay_ms(5U));
+    TEST_ASSERT(platform_time_delay_ms(5U) == PLATFORM_ERR_OK);
     TEST_ASSERT(2U == s_delayTicks);
     s_tickCount = 500U;
-    TEST_ASSERT(PLATFORM_ERR_OK == platform_time_get_ms(&timeMs));
+    TEST_ASSERT(platform_time_get_ms(&timeMs) == PLATFORM_ERR_OK);
     TEST_ASSERT(2000U == timeMs);
     s_delayStatus = osErrorISR;
-    TEST_ASSERT(PLATFORM_ERR_INVALID_STATE == platform_time_delay_ms(1U));
+    TEST_ASSERT(platform_time_delay_ms(1U) == PLATFORM_ERR_INVALID_STATE);
     return 0;
 }
 
@@ -200,26 +200,26 @@ static int test_timer_adapter(void)
     s_timerStatus = osOK;
     s_timerIsRunning = 1U;
 
-    TEST_ASSERT(PLATFORM_ERR_OK == platform_timer_create(&timer, &onceConfig));
+    TEST_ASSERT(platform_timer_create(&timer, &onceConfig) == PLATFORM_ERR_OK);
     TEST_ASSERT(timer.native == s_timerHandle);
     TEST_ASSERT(s_timerFunction == onceConfig.callback);
     TEST_ASSERT(s_timerArgument == onceConfig.argument);
     TEST_ASSERT(s_timerName == onceConfig.name);
     TEST_ASSERT(s_timerType == osTimerOnce);
-    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == platform_timer_start(&timer, 0U));
-    TEST_ASSERT(PLATFORM_ERR_OK == platform_timer_start(&timer, 5U));
+    TEST_ASSERT(platform_timer_start(&timer, 0U) == PLATFORM_ERR_INVALID_PARAM);
+    TEST_ASSERT(platform_timer_start(&timer, 5U) == PLATFORM_ERR_OK);
     TEST_ASSERT(s_timerStartTicks == 2U);
-    TEST_ASSERT(PLATFORM_ERR_OK == platform_timer_stop(&timer));
-    TEST_ASSERT(PLATFORM_ERR_OK == platform_timer_is_running(&timer, &isRunning));
+    TEST_ASSERT(platform_timer_stop(&timer) == PLATFORM_ERR_OK);
+    TEST_ASSERT(platform_timer_is_running(&timer, &isRunning) == PLATFORM_ERR_OK);
     TEST_ASSERT(isRunning == 1U);
-    TEST_ASSERT(PLATFORM_ERR_OK == platform_timer_delete(&timer));
+    TEST_ASSERT(platform_timer_delete(&timer) == PLATFORM_ERR_OK);
     TEST_ASSERT(timer.native == (void *)0);
 
-    TEST_ASSERT(PLATFORM_ERR_OK == platform_timer_create(&timer, &periodicConfig));
+    TEST_ASSERT(platform_timer_create(&timer, &periodicConfig) == PLATFORM_ERR_OK);
     TEST_ASSERT(s_timerType == osTimerPeriodic);
     s_timerHandle = (osTimerId_t)0;
     timer.native = (void *)0;
-    TEST_ASSERT(PLATFORM_ERR_NO_MEMORY == platform_timer_create(&timer, &onceConfig));
+    TEST_ASSERT(platform_timer_create(&timer, &onceConfig) == PLATFORM_ERR_NO_MEMORY);
     TEST_ASSERT(timer.native == (void *)0);
 
     return 0;
@@ -245,19 +245,19 @@ static int test_thread_adapter(void)
     s_threadHandle = (osThreadId_t)0x1U;
     s_threadStatus = osOK;
     s_threadPriority = osPriorityAboveNormal;
-    TEST_ASSERT(PLATFORM_ERR_OK == platform_thread_create(&thread, &config));
+    TEST_ASSERT(platform_thread_create(&thread, &config) == PLATFORM_ERR_OK);
     TEST_ASSERT(thread.native == s_threadHandle);
     TEST_ASSERT(s_threadFunction == config.entry);
     TEST_ASSERT(s_threadArgument == config.argument);
     TEST_ASSERT(s_threadAttributes->name == config.name);
     TEST_ASSERT(s_threadAttributes->stack_size == config.stackSizeBytes);
     TEST_ASSERT(s_threadAttributes->priority == osPriorityAboveNormal);
-    TEST_ASSERT(PLATFORM_ERR_OK == platform_thread_suspend(&thread));
-    TEST_ASSERT(PLATFORM_ERR_OK == platform_thread_resume(&thread));
-    TEST_ASSERT(PLATFORM_ERR_OK == platform_thread_set_priority(&thread,
-                                                                 PLATFORM_THREAD_PRIORITY_LOW));
+    TEST_ASSERT(platform_thread_suspend(&thread) == PLATFORM_ERR_OK);
+    TEST_ASSERT(platform_thread_resume(&thread) == PLATFORM_ERR_OK);
+    TEST_ASSERT(platform_thread_set_priority(&thread,
+                                             PLATFORM_THREAD_PRIORITY_LOW) == PLATFORM_ERR_OK);
     TEST_ASSERT(s_threadPriority == osPriorityLow);
-    TEST_ASSERT(PLATFORM_ERR_OK == platform_thread_terminate(&thread));
+    TEST_ASSERT(platform_thread_terminate(&thread) == PLATFORM_ERR_OK);
     TEST_ASSERT(thread.native == (void *)0);
     return 0;
 }
