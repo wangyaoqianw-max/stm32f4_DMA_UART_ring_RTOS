@@ -180,6 +180,89 @@ static int test_read_write_validate_lengths_and_pointers(void)
     return 0;
 }
 
+static int test_full_buffer_preserves_unread_data(void)
+{
+    ring_buffer_t ringBuffer = {0};
+    uint8_t storage[8] = {0};
+    uint8_t input[7] = {1U, 2U, 3U, 4U, 5U, 6U, 7U};
+    uint8_t extra = 8U;
+    uint8_t output[7] = {0};
+    platform_size_t writtenLength = 0U;
+    platform_size_t readLength = 0U;
+    platform_size_t freeSize = 1U;
+    platform_size_t index = 0U;
+
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_init(&ringBuffer, storage, sizeof(storage)));
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_write(&ringBuffer, input, sizeof(input), &writtenLength));
+    TEST_ASSERT(sizeof(input) == writtenLength);
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_get_free_size(&ringBuffer, &freeSize));
+    TEST_ASSERT(0U == freeSize);
+    TEST_ASSERT(PLATFORM_ERR_OVERFLOW == ring_buffer_write(&ringBuffer, &extra, 1U, &writtenLength));
+    TEST_ASSERT(0U == writtenLength);
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_read(&ringBuffer, output, sizeof(output), &readLength));
+    TEST_ASSERT(sizeof(output) == readLength);
+
+    for (index = 0U; index < sizeof(output); index++) {
+        TEST_ASSERT(input[index] == output[index]);
+    }
+
+    return 0;
+}
+
+static int test_partial_write_preserves_old_data_and_new_prefix(void)
+{
+    ring_buffer_t ringBuffer = {0};
+    uint8_t storage[8] = {0};
+    uint8_t oldData[5] = {1U, 2U, 3U, 4U, 5U};
+    uint8_t newData[4] = {6U, 7U, 8U, 9U};
+    uint8_t expected[7] = {1U, 2U, 3U, 4U, 5U, 6U, 7U};
+    uint8_t output[7] = {0};
+    platform_size_t writtenLength = 0U;
+    platform_size_t readLength = 0U;
+    platform_size_t index = 0U;
+
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_init(&ringBuffer, storage, sizeof(storage)));
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_write(&ringBuffer, oldData, sizeof(oldData), &writtenLength));
+    TEST_ASSERT(PLATFORM_ERR_OVERFLOW == ring_buffer_write(&ringBuffer, newData, sizeof(newData), &writtenLength));
+    TEST_ASSERT(2U == writtenLength);
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_read(&ringBuffer, output, sizeof(output), &readLength));
+    TEST_ASSERT(sizeof(output) == readLength);
+
+    for (index = 0U; index < sizeof(output); index++) {
+        TEST_ASSERT(expected[index] == output[index]);
+    }
+
+    return 0;
+}
+
+static int test_wrap_read_and_write_preserve_order(void)
+{
+    ring_buffer_t ringBuffer = {0};
+    uint8_t storage[8] = {0};
+    uint8_t firstInput[5] = {'A', 'B', 'C', 'D', 'E'};
+    uint8_t secondInput[5] = {'F', 'G', 'H', 'I', 'J'};
+    uint8_t discarded[4] = {0};
+    uint8_t output[6] = {0};
+    uint8_t expected[6] = {'E', 'F', 'G', 'H', 'I', 'J'};
+    platform_size_t writtenLength = 0U;
+    platform_size_t readLength = 0U;
+    platform_size_t index = 0U;
+
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_init(&ringBuffer, storage, sizeof(storage)));
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_write(&ringBuffer, firstInput, sizeof(firstInput), &writtenLength));
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_read(&ringBuffer, discarded, sizeof(discarded), &readLength));
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_write(&ringBuffer, secondInput, sizeof(secondInput), &writtenLength));
+    TEST_ASSERT(sizeof(secondInput) == writtenLength);
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_read(&ringBuffer, output, sizeof(output), &readLength));
+    TEST_ASSERT(sizeof(output) == readLength);
+
+    for (index = 0U; index < sizeof(output); index++) {
+        TEST_ASSERT(expected[index] == output[index]);
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
@@ -215,6 +298,21 @@ int main(void)
     }
 
     result = test_read_write_validate_lengths_and_pointers();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_full_buffer_preserves_unread_data();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_partial_write_preserves_old_data_and_new_prefix();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_wrap_read_and_write_preserve_order();
     if (0 != result) {
         return result;
     }

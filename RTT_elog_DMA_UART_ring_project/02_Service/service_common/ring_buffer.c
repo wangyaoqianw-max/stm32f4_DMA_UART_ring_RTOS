@@ -90,6 +90,9 @@ platform_error_t ring_buffer_write(ring_buffer_t *ringBuffer,
     platform_size_t readableSize = 0U;
     platform_size_t freeSize = 0U;
     platform_size_t writeLength = 0U;
+    platform_size_t firstLength = 0U;
+    platform_size_t secondLength = 0U;
+    platform_size_t nextWriteIndex = 0U;
 
     if (ringBuffer == NULL) {
         return PLATFORM_ERR_NULL_POINTER;
@@ -123,8 +126,23 @@ platform_error_t ring_buffer_write(ring_buffer_t *ringBuffer,
         writeLength = freeSize;
     }
 
-    memcpy(&ringBuffer->storage[writeIndex], data, writeLength);
-    ringBuffer->writeIndex = writeIndex + writeLength;
+    firstLength = writeLength;
+    if (firstLength > (ringBuffer->storageSize - writeIndex)) {
+        firstLength = ringBuffer->storageSize - writeIndex;
+    }
+
+    secondLength = writeLength - firstLength;
+    memcpy(&ringBuffer->storage[writeIndex], data, firstLength);
+    if (secondLength > 0U) {
+        memcpy(ringBuffer->storage, &data[firstLength], secondLength);
+    }
+
+    nextWriteIndex = writeIndex + writeLength;
+    if (nextWriteIndex >= ringBuffer->storageSize) {
+        nextWriteIndex -= ringBuffer->storageSize;
+    }
+
+    ringBuffer->writeIndex = nextWriteIndex;
     *writtenLength = writeLength;
 
     if (writeLength < dataLength) {
@@ -144,6 +162,9 @@ platform_error_t ring_buffer_read(ring_buffer_t *ringBuffer,
     platform_size_t writeIndex = 0U;
     platform_size_t readableSize = 0U;
     platform_size_t readLengthActual = 0U;
+    platform_size_t firstLength = 0U;
+    platform_size_t secondLength = 0U;
+    platform_size_t nextReadIndex = 0U;
 
     if (ringBuffer == NULL) {
         return PLATFORM_ERR_NULL_POINTER;
@@ -180,8 +201,23 @@ platform_error_t ring_buffer_read(ring_buffer_t *ringBuffer,
         readLengthActual = readableSize;
     }
 
-    memcpy(buffer, &ringBuffer->storage[readIndex], readLengthActual);
-    ringBuffer->readIndex = readIndex + readLengthActual;
+    firstLength = readLengthActual;
+    if (firstLength > (ringBuffer->storageSize - readIndex)) {
+        firstLength = ringBuffer->storageSize - readIndex;
+    }
+
+    secondLength = readLengthActual - firstLength;
+    memcpy(buffer, &ringBuffer->storage[readIndex], firstLength);
+    if (secondLength > 0U) {
+        memcpy(&buffer[firstLength], ringBuffer->storage, secondLength);
+    }
+
+    nextReadIndex = readIndex + readLengthActual;
+    if (nextReadIndex >= ringBuffer->storageSize) {
+        nextReadIndex -= ringBuffer->storageSize;
+    }
+
+    ringBuffer->readIndex = nextReadIndex;
     *readLength = readLengthActual;
 
     return PLATFORM_ERR_OK;
