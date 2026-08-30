@@ -1,8 +1,8 @@
 # APP Phase 1 设计
 
-> 文档类型：专项设计 / Design Draft  
-> 状态：DRAFT / REVIEW  
-> 版本：V0.1  
+> 文档类型：专项设计 / Frozen Design Contract  
+> 状态：FROZEN  
+> 版本：V1.0  
 > 日期：2026-08-30
 
 ---
