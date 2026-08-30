@@ -90,6 +90,18 @@ platform_error_t platform_uart_init(platform_uart_t *uart,
                                     const platform_uart_init_params_t *params);
 
 /**
+ * @brief 绑定或解绑 Platform UART 异步事件回调
+ * @param[in] uart            : 已构造且未处于 STARTED 状态的 UART 对象
+ * @param[in] callback        : 事件回调，NULL 表示解绑
+ * @param[in] callbackContext : 回调上下文，解绑时忽略并清空
+ * @return platform_error_t : 函数执行状态
+ * @note 仅允许在 CREATED、INITIALIZED、STOPPED 或 ERROR 状态调用
+ */
+platform_error_t platform_uart_set_callback(platform_uart_t *uart,
+                                            platform_uart_callback_t callback,
+                                            void *callbackContext);
+
+/**
  * @brief 阻塞发送 UART 数据
  * @param[in] uart            : 已进入 STARTED 状态的 UART 对象
  * @param[in] data            : 发送缓冲区，函数返回前必须保持有效

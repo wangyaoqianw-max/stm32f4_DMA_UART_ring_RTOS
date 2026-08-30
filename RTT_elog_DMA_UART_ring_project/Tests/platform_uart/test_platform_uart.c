@@ -797,6 +797,53 @@ static int test_notify_event_rejects_invalid_events(void)
 }
 
 /**
+ * @brief 验证回调绑定只允许在非 STARTED 状态执行
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_set_callback_validates_state_and_updates_binding(void)
+{
+    platform_uart_t uart = {0};
+    platform_uart_t unconstructedUart = {0};
+    fake_uart_context_t context = {0};
+    fake_callback_record_t callbackRecord = {0};
+    platform_uart_init_params_t params = make_valid_params(&context);
+
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM ==
+                platform_uart_set_callback(NULL, fake_event_callback, &callbackRecord));
+    TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED ==
+                platform_uart_set_callback(&unconstructedUart,
+                                           fake_event_callback,
+                                           &callbackRecord));
+
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_init(&uart, &params));
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_uart_set_callback(&uart, fake_event_callback, &callbackRecord));
+    TEST_ASSERT(fake_event_callback == uart.callback);
+    TEST_ASSERT(&callbackRecord == uart.callbackContext);
+
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_set_callback(&uart, NULL, &context));
+    TEST_ASSERT(NULL == uart.callback);
+    TEST_ASSERT(NULL == uart.callbackContext);
+
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_uart_set_callback(&uart, fake_event_callback, &callbackRecord));
+    uart.device.object.state = PLATFORM_OBJECT_STARTED;
+    TEST_ASSERT(PLATFORM_ERR_INVALID_STATE ==
+                platform_uart_set_callback(&uart, NULL, NULL));
+    TEST_ASSERT(fake_event_callback == uart.callback);
+    TEST_ASSERT(&callbackRecord == uart.callbackContext);
+
+    uart.device.object.state = PLATFORM_OBJECT_STOPPED;
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_set_callback(&uart, NULL, NULL));
+    TEST_ASSERT(NULL == uart.callback);
+    TEST_ASSERT(NULL == uart.callbackContext);
+
+    return 0;
+}
+
+/**
  * @brief 运行 Platform UART 对象和阻塞 API 测试
  * @param[in] 无
  * @param[out] 无
@@ -860,6 +907,11 @@ int main(void)
     }
 
     result = test_notify_event_rejects_invalid_events();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_set_callback_validates_state_and_updates_binding();
     if (0 != result) {
         return result;
     }

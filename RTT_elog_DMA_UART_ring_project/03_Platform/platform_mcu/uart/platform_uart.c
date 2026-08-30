@@ -89,6 +89,31 @@ static platform_error_t platform_uart_validate_ready(const platform_uart_t *uart
 }
 
 /**
+ * @brief 校验 UART 对象是否已构造
+ * @param[in] uart : UART 对象
+ * @param[out] 无
+ * @return platform_error_t : 对象校验结果
+ */
+static platform_error_t platform_uart_validate_constructed(
+    const platform_uart_t *uart)
+{
+    /**
+     * 回调绑定允许发生在多个非运行生命周期状态，不复用仅允许 STARTED 的数据操作校验。
+     **/
+    if (NULL == uart) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    if ((PLATFORM_TRUE !=
+         platform_object_is_valid(&uart->device.object, PLATFORM_OBJECT_DEVICE)) ||
+        (PLATFORM_DEVICE_CLASS_UART != uart->device.dev_class)) {
+        return PLATFORM_ERR_NOT_INITIALIZED;
+    }
+
+    return PLATFORM_ERR_OK;
+}
+
+/**
  * @brief 将默认超时标记转换为对象配置值
  * @param[in] uart      : UART 对象
  * @param[in] timeoutMs : 调用者指定的超时值
@@ -210,6 +235,37 @@ platform_error_t platform_uart_init(platform_uart_t *uart,
     uart->implContext = params->implContext;
     uart->callback = params->callback;
     uart->callbackContext = params->callbackContext;
+
+    return PLATFORM_ERR_OK;
+}
+
+/**
+ * @brief 绑定或解绑 Platform UART 异步事件回调
+ * @param[in] uart            : 已构造且未处于 STARTED 状态的 UART 对象
+ * @param[in] callback        : 事件回调，NULL 表示解绑
+ * @param[in] callbackContext : 回调上下文
+ * @return platform_error_t : 函数执行状态
+ */
+platform_error_t platform_uart_set_callback(platform_uart_t *uart,
+                                            platform_uart_callback_t callback,
+                                            void *callbackContext)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    /**
+     * STARTED 状态可能有异步事件源，禁止替换或清除当前绑定。
+     **/
+    result = platform_uart_validate_constructed(uart);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    if (PLATFORM_OBJECT_STARTED == uart->device.object.state) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    uart->callback = callback;
+    uart->callbackContext = (NULL == callback) ? NULL : callbackContext;
 
     return PLATFORM_ERR_OK;
 }
