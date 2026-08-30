@@ -905,3 +905,41 @@ RTOS PLATFORM BOARD TEST: PASS
 - 仍需对恢复后的当前 MDK 工程执行 `Clean Targets -> Rebuild all target files` 并确认实际
   `0 Error(s)`。
 - 仅完成这次恢复后 Rebuild，RTOS Platform Phase 1 才可标记为 `COMPLETED`。
+
+---
+
+## 24. RTOS Platform Phase 1 — Final Keil Verification — 2026-08-30
+
+状态：
+
+```text
+COMPLETED
+```
+
+### Final Verification
+
+用户已对恢复临时测试代码后的当前 MDK 工程完成编译，并确认：
+
+```text
+0 Error(s)
+```
+
+RTOS Platform Phase 1 已满足全部完成条件：
+
+- Host Test、Header Isolation 与既有 UART/Log Regression：PASS。
+- Keil Integration：完成。
+- RTOS Platform Board Smoke Test：PASS，包含真实 USART1 ISR → Task Notification。
+- 临时 Board Test：已从 `Core/Src/freertos.c` 完整恢复。
+- 恢复后 Keil Rebuild：`0 Error(s)`。
+
+### Coding Standard Review
+
+```text
+Coding Standard Review: PASS
+```
+
+### Scope / Remaining Work
+
+- 未实现 UART Service、SPSC RingBuffer、service_log 或应用通信逻辑。
+- 后续工作应回到冻结设计，开始 `UART Service + SPSC RingBuffer + Platform UART RX_DATA +
+  Platform Notify ISR→Task` 的独立阶段。
