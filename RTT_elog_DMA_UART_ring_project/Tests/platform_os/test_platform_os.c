@@ -32,6 +32,15 @@ static void *s_threadArgument;
 static const osThreadAttr_t *s_threadAttributes;
 static osStatus_t s_threadStatus;
 static osPriority_t s_threadPriority;
+static osMutexId_t s_mutexHandle;
+static uint32_t s_mutexAttributes;
+static uint32_t s_mutexTimeout;
+static osStatus_t s_mutexStatus;
+static osSemaphoreId_t s_semaphoreHandle;
+static uint32_t s_semaphoreMaximumCount;
+static uint32_t s_semaphoreInitialCount;
+static uint32_t s_semaphoreTimeout;
+static osStatus_t s_semaphoreStatus;
 
 uint32_t osKernelGetTickFreq(void)
 {
@@ -98,6 +107,60 @@ osStatus_t osThreadTerminate(osThreadId_t threadId)
 osStatus_t osThreadYield(void)
 {
     return s_threadStatus;
+}
+
+osMutexId_t osMutexNew(const osMutexAttr_t *attributes)
+{
+    s_mutexAttributes = attributes->attr_bits;
+    return s_mutexHandle;
+}
+
+osStatus_t osMutexAcquire(osMutexId_t mutexId, uint32_t timeout)
+{
+    (void)mutexId;
+    s_mutexTimeout = timeout;
+    return s_mutexStatus;
+}
+
+osStatus_t osMutexRelease(osMutexId_t mutexId)
+{
+    (void)mutexId;
+    return s_mutexStatus;
+}
+
+osStatus_t osMutexDelete(osMutexId_t mutexId)
+{
+    (void)mutexId;
+    return s_mutexStatus;
+}
+
+osSemaphoreId_t osSemaphoreNew(uint32_t maximumCount,
+                                uint32_t initialCount,
+                                const osSemaphoreAttr_t *attributes)
+{
+    (void)attributes;
+    s_semaphoreMaximumCount = maximumCount;
+    s_semaphoreInitialCount = initialCount;
+    return s_semaphoreHandle;
+}
+
+osStatus_t osSemaphoreAcquire(osSemaphoreId_t semaphoreId, uint32_t timeout)
+{
+    (void)semaphoreId;
+    s_semaphoreTimeout = timeout;
+    return s_semaphoreStatus;
+}
+
+osStatus_t osSemaphoreRelease(osSemaphoreId_t semaphoreId)
+{
+    (void)semaphoreId;
+    return s_semaphoreStatus;
+}
+
+osStatus_t osSemaphoreDelete(osSemaphoreId_t semaphoreId)
+{
+    (void)semaphoreId;
+    return s_semaphoreStatus;
 }
 
 osTimerId_t osTimerNew(osTimerFunc_t function,
@@ -262,6 +325,44 @@ static int test_thread_adapter(void)
     return 0;
 }
 
+static int test_mutex_and_semaphore_adapters(void)
+{
+    platform_mutex_t mutex = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_semaphore_t semaphore = PLATFORM_OS_OBJECT_INITIALIZER;
+
+    s_tickFrequency = 250U;
+    s_mutexHandle = (osMutexId_t)0x1U;
+    s_mutexStatus = osOK;
+    TEST_ASSERT(platform_mutex_create(&mutex, PLATFORM_MUTEX_RECURSIVE) == PLATFORM_ERR_OK);
+    TEST_ASSERT(s_mutexAttributes == osMutexRecursive);
+    s_mutexStatus = osErrorResource;
+    TEST_ASSERT(platform_mutex_lock(&mutex, PLATFORM_OS_NO_WAIT) == PLATFORM_ERR_BUSY);
+    TEST_ASSERT(s_mutexTimeout == 0U);
+    s_mutexStatus = osErrorTimeout;
+    TEST_ASSERT(platform_mutex_lock(&mutex, 5U) == PLATFORM_ERR_TIMEOUT);
+    TEST_ASSERT(s_mutexTimeout == 2U);
+    s_mutexStatus = osOK;
+    TEST_ASSERT(platform_mutex_unlock(&mutex) == PLATFORM_ERR_OK);
+    TEST_ASSERT(platform_mutex_delete(&mutex) == PLATFORM_ERR_OK);
+    TEST_ASSERT(mutex.native == (void *)0);
+
+    s_semaphoreHandle = (osSemaphoreId_t)0x1U;
+    s_semaphoreStatus = osOK;
+    TEST_ASSERT(platform_semaphore_create(&semaphore, 2U, 1U) == PLATFORM_ERR_OK);
+    TEST_ASSERT(s_semaphoreMaximumCount == 2U);
+    TEST_ASSERT(s_semaphoreInitialCount == 1U);
+    TEST_ASSERT(platform_semaphore_create(&semaphore, 0U, 0U) == PLATFORM_ERR_INVALID_PARAM);
+    s_semaphoreStatus = osErrorResource;
+    TEST_ASSERT(platform_semaphore_take(&semaphore, 0U) == PLATFORM_ERR_EMPTY);
+    TEST_ASSERT(platform_semaphore_give(&semaphore) == PLATFORM_ERR_FULL);
+    s_semaphoreStatus = osOK;
+    TEST_ASSERT(platform_semaphore_give_from_isr(&semaphore) == PLATFORM_ERR_OK);
+    TEST_ASSERT(platform_semaphore_delete(&semaphore) == PLATFORM_ERR_OK);
+    TEST_ASSERT(semaphore.native == (void *)0);
+
+    return 0;
+}
+
 int main(void)
 {
     int result = test_timeout_conversion();
@@ -280,5 +381,10 @@ int main(void)
         return result;
     }
 
-    return test_thread_adapter();
+    result = test_thread_adapter();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_mutex_and_semaphore_adapters();
 }

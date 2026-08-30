@@ -86,6 +86,16 @@ osStatus_t osThreadSuspend(osThreadId_t threadId);
 osStatus_t osThreadResume(osThreadId_t threadId);
 osStatus_t osThreadTerminate(osThreadId_t threadId);
 osStatus_t osThreadYield(void);
+osMutexId_t osMutexNew(const osMutexAttr_t *attributes);
+osStatus_t osMutexAcquire(osMutexId_t mutexId, uint32_t timeout);
+osStatus_t osMutexRelease(osMutexId_t mutexId);
+osStatus_t osMutexDelete(osMutexId_t mutexId);
+osSemaphoreId_t osSemaphoreNew(uint32_t maximumCount,
+                                uint32_t initialCount,
+                                const osSemaphoreAttr_t *attributes);
+osStatus_t osSemaphoreAcquire(osSemaphoreId_t semaphoreId, uint32_t timeout);
+osStatus_t osSemaphoreRelease(osSemaphoreId_t semaphoreId);
+osStatus_t osSemaphoreDelete(osSemaphoreId_t semaphoreId);
 osTimerId_t osTimerNew(osTimerFunc_t function,
                        osTimerType_t type,
                        void *argument,
