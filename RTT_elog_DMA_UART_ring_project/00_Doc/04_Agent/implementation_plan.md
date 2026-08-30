@@ -2,17 +2,17 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement a pure-C SPSC byte-stream RingBuffer for later UART Service use, with caller-owned storage, partial-write overflow reporting, deterministic host tests, and Keil integration.
+**Goal:** Implement a pure-C SPSC byte-stream RingBuffer for later UART Service use, with caller-owned storage, reserved-slot capacity, partial-write overflow reporting, deterministic Host Test, and Keil integration.
 
-**Architecture:** `RingBuffer` lives in `02_Service/service_common/` and depends only on Platform common types/errors plus C memory-copy support. It knows nothing about UART, DMA, FreeRTOS, Notification, logging, protocol parsing, statistics, or task creation. Concurrency is frozen as Single Producer / Single Consumer with `writeIndex` owned by Producer and `readIndex` owned by Consumer.
+**Architecture:** RingBuffer lives in `02_Service/service_common/`. It depends only on Platform common types/errors and C memory-copy support. It knows nothing about UART, DMA, RTOS, Notification, logging, protocol parsing, statistics, or task creation. Concurrency is frozen as Single Producer / Single Consumer: Producer is the sole writer of `writeIndex`; Consumer is the sole writer of `readIndex`.
 
-**Tech Stack:** C, STM32F411CEU6, ARMCC5 / Keil MDK-ARM, GCC host tests.
+**Tech Stack:** C, STM32F411CEU6, ARMCC5 / Keil MDK-ARM, GCC Host Test.
 
 **Spec:** `00_Doc/02_架构设计/RingBuffer_SPSC设计.md`
 
 ## Mandatory References
 
-Before modifying any C/H file, read in this order:
+Before modifying any project C/H file, read:
 
 ```text
 00_Doc/04_Agent/execution_rules.md
@@ -38,32 +38,27 @@ Status: READ
 ## Global Constraints
 
 - Only implement RingBuffer in this phase.
-- Create only `02_Service/service_common/ring_buffer.h`, `02_Service/service_common/ring_buffer.c`, and RingBuffer host tests, plus required Keil project integration and handoff update.
-- Do not create `service_uart`, `service_uart_cfg`, UART statistics, Communication Task, protocol parser, or Notification integration.
+- Create production files only under `02_Service/service_common/`.
+- Do not create UART Service, Communication Task, Notification integration, service statistics, protocol parsing, or service_log behavior.
 - Do not modify Platform UART, UART DMA Impl, Platform OS, Vendor, HAL, CMSIS, FreeRTOS Kernel, or CubeMX-generated logic.
 - No dynamic allocation.
-- No Mutex, Semaphore, Critical Section, RTOS API, IRQ control, or logging inside RingBuffer.
-- Storage is caller-owned and must remain valid while the RingBuffer is used.
-- SPSC only: Producer is the sole writer of `writeIndex`; Consumer is the sole writer of `readIndex`.
-- `storageSize = N`, usable capacity is exactly `N - 1`.
-- No power-of-two capacity requirement.
-- Write uses partial-write semantics: preserve old data, write the largest prefix that fits, return `PLATFORM_ERR_OVERFLOW` when `writtenLength < dataLength`.
+- No Mutex, Semaphore, Critical Section, RTOS API, IRQ masking, or logging inside RingBuffer.
+- Caller owns backing storage.
+- `storageSize = N`; usable capacity is exactly `N - 1`.
+- No power-of-two requirement.
+- SPSC only.
+- Write uses Partial Write: preserve old data, write the largest prefix that fits, return `PLATFORM_ERR_OVERFLOW` if the request is not fully stored.
 - Read is non-blocking and reads up to the requested size.
-- `reset()` is quiescent-only; it is not concurrent-safe.
-- Statistics do not belong to RingBuffer V1.
-- Follow the repository C coding standard for naming, Chinese comments, file headers, Doxygen, braces, NULL checking, ownership, and resource rules.
+- `reset()` is quiescent-only and performs no storage clearing.
+- Statistics are not part of RingBuffer V1.
+- Follow repository C coding standard and `execution_rules.md` as mandatory gates.
 
 ---
 
 ## Task 0: Preflight and Scope Confirmation
 
 **Files:**
-- Read: `00_Doc/04_Agent/execution_rules.md`
-- Read: `00_Doc/02_架构设计/嵌入式项目C代码设计规范.md`
-- Read: `00_Doc/02_架构设计/RingBuffer_SPSC设计.md`
-- Read: `00_Doc/04_Agent/architecture.md`
-- Read: `00_Doc/04_Agent/requirements.md`
-- Read: `00_Doc/04_Agent/handoff.md`
+- Read: mandatory references above.
 - Inspect: `02_Service/`
 - Inspect: `Tests/`
 
@@ -76,15 +71,15 @@ git status --short
 git log --oneline -n 12
 ```
 
-Expected:
+Confirm:
 
-- no destructive cleanup is required;
-- RTOS Platform Phase 1 remains recorded as `COMPLETED`;
-- no existing `service_uart` or RingBuffer implementation is present.
+```text
+RTOS Platform Phase 1 = COMPLETED
+No existing RingBuffer production implementation
+No existing service_uart implementation
+```
 
-- [ ] **Step 2: Confirm scope in the execution report**
-
-State explicitly:
+- [ ] **Step 2: Report the frozen scope before coding**
 
 ```text
 Phase: RingBuffer Phase 1
@@ -97,7 +92,7 @@ Board test: NOT REQUIRED
 
 - [ ] **Step 3: Protect unrelated work**
 
-Do not run:
+Do not use:
 
 ```text
 git reset
@@ -106,28 +101,18 @@ git checkout .
 git clean
 ```
 
-If unrelated uncommitted changes exist, leave them untouched and work around them.
+If unrelated uncommitted changes exist, preserve them.
 
-**Deliverable:** verified execution context; no source modification.
+**Deliverable:** verified context; no source modification.
 
 ---
 
-## Task 1: Define RingBuffer Public Contract and Initialization
+## Task 1: Public Contract, Initialization, Reset, and Size Queries
 
 **Files:**
 - Create: `02_Service/service_common/ring_buffer.h`
 - Create: `02_Service/service_common/ring_buffer.c`
 - Create: `Tests/ring_buffer/test_ring_buffer.c`
-
-**Consumes:**
-
-```c
-platform_error_t
-platform_size_t
-uint8_t
-```
-
-from Platform common types/error headers.
 
 **Produces:**
 
@@ -157,9 +142,11 @@ platform_error_t ring_buffer_get_free_size(
     platform_size_t *freeSize);
 ```
 
-- [ ] **Step 1: Write the first failing host tests**
+The header must also declare the frozen Write/Read APIs so the entire V1 public contract is visible from Task 1.
 
-Create `Tests/ring_buffer/test_ring_buffer.c` with test helpers and at least these cases:
+- [ ] **Step 1: Write failing tests**
+
+Create these tests:
 
 ```c
 static void test_init_rejects_null_ring_buffer(void);
@@ -167,11 +154,13 @@ static void test_init_rejects_null_storage(void);
 static void test_init_rejects_storage_smaller_than_two(void);
 static void test_init_sets_empty_state(void);
 static void test_initial_sizes_match_reserved_slot_model(void);
-static void test_uninitialized_queries_fail(void);
+static void test_null_object_returns_null_pointer(void);
+static void test_uninitialized_object_returns_not_initialized(void);
+static void test_query_rejects_null_output(void);
 static void test_reset_returns_to_empty_without_clearing_storage(void);
 ```
 
-Core expectations:
+Core expectation:
 
 ```c
 uint8_t storage[8] = {0};
@@ -186,9 +175,9 @@ assert(readableSize == 0U);
 assert(freeSize == 7U);
 ```
 
-For reset, preset a storage byte to a nonzero value before reset and verify the storage content is not bulk-cleared.
+Reset test must verify a pre-existing nonzero storage byte remains unchanged after reset.
 
-- [ ] **Step 2: Run the tests and verify RED**
+- [ ] **Step 2: Run RED verification**
 
 From `RTT_elog_DMA_UART_ring_project/`:
 
@@ -202,77 +191,84 @@ gcc -std=c11 -Wall -Wextra -Werror \
   -o Tests/ring_buffer/test_ring_buffer
 ```
 
-Expected before implementation: FAIL because RingBuffer files/API do not yet exist.
+Expected before implementation: FAIL because the new module does not yet exist.
 
-- [ ] **Step 3: Implement the minimum public object and validation helpers**
+- [ ] **Step 3: Implement public header**
 
-`ring_buffer.h` must:
+Requirements:
 
-- use the project file-header template;
-- use a Header Guard;
-- include only required Platform common headers;
-- define `ring_buffer_t` exactly as frozen by the spec;
-- declare all six frozen public APIs, even if Write/Read are implemented in later tasks;
-- document SPSC ownership, caller-owned storage, usable capacity `N - 1`, and reset quiescence in Chinese Doxygen.
+```text
+project file header
+Header Guard
+required Platform common includes only
+ring_buffer_t exactly matches frozen spec
+all six public API declarations
+Chinese public API Doxygen in .h
+SPSC ownership documented
+caller-owned storage documented
+capacity N-1 documented
+reset quiescent-only documented
+```
 
-`ring_buffer.c` must add a private initialized-state check equivalent to:
+Do not add `ring_buffer_cfg.h`, magic fields, statistics, object base class, or runtime ops table.
+
+- [ ] **Step 4: Implement private validation without inventing missing boolean macros**
+
+Use an error-returning private helper, for example:
 
 ```c
-static platform_bool_t ring_buffer_is_initialized(const ring_buffer_t *ringBuffer)
+static platform_error_t ring_buffer_validate(const ring_buffer_t *ringBuffer)
 {
     if (ringBuffer == NULL) {
-        return PLATFORM_FALSE;
+        return PLATFORM_ERR_NULL_POINTER;
     }
 
-    if (ringBuffer->storage == NULL) {
-        return PLATFORM_FALSE;
+    if ((ringBuffer->storage == NULL) || (ringBuffer->storageSize < 2U)) {
+        return PLATFORM_ERR_NOT_INITIALIZED;
     }
 
-    if (ringBuffer->storageSize < 2U) {
-        return PLATFORM_FALSE;
-    }
-
-    return PLATFORM_TRUE;
+    return PLATFORM_ERR_OK;
 }
 ```
 
-Do not add a magic value, object base class, mutex, statistics, or heap ownership.
+Do not introduce `PLATFORM_TRUE` / `PLATFORM_FALSE`; those symbols are not part of the current project baseline.
 
-- [ ] **Step 4: Implement init/reset/query functions**
+- [ ] **Step 5: Implement init/reset/query semantics**
 
-Required semantics:
+Exact behavior:
 
 ```text
-ring_buffer_init(NULL, ...)        -> NULL_POINTER
-ring_buffer_init(..., NULL, ...)   -> NULL_POINTER
-storageSize < 2                    -> INVALID_PARAM
-valid init                         -> OK, indexes = 0
+init ringBuffer NULL          -> NULL_POINTER
+init storage NULL             -> NULL_POINTER
+init storageSize < 2          -> INVALID_PARAM
+valid init                    -> OK, readIndex=0, writeIndex=0
 
-query/reset with invalid object    -> NOT_INITIALIZED
-query with NULL output             -> NULL_POINTER
-reset                              -> indexes = 0 only
+other API ringBuffer NULL     -> NULL_POINTER
+object storage NULL/<2        -> NOT_INITIALIZED
+required output NULL          -> NULL_POINTER
+reset                         -> indexes only; no memset
 ```
 
-Readable calculation:
+Readable formula:
 
 ```c
 if (writeIndex >= readIndex) {
-    readableSize = writeIndex - readIndex;
+    currentReadable = writeIndex - readIndex;
 } else {
-    readableSize = ringBuffer->storageSize - readIndex + writeIndex;
+    currentReadable = ringBuffer->storageSize - readIndex + writeIndex;
 }
 ```
 
-Free calculation:
+Free formula:
 
 ```c
 capacity = ringBuffer->storageSize - 1U;
-freeSize = capacity - readableSize;
+currentFree = capacity - currentReadable;
 ```
 
-- [ ] **Step 5: Run GREEN verification**
+- [ ] **Step 6: Run GREEN verification**
 
-Run the same GCC command and then:
+Compile with the Task 1 GCC command, then:
 
 ```bash
 ./Tests/ring_buffer/test_ring_buffer
@@ -280,30 +276,15 @@ Run the same GCC command and then:
 
 Expected: all Task 1 tests PASS.
 
-- [ ] **Step 6: Coding Standard Review**
-
-Check:
-
-```text
-file header
-Header Guard
-snake_case functions
-lower_snake_case_t type
-lowerCamelCase params/locals
-Chinese public API Doxygen in .h
-no duplicated public API Doxygen in .c
-4 spaces, no TAB
-no Yoda Condition
-NULL and size validation
-```
-
-Run:
+- [ ] **Step 7: Run coding-style checks and commit**
 
 ```bash
 git diff --check
 ```
 
-- [ ] **Step 7: Commit**
+Review file header, naming, Doxygen location, 4-space indentation, braces, no TAB, no Yoda Condition, and no unnecessary dependencies.
+
+Commit:
 
 ```bash
 git add \
@@ -316,13 +297,11 @@ git commit -m "feat(ring): add spsc ring buffer core"
 
 ---
 
-## Task 2: Implement Non-Wrapping Write and Read
+## Task 2: Non-Wrapping Write and Read
 
 **Files:**
 - Modify: `02_Service/service_common/ring_buffer.c`
 - Modify: `Tests/ring_buffer/test_ring_buffer.c`
-
-**Consumes:** Task 1 object/query APIs.
 
 **Produces:**
 
@@ -340,23 +319,23 @@ platform_error_t ring_buffer_read(
     platform_size_t *readLength);
 ```
 
-- [ ] **Step 1: Add failing basic Write/Read tests**
+- [ ] **Step 1: Add failing tests**
 
-Add at least:
+Add:
 
 ```c
 static void test_write_and_read_simple_sequence(void);
-static void test_read_is_partial_when_output_buffer_is_smaller(void);
+static void test_read_is_partial_when_output_is_smaller(void);
 static void test_read_returns_empty_when_no_data_exists(void);
-static void test_zero_length_write_succeeds_with_null_data(void);
-static void test_zero_length_read_succeeds_with_null_buffer(void);
+static void test_zero_length_write_allows_null_data(void);
+static void test_zero_length_read_allows_null_buffer(void);
 static void test_nonzero_write_rejects_null_data(void);
 static void test_nonzero_read_rejects_null_buffer(void);
-static void test_write_requires_written_length_output(void);
-static void test_read_requires_read_length_output(void);
+static void test_write_requires_written_length(void);
+static void test_read_requires_read_length(void);
 ```
 
-Example basic data test:
+Example:
 
 ```c
 uint8_t storage[8] = {0};
@@ -374,49 +353,52 @@ assert(readLength == 3U);
 assert(memcmp(input, output, 3U) == 0);
 ```
 
-- [ ] **Step 2: Run RED verification**
+- [ ] **Step 2: Run RED**
 
-Compile and run with the Task 1 GCC command.
+Compile and execute the RingBuffer Host Test. New tests must fail before implementation.
 
-Expected: FAIL because Write/Read behavior is not implemented yet.
+- [ ] **Step 3: Implement Write ordering**
 
-- [ ] **Step 3: Implement simple synchronous Write path**
-
-Required ordering:
+Required sequence:
 
 ```text
-1. validate object / output pointer / zero-length semantics
-2. snapshot readIndex
-3. use owned writeIndex
-4. calculate free space
-5. choose writeLength = min(dataLength, freeSize)
-6. copy bytes
-7. publish writeIndex last
-8. report writtenLength
-9. return OK or OVERFLOW
+validate object
+validate writtenLength
+set *writtenLength = 0
+handle dataLength == 0
+validate data
+snapshot readIndex
+use Producer-owned writeIndex
+calculate free
+choose writeLength=min(dataLength, free)
+copy data
+publish writeIndex last
+set writtenLength
+return OK or OVERFLOW
 ```
 
-For this task, implementation may already use the final two-segment copy helper so Task 3 only adds wrap-specific tests.
+- [ ] **Step 4: Implement Read ordering**
 
-- [ ] **Step 4: Implement simple synchronous Read path**
-
-Required ordering:
+Required sequence:
 
 ```text
-1. validate object / output pointer / zero-length semantics
-2. snapshot writeIndex
-3. use owned readIndex
-4. calculate readable bytes
-5. if requested > 0 and readable == 0 -> EMPTY
-6. choose readLength = min(bufferSize, readable)
-7. copy bytes
-8. publish readIndex last
-9. return OK
+validate object
+validate readLength
+set *readLength = 0
+handle bufferSize == 0
+validate buffer
+snapshot writeIndex
+use Consumer-owned readIndex
+calculate readable
+if readable == 0 -> EMPTY
+choose actualRead=min(bufferSize, readable)
+copy data
+publish readIndex last
+set readLength
+return OK
 ```
 
-- [ ] **Step 5: Run GREEN verification**
-
-Run:
+- [ ] **Step 5: Run GREEN**
 
 ```bash
 gcc -std=c11 -Wall -Wextra -Werror \
@@ -430,7 +412,7 @@ gcc -std=c11 -Wall -Wextra -Werror \
 ./Tests/ring_buffer/test_ring_buffer
 ```
 
-Expected: all Task 1 + Task 2 tests PASS.
+Expected: Task 1 + Task 2 tests PASS.
 
 - [ ] **Step 6: Commit**
 
@@ -444,127 +426,101 @@ git commit -m "feat(ring): add ring buffer read write"
 
 ---
 
-## Task 3: Freeze Wrap and Overflow Behavior
+## Task 3: Wrap, Full, and Partial-Write Overflow
 
 **Files:**
 - Modify: `02_Service/service_common/ring_buffer.c`
 - Modify: `Tests/ring_buffer/test_ring_buffer.c`
 
-**Consumes:** frozen partial-write semantics from the spec.
+- [ ] **Step 1: Add reserved-slot/full tests**
 
-**Produces:** verified Wrap, Full, and Partial Write behavior.
-
-- [ ] **Step 1: Add failing capacity/full tests**
-
-For `uint8_t storage[8]`, verify usable capacity is 7:
+For `storage[8]`:
 
 ```text
-write 7 bytes -> OK, written = 7, free = 0
-write 1 more  -> OVERFLOW, written = 0
-old 7 bytes   -> unchanged and readable in original order
+usable capacity = 7
+write 7 -> OK, written=7, free=0
+write 1 -> OVERFLOW, written=0
+read back -> original 7 bytes unchanged
 ```
 
-Add:
+Tests:
 
 ```c
-static void test_reserved_slot_capacity_is_storage_size_minus_one(void);
-static void test_full_buffer_rejects_new_data_without_overwriting_old_data(void);
+static void test_capacity_is_storage_size_minus_one(void);
+static void test_full_buffer_rejects_new_data_without_overwrite(void);
 ```
 
-- [ ] **Step 2: Add failing partial-overflow test**
+- [ ] **Step 2: Add partial-overflow test**
 
 Scenario:
 
 ```text
-storageSize = 8, capacity = 7
-write 5 bytes
-free = 2
-request another 4 bytes
+storageSize=8, capacity=7
+write 5
+request write 4
 ```
 
 Expected:
 
 ```text
-writtenLength = 2
+writtenLength=2
 return OVERFLOW
-final stream = original 5 bytes + first 2 bytes of new input
-last 2 new bytes are absent
+stream contains old 5 + first 2 new bytes
+remaining 2 new bytes absent
 ```
 
-Add:
+Test:
 
 ```c
 static void test_partial_write_preserves_old_data_and_reports_overflow(void);
 ```
 
-- [ ] **Step 3: Add failing Wrap Write test**
+- [ ] **Step 3: Add Wrap Write / Wrap Read tests using public operations only**
 
-Force indexes near the physical end through normal public operations, not by directly modifying private state in the test.
-
-Example sequence with storage size 8:
+Sequence:
 
 ```text
-write 5:  A B C D E
-read 4:   consume A B C D
-write 5:  F G H I J
+write A B C D E
+read A B C D
+write F G H I J
+read all
 ```
 
-Expected readable stream:
-
-```text
-E F G H I J
-```
-
-and physical copy must wrap correctly.
-
-- [ ] **Step 4: Add failing Wrap Read test**
-
-Read the wrapped stream into a linear output buffer and verify exact order:
+Expected final readable stream:
 
 ```text
 E F G H I J
 ```
 
-- [ ] **Step 5: Run RED verification**
+Tests must not force `readIndex` or `writeIndex` by directly writing struct members.
 
-Compile and run the RingBuffer suite.
+- [ ] **Step 4: Run RED**
 
-Expected: at least the newly introduced boundary tests fail until final wrap/overflow logic is correct.
+Compile/run and confirm boundary tests expose any incomplete wrap/full behavior.
 
-- [ ] **Step 6: Implement final two-segment copy logic**
+- [ ] **Step 5: Implement final two-segment copy**
 
-Write path equivalent:
+Write:
 
 ```c
 firstLength = writeLength;
 if (firstLength > (ringBuffer->storageSize - writeIndex)) {
     firstLength = ringBuffer->storageSize - writeIndex;
 }
-
 secondLength = writeLength - firstLength;
 ```
 
-Copy:
+Copy first segment to `storage[writeIndex]`, second segment to `storage[0]`, then publish final `writeIndex`.
 
-```text
-input[0:firstLength]
-    -> storage[writeIndex:]
+Read uses the same two-segment structure with `readIndex` and only publishes `readIndex` after output copy completes.
 
-input[firstLength:]
-    -> storage[0:secondLength]
-```
+Primary path must not become a byte-by-byte modulo loop.
 
-Then calculate and publish the final `writeIndex`.
+- [ ] **Step 6: Verify old data is never silently overwritten**
 
-Read path uses the same two-segment principle with `readIndex`.
+All full/partial tests must read back exact preserved byte order.
 
-No byte-by-byte modulo loop is required as the primary implementation path.
-
-- [ ] **Step 7: Verify no silent overwrite**
-
-Run all tests and confirm the full-buffer and partial-overflow tests explicitly read back preserved old data.
-
-- [ ] **Step 8: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add \
@@ -576,18 +532,12 @@ git commit -m "test(ring): cover wrap and overflow semantics"
 
 ---
 
-## Task 4: Add Deterministic Reference-Model Stress Test
+## Task 4: Deterministic Reference-Model Stress Test
 
 **Files:**
 - Modify: `Tests/ring_buffer/test_ring_buffer.c`
 
-**Consumes:** final RingBuffer public API.
-
-**Produces:** long-running deterministic verification against a simple linear reference queue.
-
-- [ ] **Step 1: Add a tiny deterministic pseudo-random generator**
-
-Use a local test-only LCG, for example:
+- [ ] **Step 1: Add deterministic pseudo-random generator**
 
 ```c
 static uint32_t test_next_random(uint32_t *state)
@@ -597,52 +547,54 @@ static uint32_t test_next_random(uint32_t *state)
 }
 ```
 
-Do not use nondeterministic seeds.
+Use a fixed seed.
 
-- [ ] **Step 2: Add a simple reference model**
+- [ ] **Step 2: Add independent linear reference model**
 
-Use a linear array and explicit `referenceLength` representing the expected byte stream.
+Use a plain byte array plus `referenceLength`.
 
-The model must implement the same semantics:
+Reference semantics must independently implement:
 
 ```text
-capacity = N - 1
-partial write when free is insufficient
-read up to requested length
-EMPTY when read requested and referenceLength == 0
+capacity=N-1
+partial write
+read up to request
+EMPTY on nonzero read when empty
 ```
 
-Do not reuse RingBuffer calculations inside the reference model.
+Do not call RingBuffer private calculations from the reference model.
 
-- [ ] **Step 3: Add at least 100000 deterministic operations**
+- [ ] **Step 3: Execute at least 100000 operations**
 
-Alternate pseudo-randomly between write and read operations.
+Use small storage such as:
 
-For every operation compare:
+```text
+storageSize=17
+usable capacity=16
+```
+
+Pseudo-randomly alternate writes and reads. After every operation compare:
 
 ```text
 return code
-writtenLength / readLength
-read bytes
-readable size
-free size
+writtenLength/readLength
+read byte content
+readableSize
+freeSize
 ```
 
-Use a small RingBuffer, e.g. 17-byte storage / 16-byte usable capacity, to force frequent wrap/full/empty transitions.
-
-- [ ] **Step 4: Run stress test**
-
-Run:
+- [ ] **Step 4: Run repeated deterministic verification**
 
 ```bash
 ./Tests/ring_buffer/test_ring_buffer
+./Tests/ring_buffer/test_ring_buffer
 ```
 
-Expected: deterministic PASS on repeated executions.
+Both runs must produce the same PASS result.
 
-- [ ] **Step 5: Run memory-safety friendly host build if GCC supports it in the local environment**
+- [ ] **Step 5: Run sanitizers when locally available**
 
-Preferred additional command:
+Preferred:
 
 ```bash
 gcc -std=c11 -Wall -Wextra -Werror \
@@ -657,7 +609,7 @@ gcc -std=c11 -Wall -Wextra -Werror \
 ./Tests/ring_buffer/test_ring_buffer_san
 ```
 
-If the Windows GCC toolchain does not provide sanitizers, record `SANITIZER_NOT_AVAILABLE`; do not treat tool absence as a code failure.
+If the installed Windows GCC lacks sanitizer runtime support, record `SANITIZER_NOT_AVAILABLE`; do not change production code to satisfy tool availability.
 
 - [ ] **Step 6: Commit**
 
@@ -668,88 +620,72 @@ git commit -m "test(ring): add deterministic stress coverage"
 
 ---
 
-## Task 5: API, Concurrency, and Coding-Standard Review
+## Task 5: Contract Review and Regression Gate
 
 **Files:**
 - Review: `02_Service/service_common/ring_buffer.h`
 - Review: `02_Service/service_common/ring_buffer.c`
 - Review: `Tests/ring_buffer/test_ring_buffer.c`
 
-- [ ] **Step 1: Review SPSC ownership**
+- [ ] **Step 1: Verify SPSC state ownership**
 
-Verify by inspection:
+By inspection:
 
 ```text
-write path never modifies readIndex
-read path never modifies writeIndex
-query APIs modify neither
-reset modifies both only under documented quiescent-only contract
+write path modifies writeIndex only
+read path modifies readIndex only
+queries modify neither
+reset modifies both only under documented quiescent contract
 ```
 
-Reject any introduced shared `count`, shared `isFull`, mutex, or hidden critical section.
+There must be no shared `count`, shared `isFull`, lock, critical section, or hidden IRQ masking.
 
-- [ ] **Step 2: Review publication order**
-
-Verify:
+- [ ] **Step 2: Verify publication order**
 
 ```text
-write: data copy completes before writeIndex publication
-read:  output copy completes before readIndex publication
+write: copy bytes -> publish writeIndex
+read: copy bytes -> publish readIndex
 ```
 
-Do not add CMSIS/FreeRTOS barriers in this pure module without returning to design review.
+Do not add CMSIS/FreeRTOS barriers without returning to design review.
 
-- [ ] **Step 3: Review error semantics**
-
-Verify exact behavior:
+- [ ] **Step 3: Verify exact error semantics**
 
 ```text
-NULL required pointer       -> NULL_POINTER
-storageSize < 2 on init     -> INVALID_PARAM
-invalid existing object     -> NOT_INITIALIZED
-empty non-zero read         -> EMPTY
-partial / zero-space write  -> OVERFLOW
-complete write/read         -> OK
-zero-length write/read      -> OK
+required pointer NULL        -> NULL_POINTER
+init storageSize < 2         -> INVALID_PARAM
+invalid initialized state    -> NOT_INITIALIZED
+empty nonzero read           -> EMPTY
+partial/zero-space write     -> OVERFLOW
+complete operation           -> OK
+zero-length read/write       -> OK
 ```
 
-- [ ] **Step 4: Review scope exclusions**
+- [ ] **Step 4: Verify scope exclusions by search/review**
 
-Confirm RingBuffer contains none of:
+RingBuffer production code must contain none of:
 
 ```text
-UART
-DMA
+HAL_
+osThread
+xTask
 FreeRTOS
-CMSIS-RTOS2
-Notification
-Platform Log
-statistics
-malloc/free
-protocol parsing
+platform_notify
+platform_log
+malloc
+free
+UART_HandleTypeDef
 ```
 
 - [ ] **Step 5: Coding Standard Review**
 
-Record result internally as:
+Only record:
 
 ```text
 Coding Standard Review: PASS
 ```
 
-only after checking:
-
-- file header;
-- Header Guard;
-- naming;
-- Chinese Doxygen in `.h`;
-- no duplicated public API documentation in `.c`;
-- 4 spaces / no TAB;
-- brace rules;
-- no Yoda Condition;
-- no unchecked bounds around memcpy;
-- const correctness;
-- clear ownership and SPSC comments.
+after checking file headers, naming, Chinese Doxygen, no duplicated public docs in `.c`, braces, no TAB, no Yoda Condition, const correctness, NULL/length checks, memcpy boundaries, ownership comments, and SPSC comments.
 
 Run:
 
@@ -757,7 +693,7 @@ Run:
 git diff --check
 ```
 
-- [ ] **Step 6: Re-run complete RingBuffer host suite**
+- [ ] **Step 6: Run final RingBuffer Host Test**
 
 ```bash
 gcc -std=c11 -Wall -Wextra -Werror \
@@ -771,11 +707,11 @@ gcc -std=c11 -Wall -Wextra -Werror \
 ./Tests/ring_buffer/test_ring_buffer
 ```
 
-Expected: PASS with zero compiler warnings.
+Required: PASS, zero compiler warnings.
 
-- [ ] **Step 7: Run existing subsystem regression suites**
+- [ ] **Step 7: Run existing regression suites**
 
-At minimum re-run the current repository Host suites for:
+Re-run the repository Host suites for:
 
 ```text
 Tests/platform_uart
@@ -784,11 +720,11 @@ Tests/platform_os
 Tests/platform_log
 ```
 
-Use their existing compile commands unchanged; RingBuffer must not require changes to those tests or their production modules.
+Use their existing compile commands unchanged. RingBuffer must not require modifying those modules or tests.
 
-If a regression fails, stop and determine whether RingBuffer introduced the failure before continuing to Keil integration.
+If any regression fails, stop and identify the cause before Keil integration.
 
-- [ ] **Step 8: Commit review-only fixes if needed**
+- [ ] **Step 8: Commit review fixes only if needed**
 
 ```bash
 git add \
@@ -798,27 +734,25 @@ git add \
 git commit -m "refactor(ring): finalize spsc ring buffer contract"
 ```
 
-Skip this commit if no review fix is needed.
+Skip if review needs no changes.
 
 ---
 
-## Task 6: Keil Integration and Final Verification
+## Task 6: Keil Integration
 
 **Files:**
 - Modify: `MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx`
 - Do not modify: `Core/Src/freertos.c`
 
-- [ ] **Step 1: Add Service include path**
-
-Add exactly the required path:
+- [ ] **Step 1: Add exact include path**
 
 ```text
 ../02_Service/service_common
 ```
 
-Do not add broad parent directories unnecessarily.
+Do not add a broader Service parent path unless the existing project format requires it.
 
-- [ ] **Step 2: Add RingBuffer source to a Service-oriented Keil group**
+- [ ] **Step 2: Add RingBuffer source to Service group**
 
 Preferred group:
 
@@ -826,64 +760,53 @@ Preferred group:
 service/service_common
 ```
 
-Add:
+Compile:
 
 ```text
 ../02_Service/service_common/ring_buffer.c
 ```
 
-Header does not need to be compiled; adding it to the group is optional and must not be required for the build.
+- [ ] **Step 3: Do not add board-test code**
 
-- [ ] **Step 3: Do not add a board smoke test**
-
-Because RingBuffer is hardware-independent pure C, do not modify:
+This is a pure software module. Do not modify:
 
 ```text
 Core/Src/freertos.c
-main.c
+Core/Src/main.c
 UART callback
 DMA configuration
 ```
 
-for runtime verification.
+for RingBuffer runtime testing.
 
-- [ ] **Step 4: Execute Keil Clean + Full Rebuild**
-
-Local MDK procedure:
+- [ ] **Step 4: Keil Clean + Full Rebuild**
 
 ```text
 Clean Targets
 → Rebuild all target files
 ```
 
-Required result:
+Required:
 
 ```text
 0 Error(s)
 ```
 
-Existing unrelated warnings may remain; do not modify unrelated modules solely to remove historical warnings.
+Historical unrelated warnings may remain; do not refactor unrelated modules only to remove them.
 
-If the executing Agent cannot invoke Keil, status must remain:
+If the Agent cannot run Keil, it must stop with:
 
 ```text
 CODE_COMPLETE_PENDING_KEIL_VERIFICATION
 ```
 
-and it must stop before claiming completion.
+and must not claim phase completion.
 
-- [ ] **Step 5: Verify project file scope**
+- [ ] **Step 5: Review `.uvprojx` diff**
 
-Check the `.uvprojx` diff contains only:
+Accept only the RingBuffer include path/group/source addition plus unavoidable XML ordering generated by Keil. Reject unrelated project churn.
 
-```text
-Service include path
-RingBuffer group/source entry
-```
-
-plus unavoidable XML ordering/format changes from Keil. Do not accept unrelated group churn.
-
-- [ ] **Step 6: Commit Keil integration**
+- [ ] **Step 6: Commit integration**
 
 ```bash
 git add RTT_elog_DMA_UART_ring_project/MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx
@@ -892,61 +815,57 @@ git commit -m "build(ring): integrate ring buffer with keil"
 
 ---
 
-## Task 7: Handoff and Phase Closure
+## Task 7: Handoff and Closure
 
 **Files:**
 - Modify: `00_Doc/04_Agent/handoff.md`
 
-- [ ] **Step 1: Record implementation result**
+- [ ] **Step 1: Append RingBuffer Phase 1 result**
 
-Append a RingBuffer Phase 1 section including:
+Record:
 
 ```text
 Status
 Files changed
 Frozen public API
-SPSC ownership rule
-Storage / usable capacity rule
+SPSC index ownership
+Storage/usable capacity
 Partial-write overflow semantics
 Host Test result
-Stress Test result
-Existing regression result
+100000-op stress result
+Sanitizer result or SANITIZER_NOT_AVAILABLE
+Existing regression results
 Coding Standard Review
-Keil integration status
-Keil build status
+Keil integration/build result
 Deviations
 Blockers
 ```
 
 - [ ] **Step 2: Use evidence-based status**
 
-If Host tests pass but Keil has not been run:
+Host complete but no real Keil build:
 
 ```text
 CODE_COMPLETE_PENDING_KEIL_VERIFICATION
 ```
 
-Only after real Keil `0 Error(s)` evidence may the handoff say:
+Only after real `0 Error(s)`:
 
 ```text
 RingBuffer Phase 1 = COMPLETED
 ```
 
-No board-test evidence is required for this pure software phase.
+No hardware board-test evidence is required for this phase.
 
-- [ ] **Step 3: Record next phase without implementing it**
-
-The handoff may state only:
+- [ ] **Step 3: Record next phase only as a candidate**
 
 ```text
-Next candidate phase:
+Next candidate:
 UART Service integration
-    = Platform UART RX_DATA
-    + RingBuffer
-    + Platform Notify
+= Platform UART RX_DATA + RingBuffer + Platform Notify
 ```
 
-Do not create UART Service files in this phase.
+Do not create UART Service files.
 
 - [ ] **Step 4: Commit handoff**
 
@@ -957,46 +876,45 @@ git commit -m "docs(ring): record ring buffer phase 1 result"
 
 ---
 
-# Final Completion Checklist
+# Completion Checklist
 
-Before claiming `RingBuffer Phase 1 = COMPLETED`, verify all boxes:
+Before claiming `RingBuffer Phase 1 = COMPLETED`:
 
-- [ ] `ring_buffer.h` exists and matches frozen API.
-- [ ] `ring_buffer.c` exists and contains no UART/RTOS/log/statistics dependencies.
-- [ ] Caller-owned storage; no dynamic allocation.
-- [ ] Usable capacity is `storageSize - 1`.
-- [ ] Producer only writes `writeIndex`.
-- [ ] Consumer only writes `readIndex`.
+- [ ] `ring_buffer.h/.c` match frozen API.
+- [ ] No UART/RTOS/log/statistics dependency.
+- [ ] Caller-owned storage; no allocation.
+- [ ] Capacity is `storageSize - 1`.
+- [ ] Producer alone writes `writeIndex`.
+- [ ] Consumer alone writes `readIndex`.
 - [ ] No shared count/full flag.
-- [ ] Partial write preserves old data and returns `PLATFORM_ERR_OVERFLOW`.
-- [ ] Empty non-zero read returns `PLATFORM_ERR_EMPTY`.
-- [ ] Zero-length read/write semantics match spec.
+- [ ] Partial Write returns OVERFLOW without overwriting old data.
+- [ ] Empty nonzero Read returns EMPTY.
+- [ ] Zero-length semantics match spec.
 - [ ] Wrap Write PASS.
 - [ ] Wrap Read PASS.
-- [ ] Deterministic 100000-operation reference-model stress PASS.
-- [ ] RingBuffer host build uses `-Wall -Wextra -Werror` and PASS.
-- [ ] Existing UART / Platform OS / Log host regressions PASS.
+- [ ] 100000-operation deterministic reference-model stress PASS.
+- [ ] RingBuffer GCC `-Wall -Wextra -Werror` PASS.
+- [ ] Existing UART / Platform OS / Log regressions PASS.
 - [ ] Coding Standard Review = PASS.
-- [ ] Keil project includes `../02_Service/service_common`.
-- [ ] Keil project compiles `ring_buffer.c`.
-- [ ] Full Keil Rebuild = `0 Error(s)`.
+- [ ] Keil compiles `ring_buffer.c`.
+- [ ] Keil Full Rebuild = `0 Error(s)`.
 - [ ] No temporary board-test code exists.
-- [ ] `handoff.md` records the real result.
+- [ ] `handoff.md` records real results.
 
 # STOP / BLOCKED Conditions
 
-Stop and return to design review if implementation requires any of the following:
+Stop and return to design review if implementation appears to require:
 
 ```text
-changing the frozen public API
-adding a shared count/isFull modified by both sides
-adding mutex/semaphore/critical section/IRQ masking
-adding CMSIS/FreeRTOS dependencies
-changing overflow from partial-write semantics
-adding statistics to ring_buffer_t
-adding zero-copy pointer lifetime semantics
-making reset concurrent-safe through hidden synchronization
-supporting MPSC/MPMC
+changing frozen public API
+shared count/isFull modified by both sides
+mutex/semaphore/critical section/IRQ masking
+CMSIS/FreeRTOS dependency
+changing partial-write overflow semantics
+statistics inside ring_buffer_t
+zero-copy pointer lifetime API
+hidden synchronization for reset
+MPSC/MPMC support
 ```
 
-Do not solve those cases by silently expanding the RingBuffer Phase 1 scope.
+Do not silently expand RingBuffer Phase 1.
