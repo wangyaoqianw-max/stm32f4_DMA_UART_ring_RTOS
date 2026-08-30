@@ -74,7 +74,13 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
   */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
-  platform_error_t result = app_system_init();
+  platform_error_t result = Platform_Log_Init();
+
+  if (PLATFORM_ERR_OK != result) {
+    Error_Handler();
+  }
+
+  result = app_system_init();
 
   if (PLATFORM_ERR_OK != result) {
     Error_Handler();
