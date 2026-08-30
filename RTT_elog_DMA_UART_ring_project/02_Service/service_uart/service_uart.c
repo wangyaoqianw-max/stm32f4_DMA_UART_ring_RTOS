@@ -122,6 +122,26 @@ static platform_error_t service_uart_validate_init_config(
 }
 
 /**
+ * @brief 校验 Service 对象已完成初始化
+ * @param[in] service : Service 对象
+ * @param[out] 无
+ * @return platform_error_t : 对象状态校验结果
+ */
+static platform_error_t service_uart_validate_initialized(
+    const service_uart_t *service)
+{
+    if (NULL == service) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    if (SERVICE_UART_STATE_UNINITIALIZED == service->context.state) {
+        return PLATFORM_ERR_NOT_INITIALIZED;
+    }
+
+    return PLATFORM_ERR_OK;
+}
+
+/**
  * @brief 初始化 UART Service 对象并绑定 Platform UART 回调
  * @param[in,out] service : 使用 SERVICE_UART_INITIALIZER 初始化的 Service 对象
  * @param[in] config      : Service 配置
@@ -300,6 +320,168 @@ platform_error_t service_uart_deinit(service_uart_t *service)
     }
 
     *service = (service_uart_t)SERVICE_UART_INITIALIZER;
+
+    return PLATFORM_ERR_OK;
+}
+
+/**
+ * @brief 非阻塞读取已缓存的 RX 数据
+ * @param[in,out] service : 已初始化的 Service 对象
+ * @param[out] buffer      : 输出缓冲区
+ * @param[in] bufferSize   : 输出缓冲区容量
+ * @param[out] readLength  : 实际读取长度
+ * @return platform_error_t : 函数执行状态
+ */
+platform_error_t service_uart_read(service_uart_t *service,
+                                   uint8_t *buffer,
+                                   platform_size_t bufferSize,
+                                   platform_size_t *readLength)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    if (NULL == readLength) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    result = service_uart_validate_initialized(service);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    if ((SERVICE_UART_STATE_RUNNING != service->context.state) &&
+        (SERVICE_UART_STATE_STOPPED != service->context.state) &&
+        (SERVICE_UART_STATE_ERROR != service->context.state)) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    result = ring_buffer_read(&service->context.rxRingBuffer,
+                              buffer,
+                              bufferSize,
+                              readLength);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    service->statistics.rxBytesRead += *readLength;
+
+    return PLATFORM_ERR_OK;
+}
+
+/**
+ * @brief 查询当前 RingBuffer 可读字节数
+ * @param[in] service          : 已初始化的 Service 对象
+ * @param[out] readableSize    : 当前可读字节数
+ * @return platform_error_t : 函数执行状态
+ */
+platform_error_t service_uart_get_readable_size(
+    const service_uart_t *service,
+    platform_size_t *readableSize)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    if (NULL == readableSize) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    result = service_uart_validate_initialized(service);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    return ring_buffer_get_readable_size(&service->context.rxRingBuffer, readableSize);
+}
+
+/**
+ * @brief 获取 Service 当前运行状态快照
+ * @param[in] service : 已初始化的 Service 对象
+ * @param[out] status : 输出状态快照
+ * @return platform_error_t : 函数执行状态
+ */
+platform_error_t service_uart_get_status(const service_uart_t *service,
+                                         service_uart_status_t *status)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    if (NULL == status) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    result = service_uart_validate_initialized(service);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    status->state = service->context.state;
+    status->lastError = service->context.lastError;
+    status->dataLossOccurred = service->context.dataLossOccurred;
+
+    return PLATFORM_ERR_OK;
+}
+
+/**
+ * @brief 获取 Service 统计快照
+ * @param[in] service       : 已初始化的 Service 对象
+ * @param[out] statistics   : 输出统计快照
+ * @return platform_error_t : 函数执行状态
+ */
+platform_error_t service_uart_get_statistics(
+    const service_uart_t *service,
+    service_uart_statistics_t *statistics)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    if (NULL == statistics) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    result = service_uart_validate_initialized(service);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    statistics->rxEventCount = service->statistics.rxEventCount;
+    statistics->rxBytesReceived = service->statistics.rxBytesReceived;
+    statistics->rxBytesBuffered = service->statistics.rxBytesBuffered;
+    statistics->rxBytesRead = service->statistics.rxBytesRead;
+    statistics->rxBytesDropped = service->statistics.rxBytesDropped;
+    statistics->ringBufferOverflowCount = service->statistics.ringBufferOverflowCount;
+    statistics->ringBufferHighWaterMark = service->statistics.ringBufferHighWaterMark;
+    statistics->uartErrorCount = service->statistics.uartErrorCount;
+    statistics->cancelCount = service->statistics.cancelCount;
+
+    return PLATFORM_ERR_OK;
+}
+
+/**
+ * @brief 清除跨 RX Session 累计统计
+ * @param[in,out] service : 已初始化且 Consumer 静止的 Service 对象
+ * @param[out] 无
+ * @return platform_error_t : 函数执行状态
+ */
+platform_error_t service_uart_clear_statistics(service_uart_t *service)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    result = service_uart_validate_initialized(service);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    if ((SERVICE_UART_STATE_INITIALIZED != service->context.state) &&
+        (SERVICE_UART_STATE_STOPPED != service->context.state) &&
+        (SERVICE_UART_STATE_ERROR != service->context.state)) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    service->statistics.rxEventCount = 0U;
+    service->statistics.rxBytesReceived = 0U;
+    service->statistics.rxBytesBuffered = 0U;
+    service->statistics.rxBytesRead = 0U;
+    service->statistics.rxBytesDropped = 0U;
+    service->statistics.ringBufferOverflowCount = 0U;
+    service->statistics.ringBufferHighWaterMark = 0U;
+    service->statistics.uartErrorCount = 0U;
+    service->statistics.cancelCount = 0U;
 
     return PLATFORM_ERR_OK;
 }

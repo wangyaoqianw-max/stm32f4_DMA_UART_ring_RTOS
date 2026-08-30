@@ -988,6 +988,175 @@ static int test_rx_data_keeps_high_water_mark_across_reads_and_restart(void)
 }
 
 /**
+ * @brief 验证 Service 非阻塞读取的状态、长度与统计语义
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_read_returns_buffered_data_and_tracks_actual_length(void)
+{
+    service_uart_t service = SERVICE_UART_INITIALIZER;
+    platform_uart_t uart = {0};
+    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    uint8_t dmaRxBuffer[8] = {0};
+    uint8_t ringBufferStorage[16] = {0};
+    uint8_t receivedData[] = {0x91U, 0x92U, 0x93U};
+    uint8_t readBuffer[2] = {0};
+    platform_size_t readLength = 0U;
+    service_uart_config_t config = make_valid_config(&uart,
+                                                      dmaRxBuffer,
+                                                      ringBufferStorage,
+                                                      &consumerThread);
+
+    fake_service_platform_reset();
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
+    TEST_ASSERT(PLATFORM_ERR_INVALID_STATE ==
+                service_uart_read(&service, readBuffer, sizeof(readBuffer), &readLength));
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_start(&service));
+    fake_service_platform_invoke_rx_data(&uart, receivedData, sizeof(receivedData));
+
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                service_uart_read(&service, readBuffer, sizeof(readBuffer), &readLength));
+    TEST_ASSERT(sizeof(readBuffer) == readLength);
+    TEST_ASSERT(0 == memcmp(receivedData, readBuffer, sizeof(readBuffer)));
+    TEST_ASSERT(sizeof(readBuffer) == service.statistics.rxBytesRead);
+
+    service.context.state = SERVICE_UART_STATE_STOPPED;
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                service_uart_read(&service, readBuffer, sizeof(readBuffer), &readLength));
+    TEST_ASSERT(1U == readLength);
+    TEST_ASSERT(receivedData[2] == readBuffer[0]);
+    TEST_ASSERT(sizeof(receivedData) == service.statistics.rxBytesRead);
+    service.context.state = SERVICE_UART_STATE_ERROR;
+    TEST_ASSERT(PLATFORM_ERR_EMPTY ==
+                service_uart_read(&service, readBuffer, sizeof(readBuffer), &readLength));
+    TEST_ASSERT(0U == readLength);
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_read(&service, NULL, 0U, &readLength));
+    TEST_ASSERT(0U == readLength);
+
+    return 0;
+}
+
+/**
+ * @brief 验证 Service 查询接口返回状态、RingBuffer 真值与逐字段统计快照
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_queries_copy_service_truth_and_reject_uninitialized(void)
+{
+    service_uart_t service = SERVICE_UART_INITIALIZER;
+    platform_uart_t uart = {0};
+    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    uint8_t dmaRxBuffer[8] = {0};
+    uint8_t ringBufferStorage[16] = {0};
+    uint8_t receivedData[] = {0xA1U, 0xA2U};
+    platform_size_t readableSize = 0U;
+    service_uart_status_t status = {0};
+    service_uart_statistics_t statistics = {0};
+    service_uart_config_t config = make_valid_config(&uart,
+                                                      dmaRxBuffer,
+                                                      ringBufferStorage,
+                                                      &consumerThread);
+
+    TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED ==
+                service_uart_get_readable_size(&service, &readableSize));
+    TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED == service_uart_get_status(&service, &status));
+    TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED ==
+                service_uart_get_statistics(&service, &statistics));
+
+    fake_service_platform_reset();
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_start(&service));
+    fake_service_platform_invoke_rx_data(&uart, receivedData, sizeof(receivedData));
+    service.context.lastError = PLATFORM_ERR_IO;
+    service.context.dataLossOccurred = PLATFORM_TRUE;
+    service.statistics.rxBytesRead = 3U;
+    service.statistics.uartErrorCount = 4U;
+    service.statistics.cancelCount = 5U;
+
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_get_readable_size(&service, &readableSize));
+    TEST_ASSERT(sizeof(receivedData) == readableSize);
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_get_status(&service, &status));
+    TEST_ASSERT(SERVICE_UART_STATE_RUNNING == status.state);
+    TEST_ASSERT(PLATFORM_ERR_IO == status.lastError);
+    TEST_ASSERT(PLATFORM_TRUE == status.dataLossOccurred);
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_get_statistics(&service, &statistics));
+    TEST_ASSERT(1U == statistics.rxEventCount);
+    TEST_ASSERT(sizeof(receivedData) == statistics.rxBytesReceived);
+    TEST_ASSERT(sizeof(receivedData) == statistics.rxBytesBuffered);
+    TEST_ASSERT(3U == statistics.rxBytesRead);
+    TEST_ASSERT(0U == statistics.rxBytesDropped);
+    TEST_ASSERT(0U == statistics.ringBufferOverflowCount);
+    TEST_ASSERT(sizeof(receivedData) == statistics.ringBufferHighWaterMark);
+    TEST_ASSERT(4U == statistics.uartErrorCount);
+    TEST_ASSERT(5U == statistics.cancelCount);
+
+    return 0;
+}
+
+/**
+ * @brief 验证清除统计的状态限制及其不影响运行时状态和 RingBuffer
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_clear_statistics_preserves_runtime_and_buffer(void)
+{
+    service_uart_t service = SERVICE_UART_INITIALIZER;
+    platform_uart_t uart = {0};
+    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    uint8_t dmaRxBuffer[8] = {0};
+    uint8_t ringBufferStorage[16] = {0};
+    uint8_t receivedData[] = {0xB1U, 0xB2U};
+    platform_size_t readableSize = 0U;
+    service_uart_config_t config = make_valid_config(&uart,
+                                                      dmaRxBuffer,
+                                                      ringBufferStorage,
+                                                      &consumerThread);
+
+    fake_service_platform_reset();
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
+    service.statistics.rxEventCount = 1U;
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_clear_statistics(&service));
+    TEST_ASSERT(0U == service.statistics.rxEventCount);
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_start(&service));
+    fake_service_platform_invoke_rx_data(&uart, receivedData, sizeof(receivedData));
+    service.context.lastError = PLATFORM_ERR_IO;
+    service.context.dataLossOccurred = PLATFORM_TRUE;
+    TEST_ASSERT(PLATFORM_ERR_INVALID_STATE == service_uart_clear_statistics(&service));
+    service.context.state = SERVICE_UART_STATE_STOPPING;
+    TEST_ASSERT(PLATFORM_ERR_INVALID_STATE == service_uart_clear_statistics(&service));
+    service.context.state = SERVICE_UART_STATE_STOPPED;
+
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_get_readable_size(&service.context.rxRingBuffer,
+                                                                  &readableSize));
+    TEST_ASSERT(sizeof(receivedData) == readableSize);
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_clear_statistics(&service));
+    TEST_ASSERT(0U == service.statistics.rxEventCount);
+    TEST_ASSERT(0U == service.statistics.rxBytesReceived);
+    TEST_ASSERT(0U == service.statistics.rxBytesBuffered);
+    TEST_ASSERT(0U == service.statistics.rxBytesRead);
+    TEST_ASSERT(0U == service.statistics.rxBytesDropped);
+    TEST_ASSERT(0U == service.statistics.ringBufferOverflowCount);
+    TEST_ASSERT(0U == service.statistics.ringBufferHighWaterMark);
+    TEST_ASSERT(0U == service.statistics.uartErrorCount);
+    TEST_ASSERT(0U == service.statistics.cancelCount);
+    TEST_ASSERT(PLATFORM_ERR_IO == service.context.lastError);
+    TEST_ASSERT(PLATFORM_TRUE == service.context.dataLossOccurred);
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_get_readable_size(&service.context.rxRingBuffer,
+                                                                  &readableSize));
+    TEST_ASSERT(sizeof(receivedData) == readableSize);
+
+    service.context.state = SERVICE_UART_STATE_ERROR;
+    service.statistics.rxEventCount = 1U;
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_clear_statistics(&service));
+    TEST_ASSERT(0U == service.statistics.rxEventCount);
+
+    return 0;
+}
+
+/**
  * @brief 运行 UART Service 对象生命周期测试
  * @param[in] 无
  * @param[out] 无
@@ -1083,6 +1252,21 @@ int main(void)
     }
 
     result = test_rx_data_is_ignored_outside_running();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_read_returns_buffered_data_and_tracks_actual_length();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_queries_copy_service_truth_and_reject_uninitialized();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_clear_statistics_preserves_runtime_and_buffer();
     if (0 != result) {
         return result;
     }
