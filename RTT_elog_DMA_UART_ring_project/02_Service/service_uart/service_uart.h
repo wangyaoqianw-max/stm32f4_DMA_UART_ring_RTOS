@@ -29,6 +29,10 @@
 //******************************** Defines *********************************//
 
 //******************************** Types ***********************************//
+/**
+ * @brief UART Service 生命周期状态
+ * @note 状态由 Service 管理；RUNNING 状态下 UART RX callback 是 RingBuffer 唯一 Producer。
+ */
 typedef enum
 {
     SERVICE_UART_STATE_UNINITIALIZED = 0,
@@ -40,48 +44,92 @@ typedef enum
     SERVICE_UART_STATE_MAX
 } service_uart_state_t;
 
+/**
+ * @brief UART Service 初始化配置
+ * @note 全部指针指向的对象及存储均由 APP / Caller 持有，并必须至少有效至 deinit 完成。
+ */
 typedef struct
 {
+    /** Platform UART 抽象对象；Service 不拥有其硬件生命周期。 */
     platform_uart_t *uart;
+    /** UART DMA 持续接收使用的调用者存储。 */
     uint8_t *dmaRxBuffer;
+    /** DMA 接收存储的字节数，必须大于 0。 */
     platform_size_t dmaRxBufferSize;
+    /** SPSC RingBuffer 使用的调用者后备存储。 */
     uint8_t *ringBufferStorage;
+    /** RingBuffer 后备存储长度，必须至少为 2。 */
     platform_size_t ringBufferStorageSize;
+    /** 唯一 Consumer Communication Task 的 Platform 线程对象。 */
     platform_thread_t *consumerThread;
 } service_uart_config_t;
 
+/**
+ * @brief UART Service 当前 RX Session 的运行上下文
+ * @note state、lastError 与 dataLossOccurred 可由 UART callback 和 Consumer Task 并发观察。
+ */
 typedef struct
 {
+    /** 当前 Service 生命周期状态。 */
     volatile service_uart_state_t state;
+    /** RX callback 为 Producer、Consumer Task 为 Consumer 的 SPSC RingBuffer。 */
     ring_buffer_t rxRingBuffer;
+    /** 当前 Session 的 UART 或 Service runtime error；RingBuffer overflow 不写入此字段。 */
     volatile platform_error_t lastError;
+    /** 当前 Session 的 sticky 数据丢失标记；新 Session 成功启动时清除。 */
     volatile platform_bool_t dataLossOccurred;
 } service_uart_context_t;
 
+/**
+ * @brief UART Service 跨 RX Session 累计统计
+ * @note 字段为 best-effort 快照；不通过锁或 IRQ masking 强制获得事务一致性。
+ */
 typedef struct
 {
+    /** 收到的 RX_DATA 事件数量。 */
     volatile uint32_t rxEventCount;
+    /** RX_DATA 输入字节累计值。 */
     volatile uint32_t rxBytesReceived;
+    /** 已成功复制到 RingBuffer 的字节累计值。 */
     volatile uint32_t rxBytesBuffered;
+    /** 已被 Consumer Task 读取的字节累计值。 */
     volatile uint32_t rxBytesRead;
+    /** 因 RingBuffer 无法容纳而丢弃的输入字节累计值。 */
     volatile uint32_t rxBytesDropped;
+    /** 发生 Partial Write 或 Full Drop 的事件累计值。 */
     volatile uint32_t ringBufferOverflowCount;
+    /** RingBuffer 历史最大可读字节数，不因读取或新 Session 而下降。 */
     volatile platform_size_t ringBufferHighWaterMark;
+    /** 收到的 Platform UART ERROR 事件累计值。 */
     volatile uint32_t uartErrorCount;
+    /** 收到的 Platform UART CANCELED 事件累计值。 */
     volatile uint32_t cancelCount;
 } service_uart_statistics_t;
 
+/**
+ * @brief UART Service 当前运行状态快照
+ */
 typedef struct
 {
+    /** 当前 Service 生命周期状态。 */
     service_uart_state_t state;
+    /** 当前 Session 的最近 runtime error。 */
     platform_error_t lastError;
+    /** 当前 Session 是否发生过数据丢失。 */
     platform_bool_t dataLossOccurred;
 } service_uart_status_t;
 
+/**
+ * @brief UART Service 对象
+ * @note 对象和全部 Config 指向的资源均由 APP / Caller 持有；使用前必须零初始化。
+ */
 typedef struct
 {
+    /** 不随运行时变化的依赖与存储配置副本。 */
     service_uart_config_t config;
+    /** 当前 RX Session 的运行上下文。 */
     service_uart_context_t context;
+    /** 跨 Session 累计统计。 */
     service_uart_statistics_t statistics;
 } service_uart_t;
 //******************************** Types ***********************************//
