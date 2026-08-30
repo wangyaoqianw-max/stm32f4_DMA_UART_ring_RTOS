@@ -477,6 +477,59 @@ CODE_COMPLETE_PENDING_KEIL_VERIFICATION
 
 ---
 
+## 8.1 RingBuffer Phase 1 执行记录（2026-08-30）
+
+当前状态：
+
+```text
+CODE_COMPLETE_PENDING_KEIL_VERIFICATION
+```
+
+已创建或修改：
+
+```text
+02_Service/service_common/ring_buffer.h
+02_Service/service_common/ring_buffer.c
+Tests/ring_buffer/test_ring_buffer.c
+MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx
+```
+
+冻结实现合同已保持：
+
+```text
+SPSC：Producer 仅写 writeIndex，Consumer 仅写 readIndex。
+Storage：调用者持有；RingBuffer 不 malloc / free。
+容量：storageSize = N，实际可用容量 = N - 1。
+发布顺序：复制完成后才发布对应 Index。
+Overflow：Partial Write；保留旧数据，写入可容纳的新数据前缀，未完整写入返回 PLATFORM_ERR_OVERFLOW。
+```
+
+已完成验证：
+
+```text
+RingBuffer Host Test                         PASS
+Deterministic Reference-Model Stress         PASS（固定种子，100000 次操作）
+Platform UART Host Regression                PASS
+Impl Platform UART Host Regression           PASS
+Platform OS Host Regression / Header Test    PASS
+Platform Log Host Regression                 PASS
+Coding Standard Review                       PASS
+Keil 工程静态集成                            PASS
+Keil Clean Targets / Rebuild all target files 未执行（需要人工 Keil）
+```
+
+本阶段未新增 UART Service、Platform Notify 集成、统计信息、Communication Task、DMA Buffer 所有权或协议解析。
+
+人工 Keil 验收步骤：
+
+```text
+Clean Targets
+-> Rebuild all target files
+-> 确认 0 Error(s)
+```
+
+---
+
 ## 9. 当前 Scope Guard
 
 RingBuffer Phase 1 禁止提前实现：
