@@ -34,6 +34,9 @@ static void service_uart_handle_platform_event(
     void *callbackContext)
 {
     service_uart_t *service = (service_uart_t *)callbackContext;
+    platform_error_t result = PLATFORM_ERR_OK;
+    platform_size_t writtenLength = 0U;
+    platform_size_t readableSize = 0U;
 
     /**
      * CANCELED 可能来自 stop 的同步 Task Context，也可能是组合合同被破坏后的非预期事件；
@@ -41,13 +44,56 @@ static void service_uart_handle_platform_event(
      **/
     if ((NULL == service) || (NULL == uart) || (NULL == event) ||
         (uart != service->config.uart) ||
-        (PLATFORM_UART_EVENT_CANCELED != event->type) ||
         (PLATFORM_UART_DIRECTION_RX != event->direction)) {
         return;
     }
 
-    service->statistics.cancelCount++;
-    service->context.state = SERVICE_UART_STATE_STOPPED;
+    if (PLATFORM_UART_EVENT_CANCELED == event->type) {
+        service->statistics.cancelCount++;
+        service->context.state = SERVICE_UART_STATE_STOPPED;
+        return;
+    }
+
+    if ((PLATFORM_UART_EVENT_RX_DATA != event->type) ||
+        (SERVICE_UART_STATE_RUNNING != service->context.state)) {
+        return;
+    }
+
+    service->statistics.rxEventCount++;
+    service->statistics.rxBytesReceived += event->dataLength;
+    result = ring_buffer_write(&service->context.rxRingBuffer,
+                               event->data,
+                               event->dataLength,
+                               &writtenLength);
+    if ((PLATFORM_ERR_OK != result) && (PLATFORM_ERR_OVERFLOW != result)) {
+        return;
+    }
+
+    service->statistics.rxBytesBuffered += writtenLength;
+    if (event->dataLength != writtenLength) {
+        service->statistics.rxBytesDropped += event->dataLength - writtenLength;
+        service->statistics.ringBufferOverflowCount++;
+        service->context.dataLossOccurred = PLATFORM_TRUE;
+    }
+
+    result = ring_buffer_get_readable_size(&service->context.rxRingBuffer,
+                                           &readableSize);
+    if (PLATFORM_ERR_OK != result) {
+        return;
+    }
+
+    if (readableSize > service->statistics.ringBufferHighWaterMark) {
+        service->statistics.ringBufferHighWaterMark = readableSize;
+    }
+
+    result = platform_notify_set_from_isr(service->config.consumerThread,
+                                          SERVICE_UART_NOTIFY_WAKE_FLAG);
+    if (PLATFORM_ERR_OK != result) {
+        /**
+         * ISR 中没有安全的同步恢复路径；状态和 RingBuffer 仍是真值，Consumer 可由后续唤醒发现。
+         **/
+        return;
+    }
 }
 
 /**
