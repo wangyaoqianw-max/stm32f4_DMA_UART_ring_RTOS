@@ -813,3 +813,52 @@ CODE_COMPLETE_PENDING_HARDWARE_VERIFICATION
 ```text
 COMPLETED
 ```
+
+---
+
+## 22. RTOS Platform Phase 1 — Board Smoke Test Code Ready — 2026-08-30
+
+状态：
+
+```text
+BOARD_TEST_CODE_READY
+```
+
+### 临时测试代码
+
+- 仅在 `Core/Src/freertos.c` 的 CubeMX `USER CODE` 区加入临时 RTOS Platform Smoke Test。
+- 通过独立的 2 KiB Controller Thread 运行测试，保持 CubeMX 默认任务为空闲循环，避免默认 512-byte
+  栈承载测试状态机。
+- 自动验证：Time/Delay、Thread current/create/run/terminate、Mutex、Semaphore、Queue 的
+  Producer/Consumer 顺序、Task Notification、周期 Software Timer。
+- ISR Notification 使用既有已验证的 USART1 Platform UART DMA RX 路径：RX_DATA 回调中仅调用
+  `platform_notify_set_from_isr()`，不记录日志、不阻塞、不分配、不解析数据。
+- 所有测试结果及最终汇总仅由 Task Context 经 Platform Log / RTT 输出。
+
+### 人工验证步骤
+
+1. 在 MDK 工程执行 `Clean Targets -> Rebuild all target files`，确认实际 `0 Error(s)`。
+2. 下载到目标板并打开 RTT。
+3. 看到 `NOTIFY ISR READY` 后，在 60 秒内向 USART1 发送任意短数据。
+4. 收集完整 RTT 输出；只有出现以下最终行，才可记录板测 PASS：
+
+```text
+RTOS PLATFORM BOARD TEST: PASS
+```
+
+### Coding Standard Review
+
+```text
+Coding Standard Review: PASS
+```
+
+- 临时自研代码已检查 USER CODE 边界、文件级状态命名、函数命名、中文设计/并发注释、显式大括号、
+  资源生命周期、返回值、ISR/Task 边界、Yoda Condition、TAB 和超长行。
+- `Core/Src/freertos.c` 是 CubeMX 文件；未修改 USER CODE 区之外的生成逻辑，格式保持局部 CubeMX
+  风格作为生成文件例外。
+
+### 当前限制
+
+- 未执行本轮 Keil 构建，未下载，未取得任何新的 RTT 或板测结果。
+- 临时代码尚未恢复，RTOS Platform Phase 1 仍为
+  `CODE_COMPLETE_PENDING_HARDWARE_VERIFICATION`，不得标记 `COMPLETED`。
