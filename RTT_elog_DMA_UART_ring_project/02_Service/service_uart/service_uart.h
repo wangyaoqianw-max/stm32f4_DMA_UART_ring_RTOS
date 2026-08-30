@@ -154,8 +154,10 @@ platform_error_t service_uart_start(service_uart_t *service);
 /**
  * @brief 取消当前 UART RX Session 并停止 Service 接收
  * @param[in,out] service : 正在运行的 UART Service 对象
- * @return PLATFORM_ERR_OK 成功；其他值表示状态或 Platform UART 取消失败
+ * @return PLATFORM_ERR_OK 成功；其他值表示状态、Platform UART 取消或 Task 通知失败
  * @note 仅 Service 可以取消其拥有的活动 RX Session。
+ * @note 若在取消完成后的通知阶段失败，Service 已处于 STOPPED；调用者必须通过
+ * service_uart_get_status() 获取真实状态，不能仅凭本函数错误返回推断仍在运行。
  */
 platform_error_t service_uart_stop(service_uart_t *service);
 /**

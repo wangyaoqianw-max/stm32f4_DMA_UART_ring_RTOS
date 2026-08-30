@@ -15,6 +15,11 @@
 #include "service_uart.h"
 //******************************** Includes *********************************//
 
+//******************************** Defines **********************************//
+/* Platform Thread Flag 仅作为 Consumer 重新检查 Service 真值的私有唤醒提示。 */
+#define SERVICE_UART_NOTIFY_WAKE_FLAG    (1U << 0)
+//******************************** Defines **********************************//
+
 //******************************** Functions *********************************//
 /**
  * @brief 接收 Platform UART 异步事件
@@ -28,12 +33,21 @@ static void service_uart_handle_platform_event(
     const platform_uart_event_t *event,
     void *callbackContext)
 {
+    service_uart_t *service = (service_uart_t *)callbackContext;
+
     /**
-     * Task 2 仅建立回调归属；RX 数据、错误和取消处理由后续 Task 实现。
+     * CANCELED 可能来自 stop 的同步 Task Context，也可能是组合合同被破坏后的非预期事件；
+     * 两种情况都不能在 callback 内调用 Notify，因为 callback 的执行上下文不可假设。
      **/
-    (void)uart;
-    (void)event;
-    (void)callbackContext;
+    if ((NULL == service) || (NULL == uart) || (NULL == event) ||
+        (uart != service->config.uart) ||
+        (PLATFORM_UART_EVENT_CANCELED != event->type) ||
+        (PLATFORM_UART_DIRECTION_RX != event->direction)) {
+        return;
+    }
+
+    service->statistics.cancelCount++;
+    service->context.state = SERVICE_UART_STATE_STOPPED;
 }
 
 /**
@@ -106,6 +120,103 @@ platform_error_t service_uart_init(service_uart_t *service,
     }
 
     service->context.state = SERVICE_UART_STATE_INITIALIZED;
+
+    return PLATFORM_ERR_OK;
+}
+
+/**
+ * @brief 开启新的 UART RX Session
+ * @param[in,out] service : 已初始化的 UART Service 对象
+ * @param[out] 无
+ * @return platform_error_t : 函数执行状态
+ */
+platform_error_t service_uart_start(service_uart_t *service)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+    service_uart_state_t previousState = SERVICE_UART_STATE_UNINITIALIZED;
+    platform_error_t previousLastError = PLATFORM_ERR_OK;
+    platform_bool_t previousDataLossOccurred = PLATFORM_FALSE;
+
+    /**
+     * RUNNING 必须在 read_async 前发布，避免 Impl 立即通知的首个 RX callback 被错误丢弃。
+     **/
+    if (NULL == service) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    if (SERVICE_UART_STATE_UNINITIALIZED == service->context.state) {
+        return PLATFORM_ERR_NOT_INITIALIZED;
+    }
+
+    if ((SERVICE_UART_STATE_INITIALIZED != service->context.state) &&
+        (SERVICE_UART_STATE_STOPPED != service->context.state) &&
+        (SERVICE_UART_STATE_ERROR != service->context.state)) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    previousState = service->context.state;
+    previousLastError = service->context.lastError;
+    previousDataLossOccurred = service->context.dataLossOccurred;
+
+    result = ring_buffer_reset(&service->context.rxRingBuffer);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
+
+    service->context.dataLossOccurred = PLATFORM_FALSE;
+    service->context.lastError = PLATFORM_ERR_OK;
+    service->context.state = SERVICE_UART_STATE_RUNNING;
+
+    result = platform_uart_read_async(service->config.uart,
+                                      service->config.dmaRxBuffer,
+                                      service->config.dmaRxBufferSize);
+    if (PLATFORM_ERR_OK != result) {
+        service->context.state = previousState;
+        service->context.lastError = previousLastError;
+        service->context.dataLossOccurred = previousDataLossOccurred;
+        return result;
+    }
+
+    return PLATFORM_ERR_OK;
+}
+
+/**
+ * @brief 取消活动 RX Session 并唤醒 Consumer 重新检查 Service 状态
+ * @param[in,out] service : 正在运行的 UART Service 对象
+ * @param[out] 无
+ * @return platform_error_t : 函数执行状态
+ */
+platform_error_t service_uart_stop(service_uart_t *service)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    /**
+     * 当前 STM32 Impl 保证 cancel 在返回前同步触发 CANCELED，因此 STOPPING 由 callback 转为 STOPPED。
+     **/
+    if (NULL == service) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    if (SERVICE_UART_STATE_UNINITIALIZED == service->context.state) {
+        return PLATFORM_ERR_NOT_INITIALIZED;
+    }
+
+    if (SERVICE_UART_STATE_RUNNING != service->context.state) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    service->context.state = SERVICE_UART_STATE_STOPPING;
+    result = platform_uart_cancel(service->config.uart, PLATFORM_UART_DIRECTION_RX);
+    if (PLATFORM_ERR_OK != result) {
+        service->context.state = SERVICE_UART_STATE_RUNNING;
+        return result;
+    }
+
+    result = platform_notify_set(service->config.consumerThread,
+                                 SERVICE_UART_NOTIFY_WAKE_FLAG);
+    if (PLATFORM_ERR_OK != result) {
+        return result;
+    }
 
     return PLATFORM_ERR_OK;
 }

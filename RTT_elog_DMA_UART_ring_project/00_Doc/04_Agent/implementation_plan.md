@@ -433,15 +433,25 @@ stop from INITIALIZED / STOPPED / ERROR -> INVALID_STATE
 CANCELED callback itself does not call notify
 ```
 
+Approved decision (2026-08-30): if `platform_uart_cancel()` has completed and
+the subsequent Task-context `platform_notify_set()` fails,
+`service_uart_stop()` returns that notification error while the Service remains
+`STOPPED`. Callers must use `service_uart_get_status()` to determine the actual
+Service state rather than inferring that it is still RUNNING from the error.
+
 - [ ] Add restart test:
 
 ```text
-start -> RX data buffered -> stop
-STOPPED read may drain old data
-start again -> old unread RingBuffer data is reset/discarded
+start -> stop -> start
+new start resets RingBuffer
 statistics remain cumulative
 new RX Session becomes RUNNING
 ```
+
+The end-to-end restart case that first buffers `RX_DATA`, then verifies that
+the next `start()` discards unread data, is intentionally executed in Task 4
+after RX_DATA handling exists. This is a task-order adjustment approved on
+2026-08-30; it does not alter the frozen restart semantics.
 
 - [ ] Add unexpected CANCELED test:
 
@@ -482,6 +492,16 @@ rxBytesReceived    += 5
 rxBytesBuffered    += 5
 rxBytesDropped     += 0
 notify_set_from_isr count += 1
+```
+
+- [ ] Add the deferred restart-with-buffered-RX test:
+
+```text
+start -> RX data buffered -> stop
+STOPPED read may drain old data
+start again -> old unread RingBuffer data is reset/discarded
+statistics remain cumulative
+new RX Session becomes RUNNING
 ```
 
 - [ ] Add failing Partial Write test. Use a deliberately small RingBuffer so only a prefix fits:
