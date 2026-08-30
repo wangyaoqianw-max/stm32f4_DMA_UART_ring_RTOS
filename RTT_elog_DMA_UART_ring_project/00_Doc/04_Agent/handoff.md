@@ -12,8 +12,8 @@
 
 - 工程根目录：`RTT_elog_DMA_UART_ring_project/`
 - 当前分支：`main`
-- 当前活动阶段：`RingBuffer Phase 1 — SPSC Byte Stream RingBuffer`
-- 当前状态：`RingBuffer Phase 1 — COMPLETED`
+- 当前活动阶段：`UART Service Phase 1`
+- 当前状态：`READY_FOR_IMPLEMENTATION`
 - MCU：STM32F411CEU6，Cortex-M4F
 - 软件环境：STM32 HAL、CMSIS-RTOS2 / FreeRTOS、Keil MDK-ARM、EasyLogger、SEGGER RTT
 
@@ -23,35 +23,51 @@
 APP -> Service -> Platform -> Impl -> Vendor / HAL / RTOS / Hardware
 ```
 
-当前阶段只建立：
+当前阶段建立：
 
 ```text
-Producer
+Platform UART RX_DATA / ERROR / CANCELED
+   ↓
+UART Service RX Session / Statistics
    ↓
 SPSC RingBuffer
    ↓
-Consumer
+Platform Notify
+   ↓
+Dedicated Communication Task
 ```
 
 本阶段不接入：
 
 ```text
-Platform UART RX_DATA
-Platform Notify
-Communication Task
-UART Service
-Service Statistics
 Protocol Parser
+Async TX Service
+Frame Queue
+Multi-UART aggregation
+Multi-Consumer
+Service-created Task
+Automatic UART error recovery
 service_log
 ```
 
 当前权威执行文档：
 
 ```text
-00_Doc/02_架构设计/RingBuffer_SPSC设计.md
+00_Doc/02_架构设计/UART_Service_Phase1设计.md
 00_Doc/04_Agent/implementation_plan.md
 00_Doc/04_Agent/execution_rules.md
 00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
+```
+
+当前实施范围已冻结为：单 Platform UART、单 UART Service、单专用 Consumer Task。
+APP 持有 Platform UART 硬件 lifecycle、Task lifecycle 和所有 backing storage；
+UART Service 持有活动 RX Session，且是唯一允许取消该 Session 的模块。
+
+Platform UART 公共 API 保持冻结，仅有已批准例外：
+
+```text
+UART Service Phase 1 may add platform_uart_set_callback();
+all other Platform UART public API semantics remain frozen.
 ```
 
 若历史段落、旧提交说明或旧阶段 Scope Guard 与上述当前文档冲突，以当前冻结专项设计和
@@ -96,7 +112,8 @@ EasyLogger / RTT
 - 生命周期状态保护；
 - 恢复临时测试代码后的 Keil Full Rebuild `0 Error(s)`。
 
-Platform UART 公共 API 已冻结，不因后续 RingBuffer / Service 工作修改。
+Platform UART 公共 API 已冻结。UART Service Phase 1 唯一批准的例外为
+`platform_uart_set_callback()`；除此之外不得修改既有 Platform UART 公共语义。
 
 ---
 
@@ -221,7 +238,7 @@ RTOS PLATFORM BOARD TEST: PASS
 
 ---
 
-## 3. 当前 RingBuffer Phase 1
+## 3. RingBuffer Phase 1 历史合同
 
 专项设计：
 
@@ -229,7 +246,7 @@ RTOS PLATFORM BOARD TEST: PASS
 00_Doc/02_架构设计/RingBuffer_SPSC设计.md
 ```
 
-当前实施计划：
+历史实施计划：
 
 ```text
 00_Doc/04_Agent/implementation_plan.md
@@ -246,14 +263,8 @@ Tests/ring_buffer/
 └── test_ring_buffer.c
 ```
 
-`02_Service/service_uart/` 即使本地存在空目录或占位目录，也不构成当前阶段阻塞。
-Task 0 只要求：
-
-```text
-No existing production service_uart implementation
-```
-
-当前阶段不得创建或修改 UART Service 生产代码。
+RingBuffer Phase 1 已完成；本节保留其冻结合同与验收记录，供 UART Service Phase 1
+作为既有 SPSC 容器依赖，不重新设计其 API、`N - 1` 容量规则或并发合同。
 
 ---
 
@@ -398,7 +409,7 @@ is_empty / is_full convenience API
 
 ---
 
-## 7. 当前执行计划
+## 7. RingBuffer Phase 1 历史执行计划
 
 执行顺序：
 
@@ -524,23 +535,45 @@ Keil 人工验收已完成，RingBuffer Phase 1 满足完成门禁。
 
 ---
 
-## 9. 当前 Scope Guard
+## 9. 当前 UART Service Phase 1 Scope Guard
 
-RingBuffer Phase 1 禁止提前实现：
+UART Service Phase 1 仅实现单 UART RX 数据流：
 
 ```text
+Platform UART RX_DATA / ERROR / CANCELED
+    ↓
 UART Service
-Platform UART callback integration
-Platform Notify integration
-Communication Task
-Service statistics
-Protocol Parser
-service_log
-DMA Buffer ownership integration
-UART Error Recovery policy
+    ↓
+existing SPSC RingBuffer
+    ↓
+Platform Notify
+    ↓
+dedicated Communication Task
 ```
 
-如果实现证明必须修改冻结 RingBuffer API、SPSC 并发合同、`N-1` 容量模型或 Partial Write 策略：
+本阶段禁止实现：
+
+```text
+Protocol Parser
+Async TX Service
+Frame Queue
+Multi-UART aggregation
+Multi-Consumer
+Service-created Task
+Automatic UART error recovery
+service_log
+Dynamic memory allocation
+HAL / DMA / RTOS concrete types in Service public API
+```
+
+仅允许对 Platform UART 增加已批准的：
+
+```c
+platform_uart_set_callback();
+```
+
+如果实现证明还必须修改其他冻结 Platform UART API、RingBuffer API、Platform Notify API、
+SPSC 并发合同、`N - 1` 容量模型或 Partial Write 策略：
 
 ```text
 STOP / BLOCKED
@@ -550,9 +583,9 @@ STOP / BLOCKED
 
 ---
 
-## 10. 下一阶段
+## 10. 当前 UART Service Phase 1
 
-RingBuffer Phase 1 完成后，再单独设计和实施 UART Service：
+当前阶段按以下链路实施：
 
 ```text
 Platform UART RX_DATA
@@ -566,7 +599,7 @@ Platform Notify From ISR
 Communication Task / APP
 ```
 
-下一阶段再引入：
+当前阶段引入：
 
 ```text
 service_uart_config_t
@@ -578,7 +611,15 @@ UART error / cancel / restart policy
 Notification wake-up semantics
 ```
 
-当前阶段不提前冻结这些 UART Service 公共 API。
+专项冻结设计：
+
+```text
+00_Doc/02_架构设计/UART_Service_Phase1设计.md
+```
+
+只有 Host Test、既有 Regression、Coding Standard Review、Keil Full Rebuild、真实板级
+ISR -> Service -> Task Smoke Test 及恢复后 Keil Rebuild 均具备真实证据时，
+UART Service Phase 1 才可标记为 `COMPLETED`。
 
 ---
 
