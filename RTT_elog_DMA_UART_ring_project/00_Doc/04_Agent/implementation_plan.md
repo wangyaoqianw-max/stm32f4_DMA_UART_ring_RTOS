@@ -1,15 +1,15 @@
-# Platform BSP UART Binding Phase 1 Implementation Plan
+# APP Phase 1 Implementation Plan
 
 > **Current execution plan.** Steps use checkbox (`- [ ]`) syntax for tracking.  
-> Design authority: `00_Doc/02_架构设计/Platform_BSP_UART_Binding_Phase1设计.md`
+> Design authority: `00_Doc/02_架构设计/APP_Phase1设计.md`
 
-**Goal:** Add one minimal Platform BSP contract that lets APP construct the product-level Communication UART without directly depending on Impl, while preserving the existing APP-owned `platform_uart_t`, Platform UART lifecycle, UART Service callback ownership, and verified USART1 runtime behavior.
+**Goal:** Replace the temporary UART Service consumer used for board verification with the first production `01_APP/` vertical slice: a product Composition Root plus one Communication Task that owns product-level UART/Service/Task resources, drains the UART Service byte stream, and performs the frozen DATA_LOSS / UART ERROR recovery policy without exposing Impl, HAL, CMSIS, or FreeRTOS concrete dependencies to APP.
 
-**Architecture:** APP may depend directly on Service and Platform. APP/Service must not depend directly on Impl. `03_Platform/platform_bsp/platform_bsp_uart.h` exposes the logical Communication UART contract; `04_Impl/impl_bsp/impl_platform_bsp_uart.c` implements the current-board binding by delegating to `impl_platform_uart_usart1_construct()`.
+**Architecture:** APP may depend directly on Service and Platform. `app_system` owns static composition and pre-scheduler setup. `app_communication` owns the post-scheduler Communication Task behavior and UART/Service runtime recovery. Platform BSP keeps `Communication UART -> USART1` mapping below APP.
 
-**Tech Stack:** C, STM32F411CEU6, Platform UART, STM32 UART Impl, GCC Host Test, Keil MDK-ARM.
+**Tech Stack:** C, STM32F411CEU6, UART Service, Platform BSP UART, Platform UART lifecycle, Platform OS Thread/Time, Platform Log, GCC Host Test, Keil MDK-ARM, STM32 target board.
 
-**Scope:** Binding only. No APP production code, no UART Service changes, no Platform UART API changes, no lifecycle redesign, no Device Registry, no multi-UART abstraction.
+**Spec:** `00_Doc/02_架构设计/APP_Phase1设计.md`
 
 ---
 
@@ -18,18 +18,26 @@
 Before modifying project C/H files, read:
 
 ```text
+00_Doc/02_架构设计/APP_Phase1设计.md
 00_Doc/02_架构设计/Platform_BSP_UART_Binding_Phase1设计.md
-00_Doc/02_架构设计/Platform_UART抽象层设计.md
 00_Doc/02_架构设计/UART_Service_Phase1设计.md
+00_Doc/02_架构设计/Platform_UART抽象层设计.md
+00_Doc/02_架构设计/RTOS_Platform_OS设计.md
+00_Doc/02_架构设计/RingBuffer_SPSC设计.md
 00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
 00_Doc/04_Agent/execution_rules.md
 00_Doc/04_Agent/architecture.md
 00_Doc/04_Agent/requirements.md
 00_Doc/04_Agent/handoff.md
+01_APP/README.md
+02_Service/service_uart/service_uart.h
+03_Platform/platform_bsp/platform_bsp_uart.h
 03_Platform/platform_mcu/uart/platform_uart.h
 03_Platform/platform_mcu/uart/platform_uart_types.h
-04_Impl/impl_mcu/impl_platform_uart.h
-04_Impl/impl_mcu/impl_platform_uart.c
+03_Platform/platform_os/platform_thread.h
+03_Platform/platform_os/platform_time.h
+Core/Src/freertos.c
+Core/Src/main.c
 MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx
 ```
 
@@ -44,8 +52,8 @@ Agent Execution Rules:
 00_Doc/04_Agent/execution_rules.md
 Status: READ
 
-Platform BSP UART Binding Phase 1 Design:
-00_Doc/02_架构设计/Platform_BSP_UART_Binding_Phase1设计.md
+APP Phase 1 Design:
+00_Doc/02_架构设计/APP_Phase1设计.md
 Status: READ / FROZEN
 ```
 
@@ -53,7 +61,7 @@ Status: READ / FROZEN
 
 ## Global Constraints
 
-- Dependency rules for this phase:
+Dependency rules are frozen:
 
 ```text
 APP -> Service       ALLOWED
@@ -64,21 +72,68 @@ APP -> Impl          FORBIDDEN
 Service -> Impl      FORBIDDEN
 ```
 
-- APP continues to own `platform_uart_t` storage.
-- APP / Caller provides `platform_uart_config_t` behavior configuration.
-- Current board mapping is exactly `Communication UART -> USART1`.
-- `platform_bsp_uart_construct_communication()` performs construction/binding only; it must not execute UART lifecycle operations.
-- BSP construction must pass `callback = NULL` and `callbackContext = NULL`; UART Service later owns callback binding through `platform_uart_set_callback()`.
-- Do not modify existing Platform UART public API or UART Service public API.
-- Do not modify existing UART DMA RX behavior, HAL callbacks, RingBuffer, Platform Notify, or Consumer semantics.
-- No dynamic allocation.
-- No Device Registry, Factory, IoC container, role enum table, reference count, or runtime resource manager.
-- Phase 1 Composition Contract: the Communication UART is constructed once during system composition.
-- Do not clean up `USART1_mutex_Init()`, `fputc()`, CubeMX UART legacy glue, or unrelated technical debt in this phase.
-- Preserve unrelated local changes; do not use destructive reset/clean operations.
-- Existing `platform_types.h -> board_types.h` dependency is known technical debt. Do not expand it and do not use this phase to migrate fundamental types.
+APP production code must not include or reference:
 
-If implementation appears to require any frozen Platform UART / UART Service contract change:
+```text
+impl_platform_uart.h
+impl_freertos_*.h
+usart.h
+UART_HandleTypeDef
+DMA_HandleTypeDef
+STM32 HAL UART / DMA API
+cmsis_os2.h
+FreeRTOS.h
+task.h
+TaskHandle_t
+USART1 / DMA Stream / IRQ concrete resources
+```
+
+Phase 1 scope is limited to:
+
+```text
+app_system
+app_communication
+Communication Task
+UART Service byte-stream drain
+DATA_LOSS recovery
+UART ERROR recovery
+minimal APP statistics/status
+thin CubeMX startup integration
+Host / Keil / Board verification
+```
+
+Do not add:
+
+```text
+Protocol Parser
+Frame Queue
+Command Dispatcher
+UART Echo
+Async TX Service
+multi-UART
+multi-consumer
+malloc/free
+Device Registry
+Factory / IoC
+Event Bus
+System Supervisor
+Watchdog policy
+runtime shutdown framework
+```
+
+Additional frozen rules:
+
+- `platform_uart_t`, `service_uart_t`, `platform_thread_t`, DMA RX backing storage, and RingBuffer backing storage are APP-owned static resources.
+- Active RX Session is owned by UART Service. APP must never call `platform_uart_cancel(RX)` for a Service-owned Session.
+- `service_uart_start()` begins a new Session and resets the Service RingBuffer; drain valid buffered data before restart.
+- Combined events are not mutually exclusive. Recovery precedence is `ERROR > DATA_LOSS` after RX drain.
+- `PLATFORM_ERR_TIMEOUT` from `service_uart_wait_event()` is normal idle.
+- No infinite fast retry on start/recovery failure.
+- CubeMX `defaultTask`, `USART1_mutex_Init()`, and UART `fputc()` legacy glue remain out of scope unless a real compile/runtime blocker proves otherwise.
+- CubeMX generated files may be changed only in USER CODE sections unless the frozen design explicitly requires a project-file integration change.
+- No frozen Platform UART / BSP UART / UART Service / RingBuffer / Platform Notify / Platform Thread public contract changes are allowed in this phase.
+
+If implementation proves such a contract change is necessary:
 
 ```text
 STOP / BLOCKED
@@ -88,57 +143,118 @@ Return to design review.
 
 ---
 
-## Task 0: Preflight and Current-State Gate
+## Approved APP Public Surface for Phase 1
 
-**Files:** read only initially.
+The implementation plan resolves the design's optional observability decision by approving read-only APP Communication getters for Host/board verification.
 
-- [ ] Run repository state checks:
+`app_system.h`:
+
+```c
+platform_error_t app_system_init(void);
+```
+
+`app_communication.h` must define the frozen data model and at least:
+
+```c
+#define APP_COMMUNICATION_INITIALIZER {0}
+
+platform_error_t app_communication_init(
+    app_communication_t *communication,
+    const app_communication_config_t *config);
+
+platform_error_t app_communication_start(
+    app_communication_t *communication);
+
+platform_error_t app_communication_process(
+    app_communication_t *communication,
+    uint32_t timeoutMs);
+
+platform_error_t app_communication_get_status(
+    const app_communication_t *communication,
+    app_communication_status_t *status);
+
+platform_error_t app_communication_get_statistics(
+    const app_communication_t *communication,
+    app_communication_statistics_t *statistics);
+
+void app_communication_task_entry(void *argument);
+```
+
+The getters are observational only. Do not add setters, direct Service exposure APIs, restart commands, or global object getters.
+
+Recommended status snapshot:
+
+```c
+typedef struct
+{
+    app_communication_state_t state;
+    platform_error_t lastError;
+} app_communication_status_t;
+```
+
+APP statistics remain exactly the APP-owned semantics from the frozen design:
+
+```text
+processedChunkCount
+processedByteCount
+dataLossRecoveryCount
+uartErrorRecoveryCount
+fatalErrorCount
+```
+
+Do not duplicate UART Service RX statistics.
+
+---
+
+## Task 0: Preflight, Repository Sync, and Scope Gate
+
+**Files:** read all Mandatory References before source changes.
+
+- [ ] Run:
 
 ```bash
 git status --short
 git log --oneline -n 15
 ```
 
-- [ ] Read every Mandatory Reference.
-
-- [ ] Confirm prerequisites:
+- [ ] Confirm prerequisites from source + handoff:
 
 ```text
-UART Phase 2A                 COMPLETED
-Platform OS Phase 1           COMPLETED
-RingBuffer Phase 1            COMPLETED
-UART Service Phase 1          COMPLETED
-Base RX Vertical Slice        VERIFIED
-01_APP production layer       NOT IMPLEMENTED
+Platform BSP UART Binding Phase 1   COMPLETED
+Communication UART Binding          VERIFIED
+UART Service Phase 1                COMPLETED
+Base RX Vertical Slice              VERIFIED
+Production APP Layer                NOT IMPLEMENTED
+APP Phase 1 Design                   FROZEN
 ```
 
-- [ ] Confirm the new production files do not already exist, or if they do exist, compare them to the frozen design before modifying anything:
+- [ ] Confirm production APP sources are absent before implementation:
 
 ```text
-03_Platform/platform_bsp/platform_bsp_uart.h
-04_Impl/impl_bsp/impl_platform_bsp_uart.c
-Tests/platform_bsp_uart/test_platform_bsp_uart.c
+01_APP/app_system.h
+01_APP/app_system.c
+01_APP/app_communication.h
+01_APP/app_communication.c
 ```
 
-- [ ] Confirm current concrete constructor remains:
+If files already exist, inspect them before any overwrite and reconcile with the frozen design.
 
-```c
-platform_error_t impl_platform_uart_usart1_construct(
-    platform_uart_t *uart,
-    const char *name,
-    uint32_t caps,
-    const platform_uart_config_t *config,
-    platform_uart_callback_t callback,
-    void *callbackContext);
-```
-
-- [ ] Confirm no APP production source currently includes:
+- [ ] Confirm `Core/Src/main.c` startup order is still:
 
 ```text
-impl_platform_uart.h
-usart.h
-STM32 HAL UART headers
+MX_GPIO_Init
+MX_DMA_Init
+MX_USART1_UART_Init
+osKernelInitialize
+MX_FREERTOS_Init
+osKernelStart
 ```
+
+- [ ] Confirm current `Core/Src/freertos.c` still has USER CODE sections available for a thin `app_system_init()` call.
+
+- [ ] Confirm Platform Thread creation still uses the current Platform API and UART Service still requires a valid `consumerThread` during `service_uart_init()`.
+
+- [ ] Search `01_APP/` and confirm no direct Impl/HAL/CMSIS/FreeRTOS dependency exists.
 
 - [ ] Run:
 
@@ -146,285 +262,550 @@ STM32 HAL UART headers
 git diff --check
 ```
 
-**Gate:** Any material mismatch between repository reality and the frozen BSP design is `STOP / BLOCKED` before source implementation.
+**Gate:** material mismatch with the frozen design -> `STOP / BLOCKED`.
 
 ---
 
-## Task 1: Add Platform BSP UART Public Contract and RED Host Test
+## Task 1: APP Communication Public Contract and Initialization
 
 **Files:**
 
-- Create: `03_Platform/platform_bsp/platform_bsp_uart.h`
-- Create: `Tests/platform_bsp_uart/test_platform_bsp_uart.c`
+- Create: `01_APP/app_communication.h`
+- Create: `01_APP/app_communication.c`
+- Create: `Tests/app_communication/test_app_communication.c`
 
-**Public API:**
+### 1.1 Public data model
 
-```c
-platform_error_t platform_bsp_uart_construct_communication(
-    platform_uart_t *uart,
-    const platform_uart_config_t *config);
-```
-
-### 1.1 Public Header
-
-- [ ] Add the project-standard self-written C header/file banner.
-- [ ] Include only the Platform public dependency required by the function contract, normally:
-
-```c
-#include "platform_uart.h"
-```
-
-- [ ] Do **not** directly include:
+Implement the frozen APP Communication model:
 
 ```text
-impl_platform_uart.h
-usart.h
-stm32f4xx_hal.h
-cmsis_os2.h
-FreeRTOS.h
+State:
+UNINITIALIZED
+INITIALIZED
+RUNNING
+ERROR
 ```
 
-- [ ] Add Doxygen for the public API describing:
+Config contains only:
 
 ```text
-caller-owned platform_uart_t
-caller-provided config
-construction/binding only
-no lifecycle execution
-Communication UART logical role
+platform_uart_t *uart
+service_uart_t *service
 ```
 
-- [ ] Do not add role enums, registration tables, opaque factory objects, or global getters.
+Context contains only APP runtime state / lastError.
+Statistics contain only the five approved APP counters.
 
-### 1.2 Host Fake
+- [ ] `APP_COMMUNICATION_INITIALIZER` must produce a valid UNINITIALIZED zero state.
+- [ ] Public header may depend on Service and Platform public headers only.
+- [ ] Public header must not expose Impl/HAL/CMSIS/FreeRTOS concrete types.
 
-In `test_platform_bsp_uart.c`, provide a fake implementation of:
+### 1.2 Init tests
 
-```c
-impl_platform_uart_usart1_construct(...)
-```
-
-The fake must record:
+Add RED tests for:
 
 ```text
-call count
-uart pointer
-name
-caps
-config pointer
-callback
-callbackContext
-configured return value
+NULL communication                -> INVALID_PARAM
+NULL config                       -> INVALID_PARAM
+NULL config.uart                  -> INVALID_PARAM
+NULL config.service               -> INVALID_PARAM
+valid init                        -> INITIALIZED
+valid init                        -> config copied
+valid init                        -> lastError OK
+valid init                        -> statistics zero
+second init                       -> ALREADY_INITIALIZED
 ```
 
-This lets the host test compile the real `impl_platform_bsp_uart.c` later without linking STM32 HAL.
+Use repository error-code conventions consistently; do not invent new APP-specific error enums.
 
-### 1.3 RED Tests
+### 1.3 Observability getters
 
-- [ ] Add tests for the frozen behavior:
+Add tests for:
 
 ```text
-NULL uart
-    -> PLATFORM_ERR_INVALID_PARAM
-    -> fake constructor call count == 0
-
-NULL config
-    -> PLATFORM_ERR_INVALID_PARAM
-    -> fake constructor call count == 0
-
-valid uart + config
-    -> forwards exact uart pointer
-    -> forwards exact config pointer
-    -> name == "communication_uart"
-    -> caps == PLATFORM_DEVICE_CAP_NONE
-    -> callback == NULL
-    -> callbackContext == NULL
-    -> fake constructor called exactly once
-
-fake constructor error
-    -> exact platform_error_t propagated
+get_status NULL checks
+get_statistics NULL checks
+UNINITIALIZED behavior
+initialized snapshot
+snapshot does not expose mutable internal pointers
 ```
 
-- [ ] Add a header-isolation translation-unit check that includes `platform_bsp_uart.h` without HAL/CMSIS/FreeRTOS/UART Impl headers in the test source.
+- [ ] Implement only enough production code to make init/getter tests GREEN.
+- [ ] `git diff --check`.
+- [ ] Coding Standard Review.
 
-Known exception: the repository currently has inherited `platform_types.h -> board_types.h` technical debt, so host include paths may still need `04_Impl/impl_board`. The BSP header must not introduce any **new direct** Impl/HAL include dependency.
-
-- [ ] Run the intended Host compile before adding production implementation and verify RED because `platform_bsp_uart_construct_communication()` has no definition yet:
-
-```bash
-gcc -std=c11 -Wall -Wextra -Werror \
-  -I03_Platform/platform_bsp \
-  -I03_Platform/platform_mcu/uart \
-  -I03_Platform/platform_common \
-  -I04_Impl/impl_board \
-  -I04_Impl/impl_mcu \
-  Tests/platform_bsp_uart/test_platform_bsp_uart.c \
-  -o Tests/platform_bsp_uart/test_platform_bsp_uart
-```
-
-Expected: link FAIL for the missing BSP production function. If it unexpectedly passes because an implementation already exists, return to Task 0 and inspect repository state.
-
-- [ ] Run `git diff --check`.
-
-**Commit boundary:** do not commit a deliberately RED repository state unless the current development workflow intentionally preserves test-first commits. Default is to continue directly to Task 2, get GREEN, then commit the coherent unit.
-
----
-
-## Task 2: Implement the Thin Current-Board Binding
-
-**Files:**
-
-- Create: `04_Impl/impl_bsp/impl_platform_bsp_uart.c`
-- Modify as needed only for test corrections: `Tests/platform_bsp_uart/test_platform_bsp_uart.c`
-
-### 2.1 Required Includes
-
-Production implementation should depend on:
-
-```c
-#include "platform_bsp_uart.h"
-#include "impl_platform_uart.h"
-```
-
-It may use `PLATFORM_DEVICE_CAP_NONE` through the existing Platform public type graph.
-
-Do not include `usart.h` or HAL directly in the BSP binding source; USART1/HAL knowledge remains inside the existing UART Impl constructor.
-
-### 2.2 Required Behavior
-
-Implement only:
-
-```text
-validate uart != NULL
-validate config != NULL
-call impl_platform_uart_usart1_construct()
-return the exact result
-```
-
-The delegation parameters are frozen as:
-
-```c
-impl_platform_uart_usart1_construct(
-    uart,
-    "communication_uart",
-    PLATFORM_DEVICE_CAP_NONE,
-    config,
-    NULL,
-    NULL);
-```
-
-Do not:
-
-```text
-call lifecycle init/start
-call HAL
-start DMA RX
-bind Service callback
-allocate memory
-save APP pointers in new globals
-add local resource registry
-```
-
-### 2.3 GREEN Host Test
-
-- [ ] Build the host test with the real BSP implementation and fake USART1 constructor:
-
-```bash
-gcc -std=c11 -Wall -Wextra -Werror \
-  -I03_Platform/platform_bsp \
-  -I03_Platform/platform_mcu/uart \
-  -I03_Platform/platform_common \
-  -I04_Impl/impl_board \
-  -I04_Impl/impl_mcu \
-  Tests/platform_bsp_uart/test_platform_bsp_uart.c \
-  04_Impl/impl_bsp/impl_platform_bsp_uart.c \
-  -o Tests/platform_bsp_uart/test_platform_bsp_uart
-```
-
-- [ ] Run:
-
-```bash
-./Tests/platform_bsp_uart/test_platform_bsp_uart
-```
-
-Expected: PASS.
-
-- [ ] Verify the test uses a fake constructor only; it must not link `impl_platform_uart.c`, HAL, CubeMX `usart.c`, or FreeRTOS.
-
-- [ ] Run:
-
-```bash
-git diff --check
-```
-
-- [ ] Perform Coding Standard Review for the new header/source/test.
+Do not implement UART start/recovery in this task.
 
 **Commit:**
 
 ```bash
-git add RTT_elog_DMA_UART_ring_project/03_Platform/platform_bsp/platform_bsp_uart.h \
-        RTT_elog_DMA_UART_ring_project/04_Impl/impl_bsp/impl_platform_bsp_uart.c \
-        RTT_elog_DMA_UART_ring_project/Tests/platform_bsp_uart/test_platform_bsp_uart.c
-git commit -m "feat(bsp): bind communication uart"
+git add RTT_elog_DMA_UART_ring_project/01_APP/app_communication.h \
+        RTT_elog_DMA_UART_ring_project/01_APP/app_communication.c \
+        RTT_elog_DMA_UART_ring_project/Tests/app_communication/test_app_communication.c
+git commit -m "feat(app): add communication object"
 ```
 
 ---
 
-## Task 3: Keil Project Integration and Regression Gate
+## Task 2: Post-Scheduler Runtime Start
 
 **Files:**
 
+- Modify: `01_APP/app_communication.c`
+- Modify: `Tests/app_communication/test_app_communication.c`
+
+### 2.1 Fake Platform UART lifecycle
+
+Host test must construct a fake `platform_uart_t` whose public lifecycle table records call order for:
+
+```text
+init
+start
+stop
+```
+
+Do not link STM32 UART Impl in APP host tests.
+
+Fake UART Service functions must record:
+
+```text
+service_uart_start call count/order/result
+```
+
+### 2.2 Start RED tests
+
+Add tests for:
+
+```text
+UNINITIALIZED -> NOT_INITIALIZED / invalid state per project convention
+INITIALIZED success:
+    UART lifecycle init
+    UART lifecycle start
+    service_uart_start
+    APP -> RUNNING
+    exact order preserved
+
+UART lifecycle init failure:
+    no UART start
+    no Service start
+    APP -> ERROR
+    lastError = original init error
+    fatalErrorCount++
+
+UART lifecycle start failure:
+    no Service start
+    APP -> ERROR
+    lastError = original start error
+    fatalErrorCount++
+
+Service start failure after UART STARTED:
+    best-effort UART lifecycle stop once
+    APP -> ERROR
+    lastError remains original Service start error
+    rollback failure does not overwrite original error
+    fatalErrorCount++
+
+start while RUNNING / ERROR:
+    INVALID_STATE
+```
+
+- [ ] Validate required lifecycle function pointers before dereference. Missing required lifecycle operation must fail safely rather than crash.
+- [ ] Implement `app_communication_start()` minimally.
+- [ ] Do not start DMA or call Platform UART async RX directly; only UART Service may open its RX Session.
+- [ ] Run GREEN + `git diff --check` + Coding Standard Review.
+
+**Commit:** `feat(app): add communication runtime start`
+
+---
+
+## Task 3: RX Drain, Combined Events, and Recovery Policy
+
+**Files:**
+
+- Modify: `01_APP/app_communication.c`
+- Modify: `Tests/app_communication/test_app_communication.c`
+
+### 3.1 Test-double behavior
+
+Fake Service must support scripted sequences for:
+
+```text
+service_uart_wait_event
+service_uart_read
+service_uart_get_status
+service_uart_start
+service_uart_stop
+```
+
+Tests must be able to verify call order, especially `drain -> recovery`.
+
+### 3.2 RX drain
+
+Add RED tests:
+
+```text
+RX_AVAILABLE
+    -> service_uart_read repeatedly
+    -> multiple successful chunks allowed
+    -> stop only at PLATFORM_ERR_EMPTY
+    -> processedChunkCount += successful read calls
+    -> processedByteCount += total bytes
+
+single wake does not imply frame boundary
+read error other than EMPTY -> APP ERROR
+```
+
+Production byte consumer in Phase 1 is deliberately minimal: successful read chunks are considered consumed after APP statistics update. Keep the private consumption seam obvious so a later Protocol Parser can replace/extend it without changing Service.
+
+Use an APP-local read buffer of the frozen initial size:
+
+```text
+128 bytes
+```
+
+Do not add it to UART Service storage.
+
+### 3.3 Timeout
+
+Add test:
+
+```text
+service_uart_wait_event -> PLATFORM_ERR_TIMEOUT
+    -> app_communication_process returns normal/non-fatal result according to chosen API convention
+    -> APP remains RUNNING
+    -> no restart
+    -> no fatal counter increment
+```
+
+Prefer returning `PLATFORM_ERR_OK` for a handled idle timeout so the task loop does not need to treat normal idle as an error. If implementation chooses to propagate TIMEOUT instead, the task entry must explicitly treat it as normal; test the chosen behavior consistently. Do not change Service timeout semantics.
+
+### 3.4 Combined events
+
+Add ordered-call tests:
+
+```text
+RX_AVAILABLE | ERROR
+    drain all valid data first
+    get Service status / lastError
+    direct service_uart_start
+    no service_uart_stop
+    uartErrorRecoveryCount++
+
+RX_AVAILABLE | DATA_LOSS
+    drain first
+    service_uart_stop
+    service_uart_start
+    dataLossRecoveryCount++
+
+RX_AVAILABLE | DATA_LOSS | ERROR
+    drain first
+    ERROR recovery only
+    no DATA_LOSS stop/start path
+    uartErrorRecoveryCount++
+    dataLossRecoveryCount unchanged
+```
+
+Never code event handling as one mutually exclusive `if / else if` chain that loses combined bits.
+
+### 3.5 DATA_LOSS recovery
+
+Add tests:
+
+```text
+stop OK
+    -> restart
+
+stop error + get_status == STOPPED
+    -> restart still allowed
+
+stop error + actual state != STOPPED
+    -> APP ERROR
+    -> original/relevant recovery error recorded
+
+restart failure
+    -> APP ERROR
+    -> fatalErrorCount++
+```
+
+APP must not directly call `platform_uart_cancel()`.
+
+### 3.6 UART ERROR recovery
+
+Add tests:
+
+```text
+ERROR
+    -> get Service status
+    -> record/log Service lastError
+    -> service_uart_start directly
+    -> no service_uart_stop
+    -> no cancel
+
+restart success
+    -> APP remains RUNNING
+    -> uartErrorRecoveryCount++
+
+restart failure
+    -> APP ERROR
+    -> fatalErrorCount++
+```
+
+### 3.7 Unexpected STOPPED
+
+Add test:
+
+```text
+standalone STOPPED observed in normal loop
+    -> APP ERROR
+    -> lastError = PLATFORM_ERR_CANCELED or frozen equivalent
+    -> fatalErrorCount++
+    -> no automatic restart storm
+```
+
+### 3.8 Process state gate
+
+`app_communication_process()` is valid only in RUNNING. ERROR does not continue the normal wait/recovery loop.
+
+- [ ] Run all APP Communication tests GREEN.
+- [ ] `git diff --check`.
+- [ ] Coding Standard Review.
+
+**Commit:** `feat(app): consume uart service events`
+
+---
+
+## Task 4: Communication Task Entry and Fatal Error Idle
+
+**Files:**
+
+- Modify: `01_APP/app_communication.c`
+- Modify: `Tests/app_communication/test_app_communication.c` as practical for helper behavior.
+
+Task entry contract:
+
+```text
+argument = app_communication_t *
+        ↓
+app_communication_start()
+        ↓ success
+loop app_communication_process(APP_COMMUNICATION_WAIT_TIMEOUT_MS)
+        ↓ fatal APP state
+leave normal process loop
+log once / low frequency
+platform_time_delay_ms(error idle interval)
+```
+
+Frozen product values for initial implementation:
+
+```text
+APP read buffer          128 bytes
+wait timeout             1000 ms
+error idle delay         choose a low-frequency value >= 1000 ms
+```
+
+- [ ] Do not busy-loop on fatal error.
+- [ ] Do not print every RX chunk.
+- [ ] Log only low-frequency lifecycle/recovery/fatal events through Platform Log.
+- [ ] No direct CMSIS/FreeRTOS API in task entry.
+- [ ] If task-entry infinite-loop behavior is awkward to unit-test directly, keep `start()` and `process()` fully unit-testable and test the task-entry helpers/state transitions rather than adding production-only loop escape APIs.
+- [ ] Coding Standard Review.
+
+**Commit:** `feat(app): add communication task entry`
+
+---
+
+## Task 5: APP System Composition Root
+
+**Files:**
+
+- Create: `01_APP/app_system.h`
+- Create: `01_APP/app_system.c`
+- Create: `Tests/app_system/test_app_system.c`
+
+### 5.1 Static product resources
+
+`app_system.c` owns static resources equivalent to:
+
+```text
+platform_uart_t       Communication UART
+service_uart_t        UART Service
+platform_thread_t     Communication Thread
+app_communication_t   APP Communication
+uint8_t[128]           DMA RX buffer
+uint8_t[512]           RingBuffer storage
+```
+
+Use project initializer macros / zero initialization according to the coding standard.
+
+Product UART config is fixed initially to:
+
+```text
+baudRate       115200
+dataBits       PLATFORM_UART_DATA_BITS_8
+stopBits       PLATFORM_UART_STOP_BITS_1
+parity         PLATFORM_UART_PARITY_NONE
+flowControl    PLATFORM_UART_FLOW_CONTROL_NONE
+defaultTimeout choose existing project-appropriate finite value; do not invent WAIT_FOREVER unless required
+```
+
+Communication Thread config:
+
+```text
+name           "communication"
+entry          app_communication_task_entry
+argument       &APP Communication object
+stackSizeBytes 1024
+priority       PLATFORM_THREAD_PRIORITY_NORMAL
+```
+
+### 5.2 Pre-scheduler composition order
+
+Frozen order:
+
+```text
+1 platform_bsp_uart_construct_communication
+2 app_communication_init
+3 platform_thread_create
+4 service_uart_init
+5 return OK
+```
+
+Service config must pass:
+
+```text
+uart                  -> APP Communication UART
+dmaRxBuffer           -> APP 128-byte DMA storage
+dmaRxBufferSize       -> 128
+ringBufferStorage     -> APP 512-byte storage
+ringBufferStorageSize -> 512
+consumerThread        -> APP Communication Thread
+```
+
+### 5.3 Host tests
+
+Provide fakes for BSP UART, APP Communication init, Platform Thread, and UART Service init.
+
+Add ordered-call tests:
+
+```text
+all success
+    -> exact 1-2-3-4 order
+    -> exact pointers/sizes/thread config
+    -> OK
+
+BSP construct fails
+    -> nothing later called
+
+APP Communication init fails
+    -> no Thread / Service init
+
+Thread create fails
+    -> no Service init
+
+Service init fails after Thread create
+    -> best-effort platform_thread_terminate
+    -> return original Service init error
+    -> rollback error does not overwrite original error
+```
+
+Do not invent a Platform UART “destruct CREATED object” API. On fatal pre-scheduler composition failure, return the original error; CubeMX glue will stop startup.
+
+`app_system_init()` is a one-shot startup API. A second call must fail safely (`ALREADY_INITIALIZED` / `INVALID_STATE` per implementation data model) rather than reconstruct the same UART or create a second thread.
+
+### 5.4 No hidden Impl dependency
+
+Host compile/source review must prove:
+
+```text
+app_system.c does not include Impl/HAL/CMSIS/FreeRTOS headers
+app_system.c obtains Communication UART only through platform_bsp_uart_construct_communication()
+```
+
+- [ ] GREEN Host Test.
+- [ ] `git diff --check`.
+- [ ] Coding Standard Review.
+
+**Commit:** `feat(app): add system composition root`
+
+---
+
+## Task 6: CubeMX Thin Integration and Keil Project Integration
+
+**Files:**
+
+- Modify USER CODE sections only: `Core/Src/freertos.c`
 - Modify: `MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx`
 
-### 3.1 Include Path
+### 6.1 freertos.c
 
-- [ ] Ensure Keil can resolve:
+In USER CODE Includes add:
 
-```text
-03_Platform/platform_bsp
+```c
+#include "app_system.h"
 ```
 
-Do not remove or reorder unrelated include paths unless required by the project format.
-
-### 3.2 Source Integration
-
-- [ ] Add:
+In `MX_FREERTOS_Init()` USER CODE Init:
 
 ```text
-04_Impl/impl_bsp/impl_platform_bsp_uart.c
+result = app_system_init()
+if result != OK:
+    Error_Handler()
 ```
 
-Prefer the existing Impl/BSP group if present; otherwise create the smallest consistent group without reorganizing unrelated project files.
+Use the smallest local declaration allowed by CubeMX USER CODE structure.
 
-### 3.3 Regression
-
-- [ ] Re-run the new Host BSP test.
-
-- [ ] Run relevant existing Host regressions that cover the contracts this phase relies on, at minimum:
+Do not:
 
 ```text
-Platform UART
-UART Service
+move Communication Task into defaultTask
+remove defaultTask
+remove USART1_mutex_Init()
+move UART Service logic into freertos.c
+add HAL UART code to APP glue
 ```
 
-If the repository has a standard aggregate regression script, use it instead of inventing a parallel test runner.
+### 6.2 Keil project
 
-- [ ] Confirm no source changes occurred in:
+Add include path for:
 
 ```text
-02_Service/service_uart/
-03_Platform/platform_mcu/uart/platform_uart.h
-03_Platform/platform_mcu/uart/platform_uart.c
-04_Impl/impl_mcu/impl_platform_uart.c
-Core/Src/usart.c
-Core/Src/freertos.c
+01_APP
 ```
 
-except for project-file metadata required to compile the new BSP source. If any runtime file needed modification, STOP and review scope.
+Add production sources:
 
-### 3.4 Keil Build
+```text
+01_APP/app_system.c
+01_APP/app_communication.c
+```
 
-- [ ] Perform a Keil Full Rebuild using the repository's established build environment.
+Use an APP group consistent with the existing project structure; do not reorganize unrelated groups.
+
+### 6.3 Host regression gate
+
+Run new APP tests plus relevant existing regressions, at minimum:
+
+```text
+app_communication
+app_system
+platform_bsp_uart
+service_uart
+platform_uart
+platform_os relevant tests
+ring_buffer
+```
+
+Prefer the repository's existing aggregate test scripts if available.
+
+Required:
+
+```text
+all selected tests PASS
+```
+
+### 6.4 Keil Full Rebuild
+
+Perform the established Keil Full Rebuild.
 
 Required evidence:
 
@@ -432,133 +813,224 @@ Required evidence:
 0 Error(s)
 ```
 
-Warnings must be reviewed; do not silently treat new warnings as acceptable.
+Review new warnings. Do not hide warnings by weakening compiler settings.
 
-- [ ] No target-board runtime test is required for this binding-only phase because the runtime USART1 implementation and UART Service behavior are unchanged.
-
-- [ ] Run:
-
-```bash
-git diff --check
-```
-
-- [ ] Coding Standard Review: PASS required.
+- [ ] Verify no APP source directly includes Impl/HAL/CMSIS/FreeRTOS headers.
+- [ ] Verify no frozen lower-layer source/API was modified for APP convenience.
+- [ ] `git diff --check`.
+- [ ] Coding Standard Review.
 
 **Commit:**
 
 ```bash
-git add RTT_elog_DMA_UART_ring_project/MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx
-git commit -m "build: integrate platform bsp uart"
+git add RTT_elog_DMA_UART_ring_project/Core/Src/freertos.c \
+        RTT_elog_DMA_UART_ring_project/MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx
+git commit -m "build: integrate app phase1"
 ```
+
+If APP source commits and project integration are easier to review as one coherent commit, preserve task boundaries in notes but do not create artificial broken intermediate commits.
 
 ---
 
-## Task 4: Final Architecture Boundary Review and Handoff
+## Task 7: Target Board Production-APP Verification
+
+**Goal:** prove the verified ISR -> Service path is now consumed by the production `01_APP/` Communication Task rather than a temporary task in CubeMX code.
+
+### 7.1 Baseline runtime
+
+Flash the APP-integrated build and confirm:
+
+```text
+APP Communication state = RUNNING
+UART Service state       = RUNNING
+no immediate fatal error
+no restart storm
+```
+
+### 7.2 RX payload
+
+Reuse the verified raw payload:
+
+```text
+00..FF repeated
+1280 bytes total
+```
+
+Expected after one complete transfer:
+
+```text
+APP processedByteCount        = 1280
+Service rxBytesReceived       = 1280
+Service rxBytesDropped        = 0
+Service DATA_LOSS             = false
+Service ERROR                 = not observed
+```
+
+### 7.3 Temporary content-integrity hook
+
+Statistics prove quantity, not byte identity. Add one localized temporary board-verification hook at the APP byte-consumption seam to compare the expected `00..FF` repeating sequence.
+
+Temporary hook requirements:
+
+```text
+centralized and clearly marked
+Task Context only
+no lower-layer changes
+no ISR logging
+counts mismatch / compared bytes
+can report summary through Platform Log / RTT
+```
+
+Expected:
+
+```text
+compared bytes = 1280
+mismatch       = 0
+```
+
+Do not leave the test-pattern assumption in production APP behavior.
+
+### 7.4 Cleanup
+
+After PASS:
+
+- [ ] Remove temporary content-integrity hook.
+- [ ] Re-run Keil Full Rebuild.
+- [ ] Required: `0 Error(s)`.
+- [ ] Optionally run a short normal RX smoke after cleanup if practical; record only actual evidence.
+
+If target hardware is not available to the executing agent, stop with Board Verification explicitly `PENDING MANUAL TEST`; do not mark APP Phase 1 COMPLETED.
+
+---
+
+## Task 8: Final Boundary Review and Handoff
 
 **Files:**
 
 - Modify: `00_Doc/04_Agent/handoff.md`
 
-### 4.1 Boundary Review
+### 8.1 Dependency review
 
-- [ ] Search the APP layer and confirm there is still no direct Impl dependency:
-
-```text
-01_APP -> impl_platform_uart.h     ABSENT
-01_APP -> usart.h                  ABSENT
-01_APP -> HAL UART                 ABSENT
-```
-
-- [ ] Confirm new dependency shape:
+Confirm:
 
 ```text
-APP may use platform_bsp_uart.h
-platform_bsp_uart.h does not directly expose Impl/HAL/Vendor types
-impl_platform_bsp_uart.c is the only new current-board binding source
+01_APP -> Service / Platform only
+01_APP -> Impl                    ABSENT
+01_APP -> HAL                     ABSENT
+01_APP -> CMSIS/FreeRTOS concrete ABSENT
 ```
 
-- [ ] Confirm public API surface added in this phase is exactly:
+Confirm production path:
 
-```c
-platform_bsp_uart_construct_communication();
+```text
+CubeMX startup
+    ↓
+app_system
+    ├── Platform BSP Communication UART
+    ├── Platform Thread
+    ├── UART Service
+    └── static backing storage
+           ↓
+app_communication task
+           ↓
+UART Service wait/drain/recovery
 ```
 
-No extra role enum / registry / getter / factory should remain.
+### 8.2 Scope review
 
-### 4.2 Verification Record
+Confirm this phase did not introduce:
+
+```text
+Protocol Parser
+Frame Queue
+Async TX
+multi-UART
+Device Registry
+Factory/IoC
+runtime shutdown framework
+```
+
+### 8.3 Verification record
 
 Record only evidence actually obtained:
 
 ```text
-Platform BSP UART Host Test       PASS
-Header Isolation                  PASS
-Platform UART Regression          PASS
-UART Service Regression           PASS
-Coding Standard Review            PASS
-Keil Full Rebuild                 PASS / actual result
-Target Board Test                 NOT REQUIRED
+APP Communication Host Test       PASS / actual
+APP System Host Test              PASS / actual
+Lower-layer Regression            PASS / actual
+Coding Standard Review            PASS / actual
+Keil Full Rebuild                 PASS / actual
+Production APP Board RX Test      PASS / PENDING
+Content Integrity Hook            PASS / PENDING
+Cleanup Rebuild                   PASS / PENDING
 ```
 
-Never convert “not run” into PASS.
+### 8.4 Completion state
 
-### 4.3 Handoff State
-
-After all required gates pass, update current state to approximately:
+Only when all mandatory Host/Keil/Board gates have passed:
 
 ```text
-Platform BSP UART Binding Phase 1   COMPLETED
-Communication UART Binding          VERIFIED
-Production APP Layer                NOT IMPLEMENTED
-Next Phase                          APP Phase 1 Design
-Next State                          READY_FOR_APP_DESIGN
+APP Phase 1                    COMPLETED
+Production APP RX Vertical     VERIFIED
+Production APP Layer           IMPLEMENTED (Phase 1)
+Next Phase                     protocol/application behavior design
+Next State                     READY_FOR_NEXT_DESIGN
 ```
 
-Add the stable architecture rule:
+If Board Test remains pending, use a truthful intermediate state such as:
 
 ```text
-APP may depend on Service and Platform.
-APP / Service must not directly depend on Impl.
-Communication UART logical role is obtained through Platform BSP.
-Current board binding: Communication UART -> USART1.
+APP Phase 1                    IMPLEMENTED / HOST_KEIL_VERIFIED
+Production APP RX Vertical     BOARD_VERIFICATION_PENDING
 ```
 
-Do not copy the entire implementation plan into `handoff.md`.
+Do not mark COMPLETED early.
 
-- [ ] Final:
+Also retire this implementation plan in handoff after completion; future phases must replace it rather than append unrelated tasks.
+
+- [ ] Final repository checks:
 
 ```bash
 git status --short
 git diff --check
-git log --oneline -n 10
+git log --oneline -n 15
 ```
 
-**Commit:**
-
-```bash
-git add RTT_elog_DMA_UART_ring_project/00_Doc/04_Agent/handoff.md
-git commit -m "docs: complete platform bsp uart binding"
-```
+**Commit:** `docs: complete app phase1 verification` only after actual completion criteria are met.
 
 ---
 
 # Completion Criteria
 
-Platform BSP UART Binding Phase 1 is complete only when all are true:
+APP Phase 1 is complete only when all are true:
 
 ```text
-[ ] Frozen design followed without contract drift
-[ ] platform_bsp_uart.h added
-[ ] impl_platform_bsp_uart.c added
-[ ] Communication UART binds to USART1 only inside Impl/BSP boundary
-[ ] APP owns platform_uart_t storage
-[ ] APP/Service have no new direct Impl dependency
-[ ] No Platform UART / UART Service public contract changed
-[ ] Host BSP UART Test PASS
-[ ] Header isolation PASS within known platform_types technical debt
-[ ] Relevant regression PASS
+[ ] Frozen APP design followed without contract drift
+[ ] app_system.h/.c implemented
+[ ] app_communication.h/.c implemented
+[ ] APP owns UART / Service / Thread / DMA / Ring storage
+[ ] Communication UART obtained only through Platform BSP
+[ ] Communication Task created through Platform Thread
+[ ] Pre-scheduler composition order verified
+[ ] Post-scheduler UART init/start -> Service start order verified
+[ ] RX drain until EMPTY verified
+[ ] Combined event precedence verified
+[ ] DATA_LOSS stop/status/start recovery verified
+[ ] UART ERROR direct restart recovery verified
+[ ] timeout normal-idle behavior verified
+[ ] unexpected STOPPED fatal behavior verified
+[ ] no fast retry / busy-loop fatal path
+[ ] APP does not duplicate Service RX statistics
+[ ] APP has no direct Impl/HAL/CMSIS/FreeRTOS dependency
+[ ] Host APP tests PASS
+[ ] relevant lower-layer regressions PASS
 [ ] Coding Standard Review PASS
 [ ] Keil Full Rebuild 0 Error(s)
+[ ] Production APP board RX test PASS
+[ ] 1280-byte content comparison mismatch = 0
+[ ] temporary board-test hook removed
+[ ] cleanup Keil Rebuild 0 Error(s)
 [ ] handoff updated with actual evidence
 ```
 
-After completion, stop. Do not implement APP Phase 1 in the same scope unless a new APP Phase 1 design/plan is explicitly activated.
+After completion, stop. Do not begin Protocol Parser, command processing, async TX, or the next APP feature in the same scope without a new design/plan.
