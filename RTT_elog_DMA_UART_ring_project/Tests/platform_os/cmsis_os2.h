@@ -110,6 +110,9 @@ osStatus_t osMessageQueueGet(osMessageQueueId_t queueId,
 uint32_t osMessageQueueGetCount(osMessageQueueId_t queueId);
 uint32_t osMessageQueueGetSpace(osMessageQueueId_t queueId);
 osStatus_t osMessageQueueDelete(osMessageQueueId_t queueId);
+uint32_t osThreadFlagsSet(osThreadId_t threadId, uint32_t flags);
+uint32_t osThreadFlagsClear(uint32_t flags);
+uint32_t osThreadFlagsWait(uint32_t flags, uint32_t options, uint32_t timeout);
 osTimerId_t osTimerNew(osTimerFunc_t function,
                        osTimerType_t type,
                        void *argument,

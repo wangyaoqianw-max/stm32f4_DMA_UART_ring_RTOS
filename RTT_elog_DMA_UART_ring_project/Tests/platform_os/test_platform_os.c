@@ -48,6 +48,12 @@ static uint32_t s_queueTimeout;
 static uint32_t s_queueCount;
 static uint32_t s_queueSpace;
 static osStatus_t s_queueStatus;
+static osThreadId_t s_notifyThreadId;
+static uint32_t s_notifySetFlags;
+static uint32_t s_notifyWaitFlags;
+static uint32_t s_notifyWaitOptions;
+static uint32_t s_notifyTimeout;
+static uint32_t s_notifyResult;
 
 uint32_t osKernelGetTickFreq(void)
 {
@@ -220,6 +226,27 @@ osStatus_t osMessageQueueDelete(osMessageQueueId_t queueId)
 {
     (void)queueId;
     return s_queueStatus;
+}
+
+uint32_t osThreadFlagsSet(osThreadId_t threadId, uint32_t flags)
+{
+    s_notifyThreadId = threadId;
+    s_notifySetFlags = flags;
+    return s_notifyResult;
+}
+
+uint32_t osThreadFlagsClear(uint32_t flags)
+{
+    s_notifySetFlags = flags;
+    return s_notifyResult;
+}
+
+uint32_t osThreadFlagsWait(uint32_t flags, uint32_t options, uint32_t timeout)
+{
+    s_notifyWaitFlags = flags;
+    s_notifyWaitOptions = options;
+    s_notifyTimeout = timeout;
+    return s_notifyResult;
 }
 
 osTimerId_t osTimerNew(osTimerFunc_t function,
@@ -452,6 +479,38 @@ static int test_queue_adapter(void)
     return 0;
 }
 
+static int test_notification_adapter(void)
+{
+    platform_thread_t thread = PLATFORM_OS_OBJECT_INITIALIZER;
+    uint32_t receivedFlags = 0U;
+    uint32_t previousFlags = 0U;
+
+    thread.native = (void *)0x1U;
+    s_tickFrequency = 250U;
+    s_notifyResult = 0x03U;
+    TEST_ASSERT(platform_notify_set(&thread, 0x01U) == PLATFORM_ERR_OK);
+    TEST_ASSERT(s_notifyThreadId == thread.native);
+    TEST_ASSERT(s_notifySetFlags == 0x01U);
+    TEST_ASSERT(platform_notify_set_from_isr(&thread, 0x02U) == PLATFORM_ERR_OK);
+    TEST_ASSERT(s_notifySetFlags == 0x02U);
+    TEST_ASSERT(platform_notify_wait(0x03U, 1U, 0U, 5U, &receivedFlags) == PLATFORM_ERR_OK);
+    TEST_ASSERT(receivedFlags == 0x03U);
+    TEST_ASSERT(s_notifyWaitFlags == 0x03U);
+    TEST_ASSERT(s_notifyWaitOptions == (osFlagsWaitAll | osFlagsNoClear));
+    TEST_ASSERT(s_notifyTimeout == 2U);
+    s_notifyResult = osFlagsErrorResource;
+    TEST_ASSERT(platform_notify_wait(0x01U, 0U, 1U, 0U, &receivedFlags) == PLATFORM_ERR_EMPTY);
+    s_notifyResult = osFlagsErrorTimeout;
+    TEST_ASSERT(platform_notify_wait(0x01U, 0U, 1U, 5U, &receivedFlags) == PLATFORM_ERR_TIMEOUT);
+    s_notifyResult = osFlagsErrorISR;
+    TEST_ASSERT(platform_notify_set(&thread, 0x01U) == PLATFORM_ERR_INVALID_STATE);
+    s_notifyResult = 0x07U;
+    TEST_ASSERT(platform_notify_clear(0x01U, &previousFlags) == PLATFORM_ERR_OK);
+    TEST_ASSERT(previousFlags == 0x07U);
+    TEST_ASSERT(platform_notify_set(&thread, 0x80000000U) == PLATFORM_ERR_INVALID_PARAM);
+    return 0;
+}
+
 int main(void)
 {
     int result = test_timeout_conversion();
@@ -480,5 +539,10 @@ int main(void)
         return result;
     }
 
-    return test_queue_adapter();
+    result = test_queue_adapter();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_notification_adapter();
 }
