@@ -94,6 +94,92 @@ static int test_reset_preserves_storage_and_clears_indexes(void)
     return 0;
 }
 
+static int test_write_and_read_preserve_order(void)
+{
+    ring_buffer_t ringBuffer = {0};
+    uint8_t storage[8] = {0};
+    uint8_t input[4] = {0x11U, 0x22U, 0x33U, 0x44U};
+    uint8_t output[4] = {0};
+    platform_size_t writtenLength = 0U;
+    platform_size_t readLength = 0U;
+    platform_size_t index = 0U;
+
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_init(&ringBuffer, storage, sizeof(storage)));
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_write(&ringBuffer,
+                                                      input,
+                                                      sizeof(input),
+                                                      &writtenLength));
+    TEST_ASSERT(sizeof(input) == writtenLength);
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_read(&ringBuffer,
+                                                     output,
+                                                     sizeof(output),
+                                                     &readLength));
+    TEST_ASSERT(sizeof(output) == readLength);
+
+    for (index = 0U; index < sizeof(output); index++) {
+        TEST_ASSERT(input[index] == output[index]);
+    }
+
+    return 0;
+}
+
+static int test_read_supports_partial_and_empty_results(void)
+{
+    ring_buffer_t ringBuffer = {0};
+    uint8_t storage[8] = {0};
+    uint8_t input[4] = {1U, 2U, 3U, 4U};
+    uint8_t output[2] = {0};
+    platform_size_t writtenLength = 0U;
+    platform_size_t readLength = 9U;
+
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_init(&ringBuffer, storage, sizeof(storage)));
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_write(&ringBuffer,
+                                                      input,
+                                                      sizeof(input),
+                                                      &writtenLength));
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_read(&ringBuffer,
+                                                     output,
+                                                     sizeof(output),
+                                                     &readLength));
+    TEST_ASSERT(sizeof(output) == readLength);
+    TEST_ASSERT(1U == output[0]);
+    TEST_ASSERT(2U == output[1]);
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_read(&ringBuffer,
+                                                     output,
+                                                     sizeof(output),
+                                                     &readLength));
+    TEST_ASSERT(sizeof(output) == readLength);
+    TEST_ASSERT(3U == output[0]);
+    TEST_ASSERT(4U == output[1]);
+    TEST_ASSERT(PLATFORM_ERR_EMPTY == ring_buffer_read(&ringBuffer,
+                                                        output,
+                                                        sizeof(output),
+                                                        &readLength));
+    TEST_ASSERT(0U == readLength);
+
+    return 0;
+}
+
+static int test_read_write_validate_lengths_and_pointers(void)
+{
+    ring_buffer_t ringBuffer = {0};
+    uint8_t storage[8] = {0};
+    uint8_t value = 0x5AU;
+    platform_size_t length = 9U;
+
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_init(&ringBuffer, storage, sizeof(storage)));
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_write(&ringBuffer, NULL, 0U, &length));
+    TEST_ASSERT(0U == length);
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_read(&ringBuffer, NULL, 0U, &length));
+    TEST_ASSERT(0U == length);
+    TEST_ASSERT(PLATFORM_ERR_NULL_POINTER == ring_buffer_write(&ringBuffer, NULL, 1U, &length));
+    TEST_ASSERT(PLATFORM_ERR_NULL_POINTER == ring_buffer_read(&ringBuffer, NULL, 1U, &length));
+    TEST_ASSERT(PLATFORM_ERR_NULL_POINTER == ring_buffer_write(&ringBuffer, &value, 1U, NULL));
+    TEST_ASSERT(PLATFORM_ERR_NULL_POINTER == ring_buffer_read(&ringBuffer, &value, 1U, NULL));
+
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
@@ -114,6 +200,21 @@ int main(void)
     }
 
     result = test_reset_preserves_storage_and_clears_indexes();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_write_and_read_preserve_order();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_read_supports_partial_and_empty_results();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_read_write_validate_lengths_and_pointers();
     if (0 != result) {
         return result;
     }

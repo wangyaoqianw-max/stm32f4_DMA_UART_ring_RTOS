@@ -13,6 +13,7 @@
 //******************************** Includes *********************************//
 #include "ring_buffer.h"
 #include "platform_def.h"
+#include <string.h>
 //******************************** Includes *********************************//
 
 //******************************** Functions ********************************//
@@ -27,6 +28,17 @@ static platform_error_t ring_buffer_validate(const ring_buffer_t *ringBuffer)
     }
 
     return PLATFORM_ERR_OK;
+}
+
+static platform_size_t ring_buffer_calculate_readable_size(const ring_buffer_t *ringBuffer,
+                                                           platform_size_t readIndex,
+                                                           platform_size_t writeIndex)
+{
+    if (writeIndex >= readIndex) {
+        return writeIndex - readIndex;
+    }
+
+    return ringBuffer->storageSize - readIndex + writeIndex;
 }
 
 platform_error_t ring_buffer_init(ring_buffer_t *ringBuffer,
@@ -73,6 +85,11 @@ platform_error_t ring_buffer_write(ring_buffer_t *ringBuffer,
                                    platform_size_t *writtenLength)
 {
     platform_error_t result = PLATFORM_ERR_OK;
+    platform_size_t readIndex = 0U;
+    platform_size_t writeIndex = 0U;
+    platform_size_t readableSize = 0U;
+    platform_size_t freeSize = 0U;
+    platform_size_t writeLength = 0U;
 
     if (ringBuffer == NULL) {
         return PLATFORM_ERR_NULL_POINTER;
@@ -96,6 +113,24 @@ platform_error_t ring_buffer_write(ring_buffer_t *ringBuffer,
         return PLATFORM_ERR_NULL_POINTER;
     }
 
+    readIndex = ringBuffer->readIndex;
+    writeIndex = ringBuffer->writeIndex;
+    readableSize = ring_buffer_calculate_readable_size(ringBuffer, readIndex, writeIndex);
+
+    freeSize = (ringBuffer->storageSize - 1U) - readableSize;
+    writeLength = dataLength;
+    if (writeLength > freeSize) {
+        writeLength = freeSize;
+    }
+
+    memcpy(&ringBuffer->storage[writeIndex], data, writeLength);
+    ringBuffer->writeIndex = writeIndex + writeLength;
+    *writtenLength = writeLength;
+
+    if (writeLength < dataLength) {
+        return PLATFORM_ERR_OVERFLOW;
+    }
+
     return PLATFORM_ERR_OK;
 }
 
@@ -105,6 +140,10 @@ platform_error_t ring_buffer_read(ring_buffer_t *ringBuffer,
                                   platform_size_t *readLength)
 {
     platform_error_t result = PLATFORM_ERR_OK;
+    platform_size_t readIndex = 0U;
+    platform_size_t writeIndex = 0U;
+    platform_size_t readableSize = 0U;
+    platform_size_t readLengthActual = 0U;
 
     if (ringBuffer == NULL) {
         return PLATFORM_ERR_NULL_POINTER;
@@ -128,7 +167,24 @@ platform_error_t ring_buffer_read(ring_buffer_t *ringBuffer,
         return PLATFORM_ERR_NULL_POINTER;
     }
 
-    return PLATFORM_ERR_EMPTY;
+    readIndex = ringBuffer->readIndex;
+    writeIndex = ringBuffer->writeIndex;
+    readableSize = ring_buffer_calculate_readable_size(ringBuffer, readIndex, writeIndex);
+
+    if (readableSize == 0U) {
+        return PLATFORM_ERR_EMPTY;
+    }
+
+    readLengthActual = bufferSize;
+    if (readLengthActual > readableSize) {
+        readLengthActual = readableSize;
+    }
+
+    memcpy(buffer, &ringBuffer->storage[readIndex], readLengthActual);
+    ringBuffer->readIndex = readIndex + readLengthActual;
+    *readLength = readLengthActual;
+
+    return PLATFORM_ERR_OK;
 }
 
 platform_error_t ring_buffer_get_readable_size(const ring_buffer_t *ringBuffer,
@@ -149,11 +205,9 @@ platform_error_t ring_buffer_get_readable_size(const ring_buffer_t *ringBuffer,
         return result;
     }
 
-    if (ringBuffer->writeIndex >= ringBuffer->readIndex) {
-        *readableSize = ringBuffer->writeIndex - ringBuffer->readIndex;
-    } else {
-        *readableSize = ringBuffer->storageSize - ringBuffer->readIndex + ringBuffer->writeIndex;
-    }
+    *readableSize = ring_buffer_calculate_readable_size(ringBuffer,
+                                                         ringBuffer->readIndex,
+                                                         ringBuffer->writeIndex);
 
     return PLATFORM_ERR_OK;
 }
