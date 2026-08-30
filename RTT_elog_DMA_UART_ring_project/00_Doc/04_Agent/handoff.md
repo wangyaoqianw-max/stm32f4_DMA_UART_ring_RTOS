@@ -13,7 +13,7 @@
 - 工程根目录：`RTT_elog_DMA_UART_ring_project/`
 - 当前分支：`main`
 - 当前活动阶段：`UART Service Phase 1`
-- 当前状态：`CODE_COMPLETE_PENDING_POST_TEST_KEIL_REBUILD`
+- 当前状态：`COMPLETED`
 - MCU：STM32F411CEU6，Cortex-M4F
 - 软件环境：STM32 HAL、CMSIS-RTOS2 / FreeRTOS、Keil MDK-ARM、EasyLogger、SEGGER RTT
 
@@ -626,13 +626,12 @@ UART Service Phase 1 才可标记为 `COMPLETED`。
 当前状态：
 
 ```text
-CODE_COMPLETE_PENDING_POST_TEST_KEIL_REBUILD
+COMPLETED
 ```
 
 UART Service Phase 1 的代码、Host Test、既有 Host Regression、Keil 工程静态集成、
-含临时板测代码的 Keil Rebuild 及真实板级 Smoke Test 已完成。
-临时板测接线已从 `Core/Src/freertos.c` 完整恢复；当前环境没有可实际调用的 Keil `UV4.exe`，
-恢复后的 Keil Rebuild 尚待人工执行，因此不得将本阶段标记为 `COMPLETED`。
+含临时板测代码的 Keil Rebuild、真实板级 Smoke Test 及恢复后的 Keil Rebuild 均已完成。
+临时板测接线已从 `Core/Src/freertos.c` 完整恢复，UART Service Phase 1 满足完成门禁。
 
 本阶段实际修改或新增：
 
@@ -677,7 +676,7 @@ Coding Standard Review: PASS
 Keil 工程静态集成（Include Path / Source Group） PASS
 Keil Clean Targets / Rebuild all target files PASS（人工 Keil 确认；含临时板测代码）
 Board ISR -> Service -> Task Smoke Test        PASS（真实 USART1 RX + RTT，见下方）
-Post-test restored Keil Rebuild                PENDING_MANUAL_VERIFICATION
+Post-test restored Keil Rebuild                PASS（人工 Keil 确认，0 Error(s)）
 ```
 
 真实板级 Smoke Test（2026-08-30）：
