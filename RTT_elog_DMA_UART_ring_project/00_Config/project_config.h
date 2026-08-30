@@ -1,0 +1,41 @@
+/******************************************************************************
+ * Copyright (C) 2026 YaoQian Wang
+ *
+ * All Rights Reserved.
+ *
+ * @file project_config.h
+ * @brief 定义产品级通信静态配置。
+ * @author Codex
+ * @date 2026-08-30
+ * @version V1.0
+ *
+ *****************************************************************************/
+
+#ifndef PROJECT_CONFIG_H
+#define PROJECT_CONFIG_H
+
+//******************************** Includes *********************************//
+#include "platform_thread.h"
+#include "platform_uart_types.h"
+//******************************** Includes *********************************//
+
+//******************************** Defines *********************************//
+#define PROJECT_COMM_UART_BAUD_RATE                 (115200U)
+#define PROJECT_COMM_UART_DATA_BITS                 PLATFORM_UART_DATA_BITS_8
+#define PROJECT_COMM_UART_STOP_BITS                 PLATFORM_UART_STOP_BITS_1
+#define PROJECT_COMM_UART_PARITY                    PLATFORM_UART_PARITY_NONE
+#define PROJECT_COMM_UART_FLOW_CONTROL              PLATFORM_UART_FLOW_CONTROL_NONE
+#define PROJECT_COMM_UART_DEFAULT_TIMEOUT_MS        (1000U)
+
+#define PROJECT_COMM_DMA_RX_BUFFER_SIZE             (128U)
+#define PROJECT_COMM_RING_BUFFER_STORAGE_SIZE       (512U)
+#define PROJECT_COMM_READ_BUFFER_SIZE                (128U)
+
+#define PROJECT_COMM_TASK_STACK_SIZE_BYTES          (1024U)
+#define PROJECT_COMM_TASK_PRIORITY                   PLATFORM_THREAD_PRIORITY_NORMAL
+
+#define PROJECT_COMM_WAIT_TIMEOUT_MS                 (1000U)
+#define PROJECT_COMM_ERROR_IDLE_DELAY_MS             (1000U)
+//******************************** Defines *********************************//
+
+#endif
