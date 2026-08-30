@@ -1,21 +1,173 @@
-# 工程交接说明
+# 工程长期记忆与交接说明
 
 更新时间：2026-08-30
 
-> 本文件维护“当前工程状态 + 已完成阶段验收摘要 + 当前阶段执行边界”。
-> 已完成阶段的详细过程记录、临时板测代码和中间状态以 Git 历史及对应专项设计文档为准，
-> 不再在本文件顶部保留已过期的“当前阶段”描述。
+> 本文件是 AI Agent 与人工开发者恢复工程上下文时的长期入口。
+> 只保存长期目标、稳定架构合同、已验证能力、当前边界、技术债和下一步。
+> 已完成阶段的详细设计、执行步骤、临时板测代码、提交过程和历史验证细节，以专项设计文档与 Git history 为准，不在本文件重复维护。
 
 ---
 
-## 1. 当前工程快照
+# 1. 项目定位与长期目标
 
-- 工程根目录：`RTT_elog_DMA_UART_ring_project/`
-- 当前分支：`main`
-- 当前活动阶段：`UART Service Phase 1`
-- 当前状态：`COMPLETED`
-- MCU：STM32F411CEU6，Cortex-M4F
-- 软件环境：STM32 HAL、CMSIS-RTOS2 / FreeRTOS、Keil MDK-ARM、EasyLogger、SEGGER RTT
+工程根目录：
+
+```text
+RTT_elog_DMA_UART_ring_project/
+```
+
+目标硬件与环境：
+
+```text
+MCU        : STM32F411CEU6 / Cortex-M4F
+Flash      : 512 KB
+RAM        : 128 KB
+UART       : USART1 / 115200 8N1
+RTOS       : CMSIS-RTOS2 + FreeRTOS
+Toolchain  : Keil MDK-ARM + STM32CubeMX
+Debug Log  : EasyLogger + SEGGER RTT
+```
+
+本项目最初用于学习：
+
+```text
+UART 不定长接收 + DMA + RingBuffer + FreeRTOS
+```
+
+当前目标已经扩展为两个并行目标。
+
+## 1.1 Firmware 目标
+
+先完成一条结构清晰、行为明确、可验证的完整垂直链路：
+
+```text
+APP
+ ↓
+Service
+ ↓
+Platform
+ ↓
+Impl
+ ↓
+Vendor / HAL / RTOS / Hardware
+```
+
+重点练习：
+
+- UART DMA 连续字节流接收；
+- ISR / Task 协作；
+- SPSC RingBuffer；
+- Buffer ownership；
+- 生命周期和错误状态；
+- RTOS 与日志抽象；
+- 模块职责和依赖边界；
+- Host / Keil / Board 分层验证。
+
+第一阶段优先级：
+
+```text
+Correctness
+    > clear boundaries
+    > verifiability
+    > maintainability
+    > performance optimization
+    > abstraction elegance
+```
+
+完整基础链路跑通前，不因为理论上的“更优设计”反复重构已经验证的模块。
+
+## 1.2 AI 开发工作流目标
+
+本项目也是第一次系统验证 AI 辅助嵌入式软件开发工作流。
+
+默认流程：
+
+```text
+Requirements
+    ↓
+Architecture Contract
+    ↓
+Phase Design
+    ↓
+Implementation Plan
+    ↓
+AI Implementation
+    ↓
+Host Test / Regression
+    ↓
+Keil Build
+    ↓
+Target Board Test
+    ↓
+Handoff
+    ↓
+Next Phase
+```
+
+原则：
+
+- AI 不从模糊需求直接跳到生产代码；
+- 新子系统先设计、冻结边界，再实施；
+- 每次实施控制 Scope，不顺手扩大重构；
+- Host Test 能自动验证的软件逻辑优先自动验证；
+- Keil 工程集成与真实硬件行为必须有真实证据；
+- 设计模型与执行模型可以分离，但交接必须依赖仓库文档，而不是依赖聊天上下文；
+- 基础项目完成后，再单独 Review AI 工作流中哪些步骤过重、哪些文档可以压缩、哪些任务适合较低成本模型执行。
+
+---
+
+# 2. 当前工程状态
+
+当前分支：
+
+```text
+main
+```
+
+当前基线提交：
+
+```text
+ba1d877  docs: complete uart service phase1 verification
+```
+
+当前状态：
+
+```text
+UART Service Phase 1       COMPLETED
+Base RX Vertical Slice     VERIFIED
+Production APP Layer       NOT IMPLEMENTED
+Next Phase                 APP Phase 1 Design
+Next State                 READY_FOR_APP_DESIGN
+```
+
+当前真实 RX 链路已经完成到 Task Context：
+
+```text
+USART1
+  ↓
+DMA Circular + IDLE / HT / TC
+  ↓
+STM32 UART Impl
+  ↓
+Platform UART RX_DATA / ERROR / CANCELED
+  ↓
+UART Service
+  ↓
+SPSC RingBuffer
+  ↓
+Platform Notify From ISR
+  ↓
+Dedicated Consumer Task
+```
+
+`01_APP/` 当前仍没有正式生产 APP 实现。
+
+当前 `00_Doc/04_Agent/implementation_plan.md` 属于已完成的 UART Service Phase 1 实施计划。
+在新的 APP 专项设计完成前，不得继续把该旧计划当作当前执行计划。
+
+---
+
+# 3. 稳定架构合同
 
 固定依赖方向：
 
@@ -23,162 +175,247 @@
 APP -> Service -> Platform -> Impl -> Vendor / HAL / RTOS / Hardware
 ```
 
-当前阶段建立：
+## 3.1 APP
+
+负责：
+
+- 产品级流程；
+- Task lifecycle 与系统启动/关闭编排；
+- Service 的使用与错误决策；
+- 协议解析和业务状态机；
+- 必要的静态资源 / backing storage 所有权。
+
+不得直接依赖：
 
 ```text
-Platform UART RX_DATA / ERROR / CANCELED
-   ↓
-UART Service RX Session / Statistics
-   ↓
-SPSC RingBuffer
-   ↓
-Platform Notify
-   ↓
-Dedicated Communication Task
+STM32 HAL
+DMA Handle
+USART instance
+CMSIS-RTOS2 / FreeRTOS concrete handle
+Vendor private API
 ```
 
-本阶段不接入：
+## 3.2 Service
+
+负责：
+
+- 数据流组织；
+- 软件状态和统计；
+- RingBuffer 等通用数据结构组合；
+- 将 Platform 事件转换为任务可消费的软件语义。
+
+不得直接访问 HAL / DMA / USART 寄存器。
+
+## 3.3 Platform
+
+定义：
+
+> 上层需要什么能力。
+
+而不是：
+
+> STM32 HAL 提供了什么函数。
+
+公共 Platform Header 不暴露具体 HAL / RTOS Handle。
+
+当前已验证的重要 Platform 能力：
 
 ```text
-Protocol Parser
-Async TX Service
-Frame Queue
-Multi-UART aggregation
-Multi-Consumer
-Service-created Task
-Automatic UART error recovery
-service_log
+Platform Common
+Platform UART
+Platform OS
+Platform Log
 ```
 
-当前权威执行文档：
+## 3.4 Impl
+
+负责 Platform 在当前 STM32F411 + FreeRTOS + EasyLogger / RTT 环境上的实际实现。
+
+可以依赖：
 
 ```text
-00_Doc/02_架构设计/UART_Service_Phase1设计.md
-00_Doc/04_Agent/implementation_plan.md
-00_Doc/04_Agent/execution_rules.md
-00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
+STM32 HAL
+CMSIS
+FreeRTOS
+CubeMX Handle
+DMA / IRQ
+EasyLogger
+SEGGER RTT
 ```
 
-当前实施范围已冻结为：单 Platform UART、单 UART Service、单专用 Consumer Task。
-APP 持有 Platform UART 硬件 lifecycle、Task lifecycle 和所有 backing storage；
-UART Service 持有活动 RX Session，且是唯一允许取消该 Session 的模块。
+## 3.5 CubeMX 生成文件
 
-Platform UART 公共 API 保持冻结，仅有已批准例外：
+`main.c`、`freertos.c`、`usart.c`、`stm32f4xx_it.c` 等只作为：
 
-```text
-UART Service Phase 1 may add platform_uart_set_callback();
-all other Platform UART public API semantics remain frozen.
-```
+- 初始化入口；
+- Scheduler 入口；
+- IRQ / HAL Callback 入口；
+- 自定义架构的薄适配入口。
 
-若历史段落、旧提交说明或旧阶段 Scope Guard 与上述当前文档冲突，以当前冻结专项设计和
-`implementation_plan.md` 为准；如仍存在真实架构冲突，按 `execution_rules.md` 执行 STOP / BLOCKED。
+长期业务逻辑不得重新堆积到 CubeMX 自动生成文件。
+必须修改时优先限制在 `USER CODE` 区域。
 
 ---
 
-## 2. 已完成阶段
+# 4. 数据、并发与内存合同
 
-### 2.1 Log Phase 1 — COMPLETED
+## 4.1 DMA Buffer 与 RingBuffer 分离
 
-已确认：
+```text
+DMA RX Buffer
+    = hardware-facing temporary storage
 
-- Platform Log 与 EasyLogger / RTT 解耦；
-- Host Test PASS；
-- Keil Build PASS；
-- RTT Runtime Smoke Test PASS。
+RingBuffer
+    = software-facing unread byte-stream storage
+```
 
-当前日志链路：
+RingBuffer 不知道 UART、DMA、HAL、RTOS 或协议。
+
+## 4.2 当前 RX 所有权
+
+```text
+platform_uart_t storage       -> APP / Caller owns
+service_uart_t storage        -> APP / Caller owns
+DMA RX backing storage        -> APP / Caller owns
+RingBuffer backing storage    -> APP / Caller owns
+Consumer Task lifecycle       -> APP owns
+
+Active RX Session             -> UART Service owns
+DMA RX Buffer writer          -> DMA / STM32 Impl only
+RX_DATA event data            -> callback-period read-only view
+RingBuffer Producer           -> UART Service RX callback
+RingBuffer Consumer           -> dedicated Communication Task
+```
+
+异步数据不得依赖未声明的 Buffer 生命周期。
+
+## 4.3 ISR / Task 边界
+
+ISR / HAL Callback：
+
+```text
+capture
+copy necessary bytes
+update lightweight state
+notify
+exit quickly
+```
+
+禁止：
+
+- blocking；
+- ordinary Mutex；
+- malloc/free；
+- protocol parsing；
+- 大量格式化日志；
+- 非 ISR-safe RTOS API。
+
+Task Context 负责：
+
+- RingBuffer 消费；
+- 协议解析；
+- 状态机；
+- 日志；
+- 复杂错误处理和业务逻辑。
+
+## 4.4 内存策略
+
+核心通信链路默认采用：
+
+```text
+Static / caller-owned allocation
+```
+
+正常收发路径不使用频繁 `malloc/free`。
+
+## 4.5 数据模型
+
+新增状态型模块时优先区分：
+
+```text
+Static Configuration
+Runtime Context
+Runtime Data / Statistics
+```
+
+这是一种设计方法，不要求所有模块机械复制完全相同的结构体模板。
+
+---
+
+# 5. 已验证能力基线
+
+以下阶段均已完成，不应在无关阶段重新设计。
+
+## 5.1 Log Phase 1 — COMPLETED
+
+当前链路：
 
 ```text
 APP / Service
     ↓
-Platform Log
+Platform Log API
     ↓
 Impl Log Adapter
     ↓
 EasyLogger / RTT
 ```
 
-`02_Service/service_log/` 仍只作为占位，不因目录存在而要求实现额外转发层。
+已确认：
 
----
+```text
+Host Test          PASS
+Keil Build         PASS
+RTT Runtime Test   PASS
+```
 
-### 2.2 UART Phase 1 — COMPLETED
+Platform 公共日志头文件不依赖 EasyLogger / RTT Header。
+日志具体实现位于 Impl middleware。
+
+## 5.2 UART Phase 1 — COMPLETED
 
 已确认：
 
-- construct / init / start / stop / restart / deinit；
-- Blocking TX；
-- Blocking fixed-length RX；
-- 生命周期状态保护；
-- 恢复临时测试代码后的 Keil Full Rebuild `0 Error(s)`。
-
-Platform UART 公共 API 已冻结。UART Service Phase 1 唯一批准的例外为
-`platform_uart_set_callback()`；除此之外不得修改既有 Platform UART 公共语义。
-
----
-
-### 2.3 UART Phase 2A — COMPLETED
-
-专项设计：
-
 ```text
-00_Doc/02_架构设计/UART_Phase2A_DMA_RX设计.md
+construct / init / start / stop / restart / deinit
+blocking TX
+blocking fixed-length RX
+lifecycle validation
+Keil Rebuild PASS
 ```
 
-实现链路：
+## 5.3 UART Phase 2A DMA RX — COMPLETED
+
+实现：
 
 ```text
-USART1 RX
-    ↓
-DMA Circular
-    ↓
-IDLE / HT / TC
-    ↓
-STM32 UART Impl
-    ↓
-Platform RX_DATA Event
+DMA Circular + IDLE / HT / TC
+        ↓
+Platform RX_DATA
 ```
 
-冻结语义：
+关键语义：
 
-- `platform_uart_read_async(uart, buffer, bufferSize)` 启动持续 RX Session；
-- Caller / 后续 Service 持有 DMA RX Storage；
-- DMA / Impl 在活动 Session 中为唯一写者；
-- `RX_DATA.event.data` 仅在 callback 执行期间有效；
-- Platform 不区分 RX_DATA 来源是 IDLE / HT / TC；
-- Wrap 时最多拆成两个连续 RX_DATA 片段；
-- `cancel(RX)` 终止 Session 并产生 CANCELED；
-- lifecycle stop 静默终止 RX，不产生 CANCELED；
-- HAL ORE 映射 `PLATFORM_ERR_OVERFLOW`；DMA / PE / NE / FE 映射 `PLATFORM_ERR_IO`；
-- ISR / callback 不阻塞、不 malloc、不做完整协议解析、不做大量日志。
+- Platform 不暴露 IDLE / HT / TC 来源差异；
+- Wrap 最多拆为两个连续 RX_DATA 片段；
+- `cancel(RX)` 产生 CANCELED；
+- lifecycle stop 静默停止 RX；
+- ORE -> `PLATFORM_ERR_OVERFLOW`；
+- DMA / PE / NE / FE -> `PLATFORM_ERR_IO`。
 
-真实板测已确认：
+真实板测包括：
 
 ```text
 Short + IDLE                         PASS
 Multiple Bursts                     PASS
 Continuous 640 Bytes                PASS
-received=640 / mismatch=0
 HT / TC / IDLE Boundary 300 Bytes   PASS
-Cancel Event / Restart              PASS
+Cancel / Restart                    PASS
 Lifecycle Stop / Restart            PASS
-Capture Overflow                    0
-Error Events                        0
 ```
 
-临时板测代码已恢复，后续 Keil `0 Error(s)` 已补齐，因此 UART Phase 2A 正式 `COMPLETED`。
+## 5.4 Platform OS Phase 1 — COMPLETED
 
----
-
-### 2.4 RTOS Platform Phase 1 — COMPLETED
-
-专项设计：
-
-```text
-00_Doc/02_架构设计/RTOS_Platform_OS设计.md
-```
-
-已实现七类 Platform OS 能力：
+已实现：
 
 ```text
 Thread
@@ -190,7 +427,7 @@ Software Timer
 Time / Delay
 ```
 
-冻结依赖：
+依赖：
 
 ```text
 APP / Service
@@ -204,536 +441,361 @@ CMSIS-RTOS2
 FreeRTOS
 ```
 
-公共 Platform Header 未暴露 CMSIS / FreeRTOS Handle 或 Header。
+Host、Header Isolation、Keil、目标板 Runtime Test 均已 PASS。
+`NOTIFY ISR` 已通过真实 USART1 RX ISR 路径验证。
 
-Host / Regression 已确认：
+## 5.5 RingBuffer Phase 1 — COMPLETED
 
-```text
-Tests/platform_os                     PASS
-Platform OS Header Isolation          PASS
-Tests/platform_uart                   PASS
-Tests/impl_platform_uart              PASS
-Tests/platform_log                    PASS
-Coding Standard Review                PASS
-```
-
-Keil Integration 已完成，真实构建 `0 Error(s)`。
-
-真实板测已确认：
+冻结合同：
 
 ```text
-TIME                PASS
-THREAD              PASS
-MUTEX               PASS
-SEMAPHORE           PASS
-QUEUE               PASS
-NOTIFY TASK         PASS
-TIMER               PASS
-NOTIFY ISR          PASS
-RTOS PLATFORM BOARD TEST: PASS
+SPSC byte stream
+caller-owned storage
+no malloc/free
+no RTOS
+no UART/DMA/HAL
+no Mutex / Semaphore / Critical Section
 ```
 
-其中 `NOTIFY ISR` 使用真实 USART1 RX_DATA ISR 路径调用 `platform_notify_set_from_isr()` 唤醒 Task。
-临时板测代码已经完整恢复，恢复后的最终 Keil Rebuild 为 `0 Error(s)`。
-
----
-
-## 3. RingBuffer Phase 1 历史合同
-
-专项设计：
-
-```text
-00_Doc/02_架构设计/RingBuffer_SPSC设计.md
-```
-
-历史实施计划：
-
-```text
-00_Doc/04_Agent/implementation_plan.md
-```
-
-目标目录：
-
-```text
-02_Service/service_common/
-├── ring_buffer.h
-└── ring_buffer.c
-
-Tests/ring_buffer/
-└── test_ring_buffer.c
-```
-
-RingBuffer Phase 1 已完成；本节保留其冻结合同与验收记录，供 UART Service Phase 1
-作为既有 SPSC 容器依赖，不重新设计其 API、`N - 1` 容量规则或并发合同。
-
----
-
-## 4. RingBuffer 冻结合同
-
-RingBuffer V1 为纯 C 字节流容器：
-
-```text
-Single Producer / Single Consumer
-Caller-owned backing storage
-No malloc / free
-No Mutex / Semaphore / Critical Section
-No RTOS API
-No UART / DMA / HAL dependency
-No Notification
-No Log
-No Statistics
-No Protocol Parser
-```
-
-对象模型：
-
-```c
-typedef struct
-{
-    uint8_t *storage;
-    platform_size_t storageSize;
-    volatile platform_size_t readIndex;
-    volatile platform_size_t writeIndex;
-} ring_buffer_t;
-```
-
-并发所有权：
-
-```text
-Producer:
-    writeIndex -> 唯一写者
-    readIndex  -> 只读快照
-
-Consumer:
-    readIndex  -> 唯一写者
-    writeIndex -> 只读快照
-```
-
-发布顺序：
-
-```text
-Producer: copy bytes -> publish writeIndex
-Consumer: copy bytes -> publish readIndex
-```
-
-当前合同仅针对 STM32F411 单核 Cortex-M4 SPSC 场景，不宣称为通用 SMP lock-free 容器。
-
----
-
-## 5. RingBuffer 容量 / Overflow 语义
-
-采用保留一个空槽的 Head/Tail 模型：
+容量：
 
 ```text
 storageSize = N
 usable capacity = N - 1
 ```
 
-```text
-Empty: readIndex == writeIndex
-Full : next(writeIndex) == readIndex
-```
-
-不要求 `storageSize` 为 2 的幂。
-
-Write 使用 Partial Write：
+Overflow：
 
 ```text
-保留已经缓存的旧数据
-尽量写入仍可容纳的新数据前缀
-绝不静默覆盖旧数据
-无法容纳的尾部丢弃
-writtenLength 返回实际写入长度
-请求未完整写入 -> PLATFORM_ERR_OVERFLOW
+Partial Write
+保留旧数据
+尽量保存新数据前缀
+不静默覆盖
+未完整写入 -> PLATFORM_ERR_OVERFLOW
 ```
 
-RingBuffer 不保存：
+验证：
 
 ```text
-overflowCount
-droppedBytes
-totalWritten
-totalRead
-highWaterMark
-UART Error Statistics
+Host Test                         PASS
+100000 deterministic stress      PASS
+Regression                       PASS
+Keil Integration / Rebuild       PASS
 ```
 
-这些统计信息后续由 UART Service 根据 `dataLength`、`writtenLength`、错误码和可读长度维护。
+## 5.6 UART Service Phase 1 — COMPLETED
+
+核心能力：
+
+```text
+RX Session lifecycle
+Platform UART callback ownership
+RingBuffer integration
+Platform Notify wakeup
+read / wait_event
+status / statistics
+ERROR / CANCELED / DATA_LOSS handling
+```
+
+Service Event：
+
+```text
+RX_AVAILABLE
+DATA_LOSS
+ERROR
+STOPPED
+```
+
+Notification 只是 wake hint：
+
+```text
+RingBuffer readable size + Service runtime state = truth
+```
+
+真实板级验证：
+
+```text
+Input      : 1280 bytes raw binary, 00..FF repeated
+received   : 1280
+buffered   : 1280
+read_total : 1280
+dropped    : 0
+mismatch   : 0
+high_water : 128
+ERROR      : not observed
+DATA_LOSS  : not observed
+```
+
+完整链路：
+
+```text
+USART1 RX DMA
+-> Platform callback
+-> UART Service
+-> RingBuffer
+-> Consumer Task
+-> RTT observation
+```
+
+结果：`PASS`。
+
+临时板测代码已从 `Core/Src/freertos.c` 恢复，恢复后 Keil Rebuild `0 Error(s)`。
 
 ---
 
-## 6. RingBuffer V1 公共 API
+# 6. 当前冻结接口与行为
 
-```c
-platform_error_t ring_buffer_init(
-    ring_buffer_t *ringBuffer,
-    uint8_t *storage,
-    platform_size_t storageSize);
+未经专项设计评审，不修改：
 
-platform_error_t ring_buffer_reset(
-    ring_buffer_t *ringBuffer);
+- 五层依赖方向；
+- Platform Object / Device 基础模型；
+- Platform Lifecycle 基本语义；
+- Platform UART 现有公共语义；
+- Platform UART 不暴露 HAL / DMA / RTOS Handle；
+- DMA Buffer 与 RingBuffer 职责分离；
+- RingBuffer SPSC / `N - 1` / Partial Write 合同；
+- ISR 与 Task 职责分离；
+- UART Service 单 Producer / 单 Consumer 基线。
 
-platform_error_t ring_buffer_write(
-    ring_buffer_t *ringBuffer,
-    const uint8_t *data,
-    platform_size_t dataLength,
-    platform_size_t *writtenLength);
-
-platform_error_t ring_buffer_read(
-    ring_buffer_t *ringBuffer,
-    uint8_t *buffer,
-    platform_size_t bufferSize,
-    platform_size_t *readLength);
-
-platform_error_t ring_buffer_get_readable_size(
-    const ring_buffer_t *ringBuffer,
-    platform_size_t *readableSize);
-
-platform_error_t ring_buffer_get_free_size(
-    const ring_buffer_t *ringBuffer,
-    platform_size_t *freeSize);
-```
-
-V1 不增加：
-
-```text
-peek / discard
-read_until / find / read_line
-write_byte / read_byte
-zero-copy span
-protocol helpers
-is_empty / is_full convenience API
-```
-
-`reset()` 仅允许在 Producer 和 Consumer 均 quiescent 时调用，不属于并发安全 API。
-
----
-
-## 7. RingBuffer Phase 1 历史执行计划
-
-执行顺序：
-
-```text
-Task 0  Preflight / Scope Confirmation
-    ↓
-Task 1  Public Contract + Init / Reset / Queries
-    ↓
-Task 2  Non-Wrapping Read / Write
-    ↓
-Task 3  Wrap + Full + Partial Write Overflow
-    ↓
-Task 4  100000+ deterministic reference-model stress
-    ↓
-Task 5  Full Host Regression / Coding Standard Review
-    ↓
-Task 6  Keil Integration
-    ↓
-Task 7  Keil Clean Targets -> Rebuild all target files
-    ↓
-Task 8  Handoff / Completion
-```
-
-开发方法：
-
-```text
-RED -> GREEN -> Refactor -> Verify -> Commit
-```
-
-实现 Agent 必须先读取：
-
-```text
-00_Doc/04_Agent/execution_rules.md
-00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
-00_Doc/02_架构设计/RingBuffer_SPSC设计.md
-00_Doc/04_Agent/implementation_plan.md
-03_Platform/platform_common/platform_def.h
-03_Platform/platform_common/platform_types.h
-03_Platform/platform_common/platform_error.h
-```
-
-其中 `platform_def.h` 已定义 `PLATFORM_TRUE`、`PLATFORM_FALSE`、`NULL`、`ARRAY_SIZE` 等公共宏；
-RingBuffer 可按需使用，但不得重复定义。
-
----
-
-## 8. RingBuffer 完成条件
-
-只有以下全部满足，才能标记：
-
-```text
-RingBuffer Phase 1 = COMPLETED
-```
-
-必须具备真实证据：
-
-- `ring_buffer.h/.c` 完成；
-- Host Test PASS；
-- deterministic reference-model stress PASS；
-- UART / Platform OS / Platform Log Regression PASS；
-- Coding Standard Review = PASS；
-- RingBuffer 已加入 Keil 工程；
-- Keil Full Rebuild = `0 Error(s)`；
-- handoff 更新真实结果。
-
-本阶段为纯软件模块，不要求额外目标板 Runtime Smoke Test，也不得为此在 `Core/Src/freertos.c`
-增加临时板测逻辑。
-
-Codex 环境若无法执行真实 Keil：
-
-```text
-CODE_COMPLETE_PENDING_KEIL_VERIFICATION
-```
-
-等待人工完成 `Clean Targets -> Rebuild all target files` 后才能最终收口。
-
----
-
-## 8.1 RingBuffer Phase 1 执行记录（2026-08-30）
-
-当前状态：
-
-```text
-COMPLETED
-```
-
-已创建或修改：
-
-```text
-02_Service/service_common/ring_buffer.h
-02_Service/service_common/ring_buffer.c
-Tests/ring_buffer/test_ring_buffer.c
-MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx
-```
-
-冻结实现合同已保持：
-
-```text
-SPSC：Producer 仅写 writeIndex，Consumer 仅写 readIndex。
-Storage：调用者持有；RingBuffer 不 malloc / free。
-容量：storageSize = N，实际可用容量 = N - 1。
-发布顺序：复制完成后才发布对应 Index。
-Overflow：Partial Write；保留旧数据，写入可容纳的新数据前缀，未完整写入返回 PLATFORM_ERR_OVERFLOW。
-```
-
-已完成验证：
-
-```text
-RingBuffer Host Test                         PASS
-Deterministic Reference-Model Stress         PASS（固定种子，100000 次操作）
-Platform UART Host Regression                PASS
-Impl Platform UART Host Regression           PASS
-Platform OS Host Regression / Header Test    PASS
-Platform Log Host Regression                 PASS
-Coding Standard Review                       PASS
-Keil 工程静态集成                            PASS
-Keil Clean Targets / Rebuild all target files   PASS（人工 Keil 确认）
-```
-
-本阶段未新增 UART Service、Platform Notify 集成、统计信息、Communication Task、DMA Buffer 所有权或协议解析。
-
-Keil 人工验收已完成，RingBuffer Phase 1 满足完成门禁。
-
----
-
-## 9. 当前 UART Service Phase 1 Scope Guard
-
-UART Service Phase 1 仅实现单 UART RX 数据流：
-
-```text
-Platform UART RX_DATA / ERROR / CANCELED
-    ↓
-UART Service
-    ↓
-existing SPSC RingBuffer
-    ↓
-Platform Notify
-    ↓
-dedicated Communication Task
-```
-
-本阶段禁止实现：
-
-```text
-Protocol Parser
-Async TX Service
-Frame Queue
-Multi-UART aggregation
-Multi-Consumer
-Service-created Task
-Automatic UART error recovery
-service_log
-Dynamic memory allocation
-HAL / DMA / RTOS concrete types in Service public API
-```
-
-仅允许对 Platform UART 增加已批准的：
+UART Service Phase 1 已正式纳入的 Platform UART API：
 
 ```c
 platform_uart_set_callback();
 ```
 
-如果实现证明还必须修改其他冻结 Platform UART API、RingBuffer API、Platform Notify API、
-SPSC 并发合同、`N - 1` 容量模型或 Partial Write 策略：
-
-```text
-STOP / BLOCKED
-```
-
-返回设计阶段重新评审，不得由执行 Agent 自行改变。
+它已不再是“待实现例外”，而是当前 Platform UART 基线的一部分。
+后续如需改变 callback ownership 或其他 UART 公共接口，必须重新设计评审。
 
 ---
 
-## 10. 当前 UART Service Phase 1
+# 7. 可复用资产与后续沉淀方向
 
-当前阶段按以下链路实施：
+本项目除了完成 UART 功能，也用于识别哪些基础设施值得跨项目复用。
+
+## 7.1 高复用候选
 
 ```text
-Platform UART RX_DATA
-        ↓ ISR Producer
-UART Service
-        ↓
+Platform OS
+Platform Log
+Platform Error / Common infrastructure
+```
+
+其中：
+
+- Platform OS 已覆盖常用 RTOS 能力，并隔离 CMSIS / FreeRTOS concrete type；
+- Platform Log 已形成 Platform API -> Impl Adapter -> EasyLogger / RTT 的边界；
+- Error / 基础类型等适合作为后续公共基础设施，但基础类型归属仍有技术债需要处理。
+
+## 7.2 已验证但语义更具体
+
+```text
+Platform UART
 SPSC RingBuffer
-        ↓
-Platform Notify From ISR
-        ↓
-Communication Task / APP
 ```
 
-当前阶段引入：
+可复用，但必须保持其已声明的模型边界，不能宣称为所有 UART / 所有并发模型的万能抽象。
+
+## 7.3 当前项目组合层
 
 ```text
-service_uart_config_t
-service_uart_context_t
-service_uart_statistics_t
-DMA RX Storage ownership
-RX overflow / data-loss statistics
-UART error / cancel / restart policy
-Notification wake-up semantics
+UART Service
+Communication Task
+具体 Buffer 参数
+具体 UART error recovery policy
+APP protocol / business logic
 ```
 
-专项冻结设计：
+这些应首先服务于真实项目需求，不急于抽取成通用框架。
+
+## 7.4 后续外设 Platform 原则
+
+未来可根据真实项目逐步验证：
 
 ```text
-00_Doc/02_架构设计/UART_Service_Phase1设计.md
+GPIO
+I2C
+SPI
+Watchdog
+ADC / Timer / PWM ...
 ```
 
-只有 Host Test、既有 Regression、Coding Standard Review、Keil Full Rebuild、真实板级
-ISR -> Service -> Task Smoke Test 及恢复后 Keil Rebuild 均具备真实证据时，
-UART Service Phase 1 才可标记为 `COMPLETED`。
-
-### 10.1 执行记录（2026-08-30）
-
-当前状态：
-
-```text
-COMPLETED
-```
-
-UART Service Phase 1 的代码、Host Test、既有 Host Regression、Keil 工程静态集成、
-含临时板测代码的 Keil Rebuild、真实板级 Smoke Test 及恢复后的 Keil Rebuild 均已完成。
-临时板测接线已从 `Core/Src/freertos.c` 完整恢复，UART Service Phase 1 满足完成门禁。
-
-本阶段实际修改或新增：
-
-```text
-02_Service/service_uart/service_uart.h
-02_Service/service_uart/service_uart.c
-03_Platform/platform_mcu/uart/platform_uart.h
-03_Platform/platform_mcu/uart/platform_uart.c
-Tests/service_uart/test_service_uart.c
-Tests/platform_uart/test_platform_uart.c
-MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx
-00_Doc/04_Agent/handoff.md
-```
-
-主要提交：
-
-```text
-376aa07 docs: start uart service phase1
-7f055c9 feat(uart): add callback binding api
-09fecb5 feat(service-uart): add service object lifecycle
-7764e9c docs(service-uart): document public api
-1ce857b docs(service-uart): document service data model
-da7b072 feat(service-uart): add rx session lifecycle
-37cb914 feat(service-uart): buffer rx events and statistics
-007a252 feat(service-uart): add read status and statistics api
-5864ebf feat(service-uart): add wait events and error handling
-214b07f build: integrate uart service into keil
-```
-
-真实验证记录：
-
-```text
-UART Service Host Test                         PASS
-RingBuffer Host Regression                     PASS
-Platform UART Host Regression                  PASS
-Platform UART Type Contract                    PASS
-Impl Platform UART Host Regression             PASS
-Platform OS Host Regression                    PASS
-Platform OS Header Isolation                   PASS
-Platform Log Host Regression                   PASS
-Coding Standard Review: PASS
-Keil 工程静态集成（Include Path / Source Group） PASS
-Keil Clean Targets / Rebuild all target files PASS（人工 Keil 确认；含临时板测代码）
-Board ISR -> Service -> Task Smoke Test        PASS（真实 USART1 RX + RTT，见下方）
-Post-test restored Keil Rebuild                PASS（人工 Keil 确认，0 Error(s)）
-```
-
-真实板级 Smoke Test（2026-08-30）：
-
-```text
-配置：USART1 115200 / 8N1；串口助手发送 00..FF 循环的 1280 字节原始二进制文件；RTT Viewer 观察。
-Lifecycle：restart stop_result=0 state=4（STOPPED）；restart start_result=0 state=2（RUNNING）。
-Data path：received=1280 / buffered=1280 / read_total=1280 / dropped=0 / high_water=128 / mismatch=0。
-Error path：未观察到 ERROR 或 DATA_LOSS 事件。
-结论：USART1 RX DMA -> Platform callback -> UART Service -> RingBuffer -> 默认任务 -> RTT 链路 PASS。
-```
-
-用于上述板测的 `Core/Src/freertos.c` 临时 USER CODE 已完整删除，未作为生产代码提交。
-
-`MDK-ARM/uart_phase1_baseline_rebuild.log` 和 `MDK-ARM/uart_phase1_smoke_rebuild.log`
-属于仓库既有日志，不能作为本次 UART Service 集成后的 Keil 验收依据；其中 smoke 日志末尾记录了
-`Error: C4051E: couldn't write file ... elog_port.o` 及 `Target not created.`。
-
-冻结生命周期：
-
-```text
-construct Platform UART
--> service_uart_init(bind)
--> Platform hardware start
--> service_uart_start
--> service_uart_stop
--> Platform hardware stop
--> service_uart_deinit(unbind)
--> Platform hardware deinit
-```
-
-受控 Platform API 变更仅为：
-
-```text
-platform_uart_set_callback()
-```
-
-该 API 用于上层绑定异步事件所有者；除此以外没有改变任何 Platform UART 公共合同。
-
-生命周期补充语义：`service_uart_stop()` 若在 `cancel()` 已使 Service 进入 `STOPPED` 后，
-于通知阶段失败，则返回该通知错误。调用者不得仅凭该返回值推断 Service 仍处于运行状态，
-应调用 `service_uart_get_status()` 获取真实状态。
+但不提前一次性编写“万能 Platform”。
+只有在真实设备 / 第二个项目中出现需求时再设计，并通过第二次实际复用检查抽象是否合理。
 
 ---
 
-## 11. 历史追溯说明
+# 8. 已知技术债与文档债
 
-旧版 `handoff.md` 曾按 UART Phase 2A、RTOS Platform Phase 1 的执行过程持续追加中间状态，
-因此顶部“当前活动阶段”和部分旧 Scope Guard 在阶段完成后产生了时效冲突。
+以下问题已识别，不允许在无关阶段顺手大规模重构。
 
-从本版本开始：
+## 8.1 Platform Types 依赖 Impl 类型
+
+当前存在：
 
 ```text
-handoff.md                -> 当前状态 + 完成摘要 + 当前执行边界
-专项设计文档              -> 冻结设计合同
-implementation_plan.md    -> 当前阶段任务顺序
-Git history               -> 已完成阶段详细过程 / 中间状态 / 临时验证记录
+platform_types.h
+    ↓
+board_types.h
 ```
 
-这样旧阶段的历史限制不再覆盖新阶段执行计划。
+需要后续重新确认基础类型归属。
+在正式迁移设计前不扩大该依赖。
+
+## 8.2 CubeMX 遗留胶水代码
+
+当前 CubeMX 文件仍存在部分历史代码，例如：
+
+- `USART1_mutex_Init()`；
+- `fputc()` / UART printf 相关逻辑；
+- 部分日志初始化或默认 Task 遗留入口。
+
+随着 APP / Service 正式接入逐步迁移，不进行无关的大规模清理。
+
+## 8.3 service_log 占位目录
+
+```text
+02_Service/service_log/
+```
+
+当前只是占位。
+Platform Log 已可以直接供 APP / Service 使用，不因为目录存在而强行增加无意义的 Service 转发层。
+
+## 8.4 architecture.md 部分描述已过期
+
+当前代码已完成 Log Phase 1 解耦，但 `architecture.md` 中仍保留早期：
+
+```text
+Platform Log -> EasyLogger Header
+```
+
+作为技术债的描述，该段已与当前代码状态不一致。
+
+此外 `architecture.md` Agent 路径示例仍使用旧的：
+
+```text
+docs/agent/...
+```
+
+当前真实位置为：
+
+```text
+00_Doc/04_Agent/
+```
+
+这些属于文档债；后续专门整理架构文档时修正，不影响当前代码基线。
+
+## 8.5 README 占位文件较多
+
+根目录及多个分层目录 README 仍为空文件。
+这不阻塞当前开发，项目收尾或形成简历 / 示例工程时再统一补齐。
+
+---
+
+# 9. 当前 Agent 工作规则
+
+开始新的阶段前至少读取：
+
+```text
+00_Doc/04_Agent/requirements.md
+00_Doc/04_Agent/architecture.md
+00_Doc/04_Agent/handoff.md
+00_Doc/04_Agent/execution_rules.md
+当前阶段专项设计
+当前阶段 implementation_plan
+```
+
+若当前阶段尚无专项设计 / implementation plan：
+
+```text
+先设计
+-> 人工确认 / 冻结
+-> 再创建 implementation plan
+-> 再执行代码
+```
+
+实施过程中：
+
+- 不为了消除编译错误制造跨层依赖；
+- 不修改与当前任务无关的模块；
+- 不修改 Vendor 源码，除非计划明确要求；
+- 不在 CubeMX 文件中增加大量业务逻辑；
+- 不擅自修改冻结公共接口；
+- 新增依赖前检查方向；
+- 发现真实架构冲突时 STOP / BLOCKED，记录原因并返回设计阶段。
+
+验证结论必须区分：
+
+```text
+Host Verified
+Keil Build Verified
+Target Board Verified
+Not Yet Verified
+```
+
+不得用静态检查结果代替真实 Keil / Board 证据。
+
+---
+
+# 10. 下一阶段入口
+
+下一阶段：
+
+```text
+APP Phase 1 Design
+```
+
+当前不是生产代码实施阶段。
+
+APP Phase 1 的设计目标应是：
+
+```text
+将已经验证的 UART Service 垂直链路
+从“临时板测 Task”正式接入 01_APP/
+```
+
+设计时重点回答：
+
+- APP 如何作为 Composition Root 持有 UART / Service / Task / backing storage；
+- Communication Task 的正式生命周期由谁管理；
+- APP 如何 `wait_event()` / drain RingBuffer；
+- RX_AVAILABLE / DATA_LOSS / ERROR / STOPPED 如何进入产品级行为；
+- CubeMX `freertos.c` 如何保持薄适配；
+- APP Phase 1 是否只做字节流消费，暂不引入 Protocol Parser / Async TX；
+- 如何建立 Host / Keil / Board 验收门禁。
+
+在 APP 专项设计冻结之前：
+
+```text
+DO NOT implement production APP code.
+DO NOT modify completed UART / RingBuffer / OS contracts for APP convenience.
+```
+
+---
+
+# 11. 历史追溯位置
+
+详细历史请使用：
+
+```text
+00_Doc/02_架构设计/                  -> 各阶段冻结专项设计
+00_Doc/04_Agent/requirements.md     -> 项目需求基线
+00_Doc/04_Agent/architecture.md     -> 完整架构合同
+Git history                         -> 实施过程、阶段提交和中间状态
+Tests/                              -> Host 验证代码
+```
+
+本文件不再长期保存：
+
+- 已完成阶段的逐 Task implementation plan；
+- 大段公共 API 原型；
+- 历史 Scope Guard 全文；
+- 临时测试代码；
+- 每个 commit 的流水记录；
+- 已被专项设计文档保存的重复合同。
+
+原则：
+
+> `handoff.md` 负责快速恢复“工程现在是什么、哪些不能动、下一步是什么”；
+> 专项设计负责“为什么这样设计”；
+> implementation plan 负责“当前阶段怎么执行”；
+> Git history 负责“过去具体发生了什么”。
