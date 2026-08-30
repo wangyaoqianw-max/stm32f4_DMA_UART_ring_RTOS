@@ -13,9 +13,45 @@
 
 //******************************** Includes *********************************//
 #include "app_communication.h"
+#include "project_config.h"
 //******************************** Includes *********************************//
 
 //******************************** Functions *********************************//
+static platform_error_t app_communication_set_error(
+    app_communication_t *communication,
+    platform_error_t error)
+{
+    communication->context.state = APP_COMMUNICATION_STATE_ERROR;
+    communication->context.lastError = error;
+    communication->statistics.fatalErrorCount++;
+
+    return error;
+}
+
+static platform_error_t app_communication_drain_rx(app_communication_t *communication)
+{
+    uint8_t buffer[PROJECT_COMM_READ_BUFFER_SIZE] = {0};
+    platform_error_t result = PLATFORM_ERR_OK;
+    platform_size_t readLength = 0U;
+
+    for (;;) {
+        result = service_uart_read(communication->config.service,
+                                   buffer,
+                                   sizeof(buffer),
+                                   &readLength);
+        if (PLATFORM_ERR_EMPTY == result) {
+            return PLATFORM_ERR_OK;
+        }
+
+        if (PLATFORM_ERR_OK != result) {
+            return result;
+        }
+
+        communication->statistics.processedChunkCount++;
+        communication->statistics.processedByteCount += readLength;
+    }
+}
+
 platform_error_t app_communication_init(
     app_communication_t *communication,
     const app_communication_config_t *config)
@@ -126,6 +162,80 @@ platform_error_t app_communication_start(app_communication_t *communication)
 
     communication->context.state = APP_COMMUNICATION_STATE_RUNNING;
     communication->context.lastError = PLATFORM_ERR_OK;
+
+    return PLATFORM_ERR_OK;
+}
+
+platform_error_t app_communication_process(app_communication_t *communication, uint32_t timeoutMs)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+    uint32_t events = 0U;
+    service_uart_status_t serviceStatus = {0};
+
+    if (NULL == communication) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    if (APP_COMMUNICATION_STATE_UNINITIALIZED == communication->context.state) {
+        return PLATFORM_ERR_NOT_INITIALIZED;
+    }
+
+    if (APP_COMMUNICATION_STATE_RUNNING != communication->context.state) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    result = service_uart_wait_event(communication->config.service, timeoutMs, &events);
+    if (PLATFORM_ERR_TIMEOUT == result) {
+        return PLATFORM_ERR_OK;
+    }
+
+    if (PLATFORM_ERR_OK != result) {
+        return app_communication_set_error(communication, result);
+    }
+
+    if (0U != (events & SERVICE_UART_EVENT_RX_AVAILABLE)) {
+        result = app_communication_drain_rx(communication);
+        if (PLATFORM_ERR_OK != result) {
+            return app_communication_set_error(communication, result);
+        }
+    }
+
+    if (0U != (events & SERVICE_UART_EVENT_ERROR)) {
+        result = service_uart_get_status(communication->config.service, &serviceStatus);
+        if (PLATFORM_ERR_OK != result) {
+            return app_communication_set_error(communication, result);
+        }
+
+        result = service_uart_start(communication->config.service);
+        if (PLATFORM_ERR_OK != result) {
+            return app_communication_set_error(communication, result);
+        }
+
+        communication->statistics.uartErrorRecoveryCount++;
+        return PLATFORM_ERR_OK;
+    }
+
+    if (0U != (events & SERVICE_UART_EVENT_DATA_LOSS)) {
+        result = service_uart_stop(communication->config.service);
+        if (PLATFORM_ERR_OK != result) {
+            result = service_uart_get_status(communication->config.service, &serviceStatus);
+            if ((PLATFORM_ERR_OK != result) || (SERVICE_UART_STATE_STOPPED != serviceStatus.state)) {
+                return app_communication_set_error(communication, result);
+            }
+        }
+
+        result = service_uart_start(communication->config.service);
+        if (PLATFORM_ERR_OK != result) {
+            return app_communication_set_error(communication, result);
+        }
+
+        communication->statistics.dataLossRecoveryCount++;
+        return PLATFORM_ERR_OK;
+    }
+
+    if (0U != (events & SERVICE_UART_EVENT_STOPPED)) {
+        return app_communication_set_error(communication, PLATFORM_ERR_CANCELED);
+    }
 
     return PLATFORM_ERR_OK;
 }
