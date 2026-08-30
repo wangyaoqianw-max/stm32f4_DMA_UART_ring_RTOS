@@ -27,6 +27,7 @@
 /* USER CODE BEGIN Includes */
 #include "usart.h"
 #include "platform_log.h"
+#include "app_system.h"
 #define LOG_TAG "frssrtos001"
 /* USER CODE END Includes */
 
@@ -73,6 +74,11 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
   */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
+  platform_error_t result = app_system_init();
+
+  if (PLATFORM_ERR_OK != result) {
+    Error_Handler();
+  }
 
   /* USER CODE END Init */
 
