@@ -20,19 +20,7 @@
 
 //******************************** Defines **********************************//
 #define LOG_TAG                                "app_comm"
-/* 临时板验 Hook：完成 1280-byte 验证并清理后必须删除本宏及其受控代码。 */
-#define APP_COMMUNICATION_BOARD_TEST_HOOK      (1U)
-#define APP_COMMUNICATION_BOARD_TEST_BYTES     (1280U)
 //******************************** Defines **********************************//
-
-//******************************** Variables *********************************//
-#if (APP_COMMUNICATION_BOARD_TEST_HOOK == 1U)
-/* 仅由 Communication Task 上下文访问，不参与 ISR 或 Service 状态。 */
-static uint32_t g_boardTestComparedByteCount = 0U;
-static uint32_t g_boardTestMismatchCount = 0U;
-static platform_bool_t g_boardTestSummaryReported = PLATFORM_FALSE;
-#endif
-//******************************** Variables *********************************//
 
 //******************************** Functions *********************************//
 static platform_error_t app_communication_set_error(
@@ -64,24 +52,6 @@ static platform_error_t app_communication_drain_rx(app_communication_t *communic
         if (PLATFORM_ERR_OK != result) {
             return result;
         }
-
-#if (APP_COMMUNICATION_BOARD_TEST_HOOK == 1U)
-        for (platform_size_t index = 0U; index < readLength; index++) {
-            if ((uint8_t)g_boardTestComparedByteCount != buffer[index]) {
-                g_boardTestMismatchCount++;
-            }
-
-            g_boardTestComparedByteCount++;
-        }
-
-        if ((PLATFORM_FALSE == g_boardTestSummaryReported) &&
-            (APP_COMMUNICATION_BOARD_TEST_BYTES <= g_boardTestComparedByteCount)) {
-            platform_log_i("board test summary: compared=%lu mismatch=%lu",
-                           (unsigned long)g_boardTestComparedByteCount,
-                           (unsigned long)g_boardTestMismatchCount);
-            g_boardTestSummaryReported = PLATFORM_TRUE;
-        }
-#endif
 
         communication->statistics.processedChunkCount++;
         communication->statistics.processedByteCount += readLength;
