@@ -263,6 +263,102 @@ static int test_wrap_read_and_write_preserve_order(void)
     return 0;
 }
 
+static uint32_t test_next_random(uint32_t *state)
+{
+    *state ^= *state << 13U;
+    *state ^= *state >> 17U;
+    *state ^= *state << 5U;
+
+    return *state;
+}
+
+static int test_deterministic_reference_model_stress(void)
+{
+    ring_buffer_t ringBuffer = {0};
+    uint8_t storage[17] = {0};
+    uint8_t reference[16] = {0};
+    uint8_t input[31] = {0};
+    uint8_t output[31] = {0};
+    platform_size_t referenceReadIndex = 0U;
+    platform_size_t referenceCount = 0U;
+    platform_size_t requestLength = 0U;
+    platform_size_t expectedLength = 0U;
+    platform_size_t actualLength = 0U;
+    platform_size_t readableSize = 0U;
+    platform_size_t freeSize = 0U;
+    platform_size_t index = 0U;
+    uint32_t randomState = 0x6D2B79F5U;
+    uint32_t operation = 0U;
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_init(&ringBuffer, storage, sizeof(storage)));
+
+    for (operation = 0U; operation < 100000U; operation++) {
+        requestLength = test_next_random(&randomState) % 32U;
+        if ((test_next_random(&randomState) & 1U) == 0U) {
+            for (index = 0U; index < requestLength; index++) {
+                input[index] = (uint8_t)test_next_random(&randomState);
+            }
+
+            expectedLength = requestLength;
+            if (expectedLength > (sizeof(reference) - referenceCount)) {
+                expectedLength = sizeof(reference) - referenceCount;
+            }
+
+            result = ring_buffer_write(&ringBuffer, input, requestLength, &actualLength);
+            TEST_ASSERT(expectedLength == actualLength);
+            TEST_ASSERT((expectedLength == requestLength) ? (PLATFORM_ERR_OK == result) :
+                                                            (PLATFORM_ERR_OVERFLOW == result));
+
+            for (index = 0U; index < expectedLength; index++) {
+                reference[(referenceReadIndex + referenceCount + index) % sizeof(reference)] = input[index];
+            }
+            referenceCount += expectedLength;
+        } else {
+            expectedLength = requestLength;
+            if (expectedLength > referenceCount) {
+                expectedLength = referenceCount;
+            }
+
+            result = ring_buffer_read(&ringBuffer, output, requestLength, &actualLength);
+            TEST_ASSERT(expectedLength == actualLength);
+            if ((requestLength > 0U) && (referenceCount == 0U)) {
+                TEST_ASSERT(PLATFORM_ERR_EMPTY == result);
+            } else {
+                TEST_ASSERT(PLATFORM_ERR_OK == result);
+            }
+
+            for (index = 0U; index < expectedLength; index++) {
+                TEST_ASSERT(reference[(referenceReadIndex + index) % sizeof(reference)] == output[index]);
+            }
+            referenceReadIndex = (referenceReadIndex + expectedLength) % sizeof(reference);
+            referenceCount -= expectedLength;
+        }
+
+        TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_get_readable_size(&ringBuffer, &readableSize));
+        TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_get_free_size(&ringBuffer, &freeSize));
+        TEST_ASSERT(referenceCount == readableSize);
+        TEST_ASSERT((sizeof(storage) - 1U) == (readableSize + freeSize));
+    }
+
+    while (referenceCount > 0U) {
+        expectedLength = referenceCount;
+        if (expectedLength > sizeof(output)) {
+            expectedLength = sizeof(output);
+        }
+
+        TEST_ASSERT(PLATFORM_ERR_OK == ring_buffer_read(&ringBuffer, output, expectedLength, &actualLength));
+        TEST_ASSERT(expectedLength == actualLength);
+        for (index = 0U; index < expectedLength; index++) {
+            TEST_ASSERT(reference[(referenceReadIndex + index) % sizeof(reference)] == output[index]);
+        }
+        referenceReadIndex = (referenceReadIndex + expectedLength) % sizeof(reference);
+        referenceCount -= expectedLength;
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
@@ -313,6 +409,11 @@ int main(void)
     }
 
     result = test_wrap_read_and_write_preserve_order();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_deterministic_reference_model_stress();
     if (0 != result) {
         return result;
     }
