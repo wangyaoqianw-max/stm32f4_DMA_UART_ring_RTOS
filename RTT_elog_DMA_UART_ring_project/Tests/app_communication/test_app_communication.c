@@ -12,6 +12,7 @@
  *****************************************************************************/
 
 #include "app_communication.h"
+#include "platform_log.h"
 
 #define TEST_ASSERT(condition) \
     do { \
@@ -132,6 +133,34 @@ platform_error_t service_uart_get_status(const service_uart_t *service, service_
     g_fakeRuntime.getStatusCallCount++;
     *status = g_fakeRuntime.serviceStatus;
     return PLATFORM_ERR_OK;
+}
+
+platform_error_t platform_time_delay_ms(uint32_t delayMs)
+{
+    (void)delayMs;
+    return PLATFORM_ERR_OK;
+}
+
+static void fake_log_output(
+    uint8_t level,
+    const char *tag,
+    const char *file,
+    const char *func,
+    long line,
+    const char *format,
+    ...)
+{
+    (void)level;
+    (void)tag;
+    (void)file;
+    (void)func;
+    (void)line;
+    (void)format;
+}
+
+platform_log_output_fn_t Platform_Log_GetOutputFn(void)
+{
+    return fake_log_output;
 }
 
 static int test_init_and_getters(void)

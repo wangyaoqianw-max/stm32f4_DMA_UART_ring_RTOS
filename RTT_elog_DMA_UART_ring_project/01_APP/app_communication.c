@@ -14,7 +14,13 @@
 //******************************** Includes *********************************//
 #include "app_communication.h"
 #include "project_config.h"
+#include "platform_log.h"
+#include "platform_time.h"
 //******************************** Includes *********************************//
+
+//******************************** Defines **********************************//
+#define LOG_TAG    "app_comm"
+//******************************** Defines **********************************//
 
 //******************************** Functions *********************************//
 static platform_error_t app_communication_set_error(
@@ -238,5 +244,27 @@ platform_error_t app_communication_process(app_communication_t *communication, u
     }
 
     return PLATFORM_ERR_OK;
+}
+
+void app_communication_task_entry(void *argument)
+{
+    app_communication_t *communication = (app_communication_t *)argument;
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    if (NULL == communication) {
+        for (;;) {
+            (void)platform_time_delay_ms(PROJECT_COMM_ERROR_IDLE_DELAY_MS);
+        }
+    }
+
+    result = app_communication_start(communication);
+    while (PLATFORM_ERR_OK == result) {
+        result = app_communication_process(communication, PROJECT_COMM_WAIT_TIMEOUT_MS);
+    }
+
+    for (;;) {
+        platform_log_e("communication fatal error: %d", (int)communication->context.lastError);
+        (void)platform_time_delay_ms(PROJECT_COMM_ERROR_IDLE_DELAY_MS);
+    }
 }
 //******************************** Functions *********************************//
