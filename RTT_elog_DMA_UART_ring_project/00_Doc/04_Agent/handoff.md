@@ -13,7 +13,7 @@
 - 工程根目录：`RTT_elog_DMA_UART_ring_project/`
 - 当前分支：`main`
 - 当前活动阶段：`UART Service Phase 1`
-- 当前状态：`CODE_COMPLETE_PENDING_KEIL_VERIFICATION`
+- 当前状态：`CODE_COMPLETE_PENDING_POST_TEST_KEIL_REBUILD`
 - MCU：STM32F411CEU6，Cortex-M4F
 - 软件环境：STM32 HAL、CMSIS-RTOS2 / FreeRTOS、Keil MDK-ARM、EasyLogger、SEGGER RTT
 
@@ -626,13 +626,13 @@ UART Service Phase 1 才可标记为 `COMPLETED`。
 当前状态：
 
 ```text
-CODE_COMPLETE_PENDING_KEIL_VERIFICATION
+CODE_COMPLETE_PENDING_POST_TEST_KEIL_REBUILD
 ```
 
-UART Service Phase 1 的代码、Host Test、既有 Host Regression 和 Keil 工程静态集成已完成；
-当前环境未找到可实际调用的 Keil `UV4.exe`，且无可访问的真实板卡/串口链路。
-因此 Keil Full Rebuild、真实板级 Smoke Test 和恢复后的 Keil Rebuild 均未执行，
-不得将本阶段标记为 `COMPLETED`。
+UART Service Phase 1 的代码、Host Test、既有 Host Regression、Keil 工程静态集成、
+含临时板测代码的 Keil Rebuild 及真实板级 Smoke Test 已完成。
+临时板测接线已从 `Core/Src/freertos.c` 完整恢复；当前环境没有可实际调用的 Keil `UV4.exe`，
+恢复后的 Keil Rebuild 尚待人工执行，因此不得将本阶段标记为 `COMPLETED`。
 
 本阶段实际修改或新增：
 
@@ -675,10 +675,22 @@ Platform OS Header Isolation                   PASS
 Platform Log Host Regression                   PASS
 Coding Standard Review: PASS
 Keil 工程静态集成（Include Path / Source Group） PASS
-Keil Clean Targets / Rebuild all target files PENDING_MANUAL_VERIFICATION
-Board ISR -> Service -> Task Smoke Test        PENDING_MANUAL_VERIFICATION
+Keil Clean Targets / Rebuild all target files PASS（人工 Keil 确认；含临时板测代码）
+Board ISR -> Service -> Task Smoke Test        PASS（真实 USART1 RX + RTT，见下方）
 Post-test restored Keil Rebuild                PENDING_MANUAL_VERIFICATION
 ```
+
+真实板级 Smoke Test（2026-08-30）：
+
+```text
+配置：USART1 115200 / 8N1；串口助手发送 00..FF 循环的 1280 字节原始二进制文件；RTT Viewer 观察。
+Lifecycle：restart stop_result=0 state=4（STOPPED）；restart start_result=0 state=2（RUNNING）。
+Data path：received=1280 / buffered=1280 / read_total=1280 / dropped=0 / high_water=128 / mismatch=0。
+Error path：未观察到 ERROR 或 DATA_LOSS 事件。
+结论：USART1 RX DMA -> Platform callback -> UART Service -> RingBuffer -> 默认任务 -> RTT 链路 PASS。
+```
+
+用于上述板测的 `Core/Src/freertos.c` 临时 USER CODE 已完整删除，未作为生产代码提交。
 
 `MDK-ARM/uart_phase1_baseline_rebuild.log` 和 `MDK-ARM/uart_phase1_smoke_rebuild.log`
 属于仓库既有日志，不能作为本次 UART Service 集成后的 Keil 验收依据；其中 smoke 日志末尾记录了
