@@ -124,11 +124,13 @@ Next Phase
 main
 ```
 
-当前基线提交：
+最后已验证的 Firmware 功能基线：
 
 ```text
 ba1d877  docs: complete uart service phase1 verification
 ```
+
+该 SHA 仅表示最近一次完成 Host / Keil / Board 验证的功能基线；后续纯文档提交不会改变该验证结论，也不要求本文件记录实时 HEAD。
 
 当前状态：
 
