@@ -564,7 +564,7 @@ NO STRUCTURAL REFACTOR REQUIRED FOR CURRENT TARGET
 
 不得为了消除该审查提示直接给当前 ISR Producer 路径加入普通 Mutex。
 
-## 8.7 Platform Log Naming Refactor — IMPLEMENTED / HOST_VERIFIED
+## 8.7 Platform Log Naming Refactor — COMPLETED
 
 Platform Log 公共 API 和同模块私有适配符号已完成 V2.0 命名迁移：
 
@@ -578,14 +578,14 @@ Coding Standard Review             PASS
 Architecture / Runtime Behavior    UNCHANGED
 ```
 
-本机未发现 Keil 可执行环境，且未连接目标板，因此以下验证尚未执行：
+用户已在 Keil 环境完成全量编译，结果为 `0 Error(s)`，并完成目标板 RTT 冒烟：
 
 ```text
-Keil Full Rebuild                  NOT VERIFIED
-RTT Runtime Regression             NOT RUN
+Keil Full Rebuild                  PASS (0 Error(s), user verified)
+RTT Runtime Regression             PASS (RTT Viewer, user verified)
 ```
 
-在获得 Keil `0 Error(s)` 和目标板 RTT 冒烟验证前，本项不得标记为 `COMPLETED`。
+RTT 冒烟已验证初始化、INFO / ERROR 可见、WARN 过滤生效、输出关闭后无输出、重新打开后恢复输出。
 
 ## 8.8 USART1 Callback 当前为单实例路由
 
