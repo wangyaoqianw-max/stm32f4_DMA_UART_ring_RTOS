@@ -1,52 +1,49 @@
-# APP Phase 1 Implementation Plan
+# Platform Log Naming Refactor Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Execute this plan task-by-task. Do not expand scope. Every self-developed `.c/.h` modification must follow `00_Doc/04_Agent/execution_rules.md` and the current V2.0 coding standard.
 
-**Goal:** Build the first production `01_APP/` RX vertical slice: centralized product static configuration, a product Composition Root, and one Communication Task that consumes UART Service byte-stream data and applies the frozen DATA_LOSS / ERROR recovery policy without exposing Impl/HAL/RTOS concrete dependencies to APP.
+**Goal:** Resolve the confirmed Platform Log naming technical debt by migrating the self-developed public Log API and affected private Impl symbols to the current project naming convention, while preserving architecture, runtime behavior, EasyLogger/RTT integration, initialization semantics, and all existing Log features.
 
-**Architecture:** `00_Config/project_config.h` owns compile-time product parameters only. `app_system` owns APP-level static objects/backing storage and pre-scheduler composition. `app_communication` owns post-scheduler runtime start, wait/drain/recovery, minimal APP statistics, and low-frequency logging. APP may depend on Service and Platform; APP and Service must not directly depend on Impl.
+**Refactor Type:** Repository-internal breaking rename with complete call-site migration. No backward-compatibility aliases are required unless an actual external consumer is discovered during preflight.
 
-**Tech Stack:** C, STM32F411CEU6, Platform BSP UART, Platform UART lifecycle, Platform OS Thread/Time, Platform Log, UART Service, SPSC RingBuffer, CMSIS-RTOS2 + FreeRTOS behind Platform adapters, GCC Host Test, Keil MDK-ARM.
-
-**Specs:**
+**Architecture:** Keep the existing chain unchanged:
 
 ```text
-00_Doc/02_架构设计/APP_Phase1设计.md
-00_Doc/02_架构设计/APP_Phase1_Config补充设计.md
+APP / Service
+    ↓
+Platform Log API
+    ↓
+Impl Log Adapter
+    ↓
+EasyLogger / RTT
+```
+
+**Behavioral Principle:**
+
+```text
+API spelling changes
+Behavior does not
+Architecture does not
 ```
 
 ---
 
-## Mandatory References
+# 0. Mandatory References
 
-Before modifying project C/H files, read:
+Before modifying any project C/H file, read at minimum:
 
 ```text
-00_Doc/02_架构设计/APP_Phase1设计.md
-00_Doc/02_架构设计/APP_Phase1_Config补充设计.md
-00_Doc/02_架构设计/UART_Service_Phase1设计.md
-00_Doc/02_架构设计/Platform_BSP_UART_Binding_Phase1设计.md
-00_Doc/02_架构设计/Platform_UART抽象层设计.md
-00_Doc/02_架构设计/RTOS_Platform_OS设计.md
-00_Doc/02_架构设计/RingBuffer_SPSC设计.md
 00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
 00_Doc/04_Agent/execution_rules.md
 00_Doc/04_Agent/architecture.md
 00_Doc/04_Agent/requirements.md
 00_Doc/04_Agent/handoff.md
-00_Config/README.md
-01_APP/README.md
-02_Service/service_uart/service_uart.h
-03_Platform/platform_bsp/platform_bsp_uart.h
-03_Platform/platform_mcu/uart/platform_uart.h
-03_Platform/platform_mcu/uart/platform_uart_types.h
-03_Platform/platform_os/platform_thread.h
-03_Platform/platform_os/platform_time.h
 03_Platform/platform_middleware/platform_log.h
-Core/Src/freertos.c
-Core/Src/main.c
-MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx
+04_Impl/impl_middleware/impl_log/easylogger_port.c
+04_Impl/impl_middleware/impl_log/easylogger_port.h
 ```
+
+Also inspect every production/test/documentation call site discovered by repository-wide search.
 
 Preflight report must explicitly contain:
 
@@ -59,1031 +56,662 @@ Agent Execution Rules:
 00_Doc/04_Agent/execution_rules.md
 Status: READ
 
-APP Phase 1 Design:
-00_Doc/02_架构设计/APP_Phase1设计.md
-Status: READ / FROZEN
-
-APP Phase 1 Config Addendum:
-00_Doc/02_架构设计/APP_Phase1_Config补充设计.md
-Status: READ / FROZEN
+Platform Log Naming Refactor Scope:
+Status: CONFIRMED
 ```
 
----
-
-## Global Constraints
-
-Dependency rules are frozen:
+Current naming baseline:
 
 ```text
-APP -> Service       ALLOWED
-APP -> Platform      ALLOWED
-Service -> Platform  ALLOWED
-Platform -> Impl     ALLOWED
-APP -> Impl          FORBIDDEN
-Service -> Impl      FORBIDDEN
+Functions           snake_case
+Types               lower_snake_case_t
+Macros              UPPER_SNAKE_CASE
+Enum members        UPPER_SNAKE_CASE
+File-local mutable  g_ + lowerCamelCase
 ```
 
-APP production code must not include or use:
-
-```text
-impl_platform_uart.h
-impl_freertos_*.h
-usart.h
-UART_HandleTypeDef
-DMA_HandleTypeDef
-stm32f4xx_hal_uart.h
-cmsis_os2.h
-FreeRTOS.h
-task.h
-TaskHandle_t
-USART1 / DMA Stream / IRQ concrete resources
-```
-
-`00_Config/project_config.h` may depend on public Platform configuration types/enums, but must not include Impl/HAL/CMSIS/FreeRTOS concrete headers.
-
-Frozen product values:
-
-```text
-UART baudRate                 115200
-UART dataBits                 PLATFORM_UART_DATA_BITS_8
-UART stopBits                 PLATFORM_UART_STOP_BITS_1
-UART parity                   PLATFORM_UART_PARITY_NONE
-UART flowControl              PLATFORM_UART_FLOW_CONTROL_NONE
-UART defaultTimeoutMs         1000 ms
-DMA RX buffer                 128 bytes
-RingBuffer storage            512 bytes (511 usable)
-APP read buffer               128 bytes
-Communication Task stack      1024 bytes
-Communication Task priority   PLATFORM_THREAD_PRIORITY_NORMAL
-wait_event timeout            1000 ms
-fatal error idle delay        1000 ms
-```
-
-These values must have a single product-level definition in `project_config.h`. APP source must not repeat equivalent numeric literals except unavoidable zero/boolean/state values.
-
-Other frozen constraints:
-
-- No dynamic allocation.
-- `platform_uart_t`, `service_uart_t`, `platform_thread_t`, `app_communication_t`, DMA RX storage, and RingBuffer storage are APP-owned static resources.
-- `00_Config` stores values only; object pointers, storage addresses, runtime state, statistics, handles, callbacks, and Impl mapping do not belong there.
-- Platform BSP owns the logical-to-concrete UART mapping; current mapping remains `Communication UART -> USART1`.
-- UART Service remains sole owner of the active RX Session and the only production caller allowed to cancel that Session.
-- Notification is a wake hint; Service/RingBuffer state is truth.
-- Drain valid RingBuffer bytes before recovery that starts a new RX Session.
-- Recovery priority after drain is `ERROR > DATA_LOSS > STOPPED`.
-- `PLATFORM_ERR_TIMEOUT` from `service_uart_wait_event()` is normal idle; APP remains RUNNING.
-- No Protocol Parser, Frame Queue, Async TX, UART echo, multi-UART, Device Registry, Factory/IoC, Event Bus, Watchdog policy, or product shutdown framework.
-- Keep CubeMX `defaultTask`, `USART1_mutex_Init()`, and legacy `fputc()` technical debt in this phase unless a real blocker proves otherwise.
-- Do not modify frozen lower-layer public contracts for APP convenience.
-
-If implementation requires a frozen contract change:
+If repository reality materially differs from this plan:
 
 ```text
 STOP / BLOCKED
 ```
 
-Return to design review.
+Do not silently redesign the module.
 
 ---
 
-## Approved APP Public Surface
+# 1. Frozen Scope
 
-`app_system.h`:
+## 1.1 Public API Rename
 
-```c
-platform_error_t app_system_init(void);
-```
-
-`app_communication.h` must expose the frozen APP data model plus:
-
-```c
-#define APP_COMMUNICATION_INITIALIZER {0}
-
-platform_error_t app_communication_init(
-    app_communication_t *communication,
-    const app_communication_config_t *config);
-
-platform_error_t app_communication_start(
-    app_communication_t *communication);
-
-platform_error_t app_communication_process(
-    app_communication_t *communication,
-    uint32_t timeoutMs);
-
-platform_error_t app_communication_get_status(
-    const app_communication_t *communication,
-    app_communication_status_t *status);
-
-platform_error_t app_communication_get_statistics(
-    const app_communication_t *communication,
-    app_communication_statistics_t *statistics);
-
-void app_communication_task_entry(void *argument);
-```
-
-Getters are read-only observability APIs. Do not add setters, global object getters, restart commands, direct Service exposure APIs, or runtime shutdown APIs.
-
-APP statistics are exactly:
+Required public symbol migration:
 
 ```text
-processedChunkCount
-processedByteCount
-dataLossRecoveryCount
-uartErrorRecoveryCount
-fatalErrorCount
+Platform_Log_Level_t
+    -> platform_log_level_t
+
+Platform_Log_Init()
+    -> platform_log_init()
+
+Platform_Log_SetLevel()
+    -> platform_log_set_level()
+
+Platform_Log_EnableOutput()
+    -> platform_log_enable_output()
+
+Platform_Log_GetOutputFn()
+    -> platform_log_get_output_fn()
 ```
 
-Do not duplicate UART Service RX statistics.
+Keep unchanged:
+
+```text
+platform_log_output_fn_t
+
+PLATFORM_LOG_LEVEL_ASSERT
+PLATFORM_LOG_LEVEL_ERROR
+PLATFORM_LOG_LEVEL_WARN
+PLATFORM_LOG_LEVEL_INFO
+PLATFORM_LOG_LEVEL_DEBUG
+PLATFORM_LOG_LEVEL_VERBOSE
+PLATFORM_LOG_LEVEL_MAX
+
+platform_log_e(...)
+platform_log_w(...)
+platform_log_i(...)
+platform_log_d(...)
+platform_log_v(...)
+```
+
+The Log macros must only update their internal getter reference:
+
+```text
+Platform_Log_GetOutputFn()
+    -> platform_log_get_output_fn()
+```
+
+## 1.2 Affected Impl Private Symbols
+
+Within the self-developed Log adapter, migrate affected private functions to the current naming convention:
+
+```text
+Impl_Elog_NoOutput
+    -> impl_elog_no_output
+
+Impl_Elog_ConfigFormat
+    -> impl_elog_config_format
+
+Impl_Elog_ConvertLevel
+    -> impl_elog_convert_level
+
+Impl_Elog_AssertHook
+    -> impl_elog_assert_hook
+
+Impl_Elog_AsyncTask
+    -> impl_elog_async_task
+```
+
+Only rename private symbols that belong to the same Log adapter and are directly within this refactor scope.
+
+Do not use this task to rename unrelated modules.
+
+## 1.3 Third-Party Symbols
+
+The following are third-party / middleware APIs and must not be renamed merely for style:
+
+```text
+elog_init()
+elog_start()
+elog_output()
+elog_set_filter_lvl()
+elog_set_output_enabled()
+elog_assert_set_hook()
+elog_async_get_line_log()
+elog_port_output()
+CMSIS-RTOS2 APIs
+SEGGER RTT APIs
+```
 
 ---
 
-## Task 0: Preflight and Repository State Gate
+# 2. Explicit Non-Goals
+
+This refactor must NOT:
+
+```text
+- add service_log forwarding layer
+- redesign Platform Log architecture
+- redesign EasyLogger adapter
+- redesign RTT output
+- change synchronous/asynchronous Log mode
+- change Log level semantics
+- change filter behavior
+- change no-op pre-init output behavior
+- change initialization or failure cleanup semantics
+- change Platform OS
+- change UART / RingBuffer / APP logic
+- introduce Config / Context / Data structures without real need
+- add dynamic allocation
+- add compatibility aliases by default
+- edit Vendor / EasyLogger source merely for naming consistency
+- perform repository-wide unrelated formatting cleanup
+```
+
+If an unrelated defect is discovered:
+
+```text
+record it separately
+continue only if it does not block this refactor
+```
+
+If it blocks correctness:
+
+```text
+STOP / BLOCKED
+```
+
+---
+
+# 3. Behavioral Contracts That Must Remain Unchanged
+
+## 3.1 Pre-init Logging
+
+Before successful initialization:
+
+```text
+platform_log_e/w/i/d/v(...)
+    ↓
+platform_log_get_output_fn()
+    ↓
+no-op backend
+```
+
+Logging before init must remain safe and non-crashing.
+
+## 3.2 Initialization
+
+`platform_log_init()` must preserve current behavior:
+
+```text
+already initialized
+    -> return PLATFORM_ERR_OK
+
+successful init
+    -> configure EasyLogger
+    -> register assert hook
+    -> start EasyLogger
+    -> switch output function to elog_output
+    -> return PLATFORM_ERR_OK
+```
+
+Failure paths and cleanup behavior must remain equivalent to the current implementation.
+
+## 3.3 Level Filtering
+
+`platform_log_set_level()` must preserve:
+
+```text
+not initialized
+    -> PLATFORM_ERR_NOT_INITIALIZED
+
+invalid level >= PLATFORM_LOG_LEVEL_MAX
+    -> PLATFORM_ERR_INVALID_PARAM
+
+valid level
+    -> map Platform level to EasyLogger level
+    -> PLATFORM_ERR_OK
+```
+
+## 3.4 Output Enable
+
+`platform_log_enable_output()` must preserve current enable/disable semantics and error handling.
+
+## 3.5 Backend Getter
+
+`platform_log_get_output_fn()` must continue returning the currently bound output backend.
+
+---
+
+# 4. Task 0 — Preflight and Impact Analysis
 
 **Files:** read only initially.
 
-- [ ] Run:
+- [ ] Run repository status/history checks:
 
 ```bash
 git status --short
 git log --oneline -n 15
 ```
 
-- [ ] Read every Mandatory Reference.
-
-- [ ] Confirm prerequisites:
-
-```text
-Platform BSP UART Binding Phase 1   COMPLETED
-Communication UART Binding          VERIFIED
-UART Service Phase 1                COMPLETED
-Base RX Vertical Slice              VERIFIED
-Production APP Layer                NOT IMPLEMENTED
-APP Phase 1 Design                   FROZEN
-APP Phase 1 Config Addendum          FROZEN
-```
-
-- [ ] Confirm production files do not already exist, or inspect/reconcile them if they do:
+- [ ] Read all Mandatory References.
+- [ ] Confirm current `platform_log.h` public symbols match the expected old naming baseline.
+- [ ] Confirm `easylogger_port.c` is the current implementation location for the Platform Log API.
+- [ ] Search the entire repository for all old public symbols:
 
 ```text
-00_Config/project_config.h
-01_APP/app_system.h
-01_APP/app_system.c
-01_APP/app_communication.h
-01_APP/app_communication.c
-Tests/project_config/test_project_config.c
-Tests/app_communication/test_app_communication.c
-Tests/app_system/test_app_system.c
+Platform_Log_Level_t
+Platform_Log_Init
+Platform_Log_SetLevel
+Platform_Log_EnableOutput
+Platform_Log_GetOutputFn
 ```
 
-- [ ] Confirm `main.c` order remains:
+- [ ] Search for affected old private symbols:
 
 ```text
-MX_GPIO_Init
-MX_DMA_Init
-MX_USART1_UART_Init
-osKernelInitialize
-MX_FREERTOS_Init
-osKernelStart
+Impl_Elog_NoOutput
+Impl_Elog_ConfigFormat
+Impl_Elog_ConvertLevel
+Impl_Elog_AssertHook
+Impl_Elog_AsyncTask
 ```
 
-- [ ] Confirm `freertos.c` has USER CODE sections available for a thin APP entry and still contains the known defaultTask / USART1 mutex legacy glue.
+- [ ] Classify every match:
 
-- [ ] Confirm UART Service requires a valid `consumerThread` during `service_uart_init()`.
+```text
+production C/H
+Host Test
+CubeMX generated file / USER CODE
+documentation
+historical-only text
+third-party/vendor
+```
 
-- [ ] Confirm `01_APP/` currently has no direct Impl/HAL/CMSIS/FreeRTOS dependency.
+- [ ] Determine whether any external/public consumer outside this repository is actually required.
+
+Default assumption:
+
+```text
+Repository-internal API only
+No compatibility aliases
+```
+
+If evidence shows a required external consumer:
+
+```text
+STOP / BLOCKED
+```
+
+Return for compatibility-policy decision.
 
 - [ ] Run `git diff --check`.
 
-**Gate:** material mismatch with either frozen APP design -> `STOP / BLOCKED`.
+**Gate:** No production code changes before impact analysis is complete.
 
 ---
 
-## Task 1: Centralize Product Static Configuration
+# 5. Task 1 — Strengthen / Update Platform Log Host Tests First
 
-**Files:**
+**Goal:** Ensure the rename is behavior-preserving and not validated only by compilation.
 
-- Modify: `00_Config/README.md`
-- Create: `00_Config/project_config.h`
-- Create: `Tests/project_config/test_project_config.c`
+**Files:** inspect existing Log tests first; modify/create only the minimum necessary test files.
 
-### 1.1 README contract
-
-Document that `00_Config` contains product-level compile-time settings only.
-
-Explicitly state that these do **not** belong in Config:
+Required behavioral coverage where feasible in the existing Host Test architecture:
 
 ```text
-object instances / pointers
-storage addresses
-runtime context/state/statistics
-HAL / DMA / USART handles
-Impl mapping
-callbacks
-RTOS native handles
+pre-init getter returns safe backend
+pre-init macro/backend invocation does not crash
+init success
+repeat init keeps existing behavior
+set_level before init -> NOT_INITIALIZED
+set_level invalid level -> INVALID_PARAM
+set_level valid level -> success / expected backend mapping path
+enable_output before init -> NOT_INITIALIZED
+enable_output true/false -> expected backend call
+get_output_fn after init -> active backend
 ```
 
-### 1.2 Public configuration header
+- [ ] Reuse existing test harness instead of creating a parallel Log test framework if one exists.
+- [ ] Update tests to target the new public names.
+- [ ] If strict TDD is practical, demonstrate the expected compile failure against old public names before production rename.
+- [ ] Do not weaken existing assertions merely to make the rename pass.
 
-Create `project_config.h` with project-standard self-written header/comment rules.
+**Gate:** Tests must define the expected behavior before or together with the implementation rename.
 
-Allowed public dependencies:
+---
 
-```c
-#include "platform_uart_types.h"
-#include "platform_thread.h"
+# 6. Task 2 — Rename Platform Public API
+
+**Primary file:**
+
+```text
+03_Platform/platform_middleware/platform_log.h
 ```
 
-Required macros:
+Required changes:
 
-```c
-#define PROJECT_COMM_UART_BAUD_RATE              (115200U)
-#define PROJECT_COMM_UART_DATA_BITS              PLATFORM_UART_DATA_BITS_8
-#define PROJECT_COMM_UART_STOP_BITS              PLATFORM_UART_STOP_BITS_1
-#define PROJECT_COMM_UART_PARITY                 PLATFORM_UART_PARITY_NONE
-#define PROJECT_COMM_UART_FLOW_CONTROL           PLATFORM_UART_FLOW_CONTROL_NONE
-#define PROJECT_COMM_UART_DEFAULT_TIMEOUT_MS     (1000U)
+- [ ] Rename `Platform_Log_Level_t` -> `platform_log_level_t`.
+- [ ] Rename four Platform Log public functions to snake_case.
+- [ ] Update `platform_log_e/w/i/d/v` internal getter references.
+- [ ] Keep enum member values/order unchanged.
+- [ ] Keep `platform_log_output_fn_t` signature unchanged.
+- [ ] Preserve existing public API semantics and Doxygen meaning.
+- [ ] Update comments only where required by renamed symbols or current mandatory comment rules.
+- [ ] Do not perform unrelated formatting rewrite.
 
-#define PROJECT_COMM_DMA_RX_BUFFER_SIZE           (128U)
-#define PROJECT_COMM_RING_BUFFER_STORAGE_SIZE     (512U)
-#define PROJECT_COMM_READ_BUFFER_SIZE             (128U)
+Header isolation check:
 
-#define PROJECT_COMM_TASK_STACK_SIZE_BYTES        (1024U)
-#define PROJECT_COMM_TASK_PRIORITY                PLATFORM_THREAD_PRIORITY_NORMAL
-
-#define PROJECT_COMM_WAIT_TIMEOUT_MS              (1000U)
-#define PROJECT_COMM_ERROR_IDLE_DELAY_MS          (1000U)
+```text
+platform_log.h must remain independently includable
 ```
 
-Do not define UART instance, DMA stream, HAL handle, Service pointer, Task object, Buffer address, or BSP mapping in this header.
-
-### 1.3 RED/GREEN tests
-
-Add compile/static-assert tests verifying the exact frozen values and enum selections.
-
-The test source includes only:
-
-```c
-#include "project_config.h"
-```
-
-plus standard headers required by the test harness. It must not include Impl/HAL/CMSIS/FreeRTOS concrete headers.
-
-Use C11 static assertions where practical, e.g.:
-
-```c
-_Static_assert(PROJECT_COMM_UART_BAUD_RATE == 115200U,
-               "unexpected communication baud rate");
-_Static_assert(PROJECT_COMM_DMA_RX_BUFFER_SIZE == 128U,
-               "unexpected dma rx buffer size");
-_Static_assert(PROJECT_COMM_RING_BUFFER_STORAGE_SIZE == 512U,
-               "unexpected ring storage size");
-```
-
-- [ ] Verify RED before the header exists if following strict TDD in a clean worktree.
-- [ ] Implement header and README.
-- [ ] Compile/run test GREEN with repository-appropriate Platform include paths.
+- [ ] Run header compile/isolation test if repository has an established mechanism.
 - [ ] Run `git diff --check`.
-- [ ] Coding Standard Review.
 
-**Commit:**
+---
 
-```bash
-git add RTT_elog_DMA_UART_ring_project/00_Config \
-        RTT_elog_DMA_UART_ring_project/Tests/project_config
-git commit -m "feat(config): add project communication settings"
+# 7. Task 3 — Rename Impl Definitions and Private Symbols
+
+**Primary file:**
+
+```text
+04_Impl/impl_middleware/impl_log/easylogger_port.c
+```
+
+Potential companion file:
+
+```text
+04_Impl/impl_middleware/impl_log/easylogger_port.h
+```
+
+Required changes:
+
+- [ ] Rename public function definitions to match `platform_log.h`.
+- [ ] Update parameter type from `Platform_Log_Level_t` to `platform_log_level_t`.
+- [ ] Rename affected self-developed private functions listed in Section 1.2.
+- [ ] Update all declarations and references consistently.
+- [ ] Preserve EasyLogger and CMSIS-RTOS2 calls exactly in behavior.
+- [ ] Preserve async cleanup paths exactly in behavior.
+- [ ] Preserve no-op backend binding before initialization.
+- [ ] Preserve `elog_output` binding after successful initialization.
+
+Do NOT rename third-party function names.
+Do NOT change resource lifecycle or error mapping merely because the file is being touched.
+
+- [ ] Run Log Host Tests.
+- [ ] Run `git diff --check`.
+- [ ] Perform Coding Standard Review for modified C/H files.
+
+Review must explicitly answer:
+
+```text
+1. Public functions now snake_case?
+2. Public type now lower_snake_case_t?
+3. Modified private self-developed functions compliant?
+4. Any third-party symbol accidentally renamed?
+5. Any behavior/resource/error-path change introduced?
 ```
 
 ---
 
-## Task 2: APP Communication Object, Init, and Observability
+# 8. Task 4 — Repository-Wide Call-Site Migration
 
-**Files:**
+Search and migrate all active call sites.
 
-- Create: `01_APP/app_communication.h`
-- Create: `01_APP/app_communication.c`
-- Create: `Tests/app_communication/test_app_communication.c`
-
-**Consumes:** UART Service public API, Platform UART public object/lifecycle, Platform Time/Log, `project_config.h`.
-
-### 2.1 Data model
-
-Implement:
-
-```c
-typedef enum
-{
-    APP_COMMUNICATION_STATE_UNINITIALIZED = 0,
-    APP_COMMUNICATION_STATE_INITIALIZED,
-    APP_COMMUNICATION_STATE_RUNNING,
-    APP_COMMUNICATION_STATE_ERROR,
-    APP_COMMUNICATION_STATE_MAX
-} app_communication_state_t;
-
-typedef struct
-{
-    platform_uart_t *uart;
-    service_uart_t *service;
-} app_communication_config_t;
-
-typedef struct
-{
-    app_communication_state_t state;
-    platform_error_t lastError;
-} app_communication_context_t;
-
-typedef struct
-{
-    uint32_t processedChunkCount;
-    uint32_t processedByteCount;
-    uint32_t dataLossRecoveryCount;
-    uint32_t uartErrorRecoveryCount;
-    uint32_t fatalErrorCount;
-} app_communication_statistics_t;
-
-typedef struct
-{
-    app_communication_state_t state;
-    platform_error_t lastError;
-} app_communication_status_t;
-
-typedef struct
-{
-    app_communication_config_t config;
-    app_communication_context_t context;
-    app_communication_statistics_t statistics;
-} app_communication_t;
-```
-
-### 2.2 Init RED tests
-
-Cover:
+Potential areas include:
 
 ```text
-NULL communication        -> INVALID_PARAM
-NULL config               -> INVALID_PARAM
-NULL config.uart          -> INVALID_PARAM
-NULL config.service       -> INVALID_PARAM
-valid init                -> INITIALIZED
-config copied             -> exact pointers
-lastError                 -> OK
-statistics                -> zero
-second init               -> ALREADY_INITIALIZED
-```
-
-### 2.3 Getter tests
-
-Cover NULL checks, UNINITIALIZED behavior, and exact snapshots for status/statistics.
-
-- [ ] Implement only init/getters in this task.
-- [ ] Do not start UART or Service yet.
-- [ ] GREEN tests.
-- [ ] `git diff --check`.
-- [ ] Coding Standard Review.
-
-**Commit:** `feat(app): add communication object`
-
----
-
-## Task 3: Post-Scheduler Runtime Start
-
-**Files:**
-
-- Modify: `01_APP/app_communication.c`
-- Modify: `Tests/app_communication/test_app_communication.c`
-
-Host fake UART lifecycle must record:
-
-```text
-init
-start
-stop
-```
-
-Fake UART Service records `service_uart_start()` order/result.
-
-Add RED tests:
-
-```text
-UNINITIALIZED
-    -> NOT_INITIALIZED / safe project-consistent error
-
-INITIALIZED success
-    -> UART lifecycle init
-    -> UART lifecycle start
-    -> service_uart_start
-    -> exact order
-    -> APP RUNNING
-
-UART init failure
-    -> no later calls
-    -> APP ERROR
-    -> lastError original
-    -> fatalErrorCount++
-
-UART start failure
-    -> no Service start
-    -> APP ERROR
-
-Service start failure after UART started
-    -> best-effort UART stop once
-    -> original Service error preserved
-    -> APP ERROR
-
-RUNNING / ERROR start attempt
-    -> INVALID_STATE
-```
-
-Validate required lifecycle pointers before dereference.
-
-APP must never call `platform_uart_read_async()` or `platform_uart_cancel()` directly.
-
-- [ ] GREEN tests.
-- [ ] `git diff --check`.
-- [ ] Coding Standard Review.
-
-**Commit:** `feat(app): add communication runtime start`
-
----
-
-## Task 4: RX Drain, Timeout, Combined Events, and Recovery
-
-**Files:**
-
-- Modify: `01_APP/app_communication.c`
-- Modify: `Tests/app_communication/test_app_communication.c`
-
-Use an APP-local read buffer sized only by:
-
-```c
-PROJECT_COMM_READ_BUFFER_SIZE
-```
-
-Do not hard-code `128` again in APP source.
-
-Fake Service must script/record:
-
-```text
-service_uart_wait_event
-service_uart_read
-service_uart_get_status
-service_uart_stop
-service_uart_start
-```
-
-### 4.1 RX drain
-
-Tests:
-
-```text
-RX_AVAILABLE
-    -> read repeatedly until PLATFORM_ERR_EMPTY
-    -> multiple chunks supported
-    -> processedChunkCount += successful reads
-    -> processedByteCount += bytes
-
-read error != EMPTY
-    -> APP ERROR
-    -> fatalErrorCount++
-```
-
-A Service wake/read chunk is not a protocol frame.
-
-### 4.2 Timeout
-
-Frozen APP behavior:
-
-```text
-service_uart_wait_event -> PLATFORM_ERR_TIMEOUT
-    -> app_communication_process returns PLATFORM_ERR_OK
-    -> APP stays RUNNING
-    -> no recovery
-    -> no fatal counter
-```
-
-### 4.3 Combined events
-
-Verify ordered calls:
-
-```text
-RX_AVAILABLE | ERROR
-    -> drain first
-    -> get Service status
-    -> direct service_uart_start
-    -> no service_uart_stop
-
-RX_AVAILABLE | DATA_LOSS
-    -> drain first
-    -> service_uart_stop
-    -> service_uart_start
-
-RX_AVAILABLE | DATA_LOSS | ERROR
-    -> drain first
-    -> ERROR recovery only
-    -> no DATA_LOSS stop path
-```
-
-Recovery precedence is exactly:
-
-```text
-ERROR > DATA_LOSS > STOPPED
-```
-
-### 4.4 DATA_LOSS recovery
-
-Tests:
-
-```text
-stop OK
-    -> restart
-    -> dataLossRecoveryCount++
-
-stop error + actual Service STOPPED
-    -> restart still allowed
-
-stop error + actual Service not STOPPED
-    -> APP ERROR
-
-restart failure
-    -> APP ERROR
-    -> fatalErrorCount++
-```
-
-APP must not call `platform_uart_cancel()`.
-
-### 4.5 UART ERROR recovery
-
-Tests:
-
-```text
-ERROR
-    -> get Service status / lastError
-    -> direct service_uart_start
-    -> no service_uart_stop
-    -> uartErrorRecoveryCount++ on success
-
-restart failure
-    -> APP ERROR
-    -> fatalErrorCount++
-```
-
-### 4.6 Unexpected STOPPED
-
-Standalone STOPPED in normal loop:
-
-```text
-APP -> ERROR
-lastError = PLATFORM_ERR_CANCELED
-fatalErrorCount++
-no automatic restart storm
-```
-
-`app_communication_process()` is valid only while APP is RUNNING.
-
-- [ ] GREEN APP Communication tests.
-- [ ] `git diff --check`.
-- [ ] Coding Standard Review.
-
-**Commit:** `feat(app): consume uart service events`
-
----
-
-## Task 5: Communication Task Entry and Fatal Error Idle
-
-**Files:**
-
-- Modify: `01_APP/app_communication.c`
-- Modify: `Tests/app_communication/test_app_communication.c` where practical.
-
-Task entry contract:
-
-```text
-argument = app_communication_t *
-        ↓
-app_communication_start()
-        ↓ success
-loop app_communication_process(PROJECT_COMM_WAIT_TIMEOUT_MS)
-        ↓ APP ERROR
-leave normal processing behavior
-log low-frequency fatal state
-platform_time_delay_ms(PROJECT_COMM_ERROR_IDLE_DELAY_MS)
+APP
+Service
+Platform
+Impl
+Core USER CODE
+Tests
+Debug / Board test code
 ```
 
 Rules:
 
-- Use `PROJECT_COMM_WAIT_TIMEOUT_MS`; do not hard-code 1000.
-- Use `PROJECT_COMM_ERROR_IDLE_DELAY_MS`; do not hard-code 1000.
-- No busy loop on fatal error.
-- No per-RX-chunk log.
-- Log lifecycle/recovery/fatal events only through Platform Log.
-- No direct CMSIS/FreeRTOS API.
-- Do not add loop-escape/test-only production APIs solely to unit-test the infinite task entry; test `start()` and `process()` directly.
+- [ ] Replace old public symbol references with new names.
+- [ ] Update type references.
+- [ ] Do not add compatibility macros such as:
 
-- [ ] Coding Standard Review.
+```c
+#define Platform_Log_Init platform_log_init
+```
 
-**Commit:** `feat(app): add communication task entry`
+unless Task 0 discovered a real required external compatibility contract and design approval was obtained.
+
+- [ ] Documentation should be updated only where it describes the current API; historical narrative may retain old names if explicitly historical.
+- [ ] Do not use broad search/replace that can corrupt unrelated text.
+
+After migration, repository-wide active-code search must show zero old public symbols:
+
+```text
+Platform_Log_Level_t
+Platform_Log_Init
+Platform_Log_SetLevel
+Platform_Log_EnableOutput
+Platform_Log_GetOutputFn
+```
+
+Any intentional historical-document occurrence must be reviewed manually.
+
+- [ ] Run `git diff --check`.
 
 ---
 
-## Task 6: APP System Composition Root
+# 9. Task 5 — Host Regression Gate
 
-**Files:**
+Run the repository's existing Host Test suite relevant to this change.
 
-- Create: `01_APP/app_system.h`
-- Create: `01_APP/app_system.c`
-- Create: `Tests/app_system/test_app_system.c`
-
-### 6.1 Static product resources
-
-`app_system.c` owns:
+Minimum expected coverage:
 
 ```text
-platform_uart_t       Communication UART
-service_uart_t        UART Service
-platform_thread_t     Communication Thread
-app_communication_t   APP Communication
-uint8_t               DMA RX storage[PROJECT_COMM_DMA_RX_BUFFER_SIZE]
-uint8_t               Ring storage[PROJECT_COMM_RING_BUFFER_STORAGE_SIZE]
+Platform Log Host Test               PASS
+Platform Log Header Isolation        PASS if available
+APP Host Tests using Platform Log    PASS
+UART Service regression              PASS if linked against Log
+Platform OS regression               PASS if test build shares middleware integration
+Dependency boundary checks           PASS
 ```
 
-All sizes come from `project_config.h`.
+Do not claim a test passed unless the command actually ran successfully.
 
-### 6.2 UART config composition
-
-Construct `platform_uart_config_t` using only project config macros:
-
-```c
-static const platform_uart_config_t g_communicationUartConfig = {
-    .baudRate = PROJECT_COMM_UART_BAUD_RATE,
-    .dataBits = PROJECT_COMM_UART_DATA_BITS,
-    .stopBits = PROJECT_COMM_UART_STOP_BITS,
-    .parity = PROJECT_COMM_UART_PARITY,
-    .flowControl = PROJECT_COMM_UART_FLOW_CONTROL,
-    .defaultTimeoutMs = PROJECT_COMM_UART_DEFAULT_TIMEOUT_MS
-};
-```
-
-Do not put this runtime module config struct into `00_Config`; only its values belong there.
-
-### 6.3 Communication Thread config
-
-Use:
+If some tests are unavailable in the environment, report:
 
 ```text
-name           "communication"
-entry          app_communication_task_entry
-argument       &APP Communication object
-stackSizeBytes PROJECT_COMM_TASK_STACK_SIZE_BYTES
-priority       PROJECT_COMM_TASK_PRIORITY
+NOT RUN
+reason: <exact reason>
 ```
 
-### 6.4 Frozen pre-scheduler order
-
-```text
-1 platform_bsp_uart_construct_communication
-2 app_communication_init
-3 platform_thread_create
-4 service_uart_init
-5 return OK
-```
-
-`service_uart_config_t` receives actual APP-owned object/storage addresses in `app_system.c`:
-
-```text
-uart                  -> Communication UART object
-dmaRxBuffer           -> APP DMA storage
-dmaRxBufferSize       -> PROJECT_COMM_DMA_RX_BUFFER_SIZE
-ringBufferStorage     -> APP Ring storage
-ringBufferStorageSize -> PROJECT_COMM_RING_BUFFER_STORAGE_SIZE
-consumerThread        -> Communication Thread object
-```
-
-These pointers/addresses must not be moved to `project_config.h`.
-
-### 6.5 Host tests
-
-Fakes record BSP construct, APP Communication init, Platform Thread create/terminate, and UART Service init.
-
-Tests:
-
-```text
-all success
-    -> exact 1-2-3-4 order
-    -> exact pointers
-    -> exact config macro values/sizes
-
-BSP failure
-    -> nothing later called
-
-APP Communication init failure
-    -> no Thread / Service init
-
-Thread create failure
-    -> no Service init
-
-Service init failure after Thread create
-    -> best-effort platform_thread_terminate
-    -> original Service error returned
-
-second app_system_init
-    -> fails safely
-    -> no second UART construction/thread creation
-```
-
-Do not invent a UART CREATED-object destructor API. Fatal pre-scheduler failure returns the original error; CubeMX glue stops startup.
-
-Verify no `impl_*`, HAL, CMSIS, or FreeRTOS concrete include in APP source.
-
-- [ ] GREEN Host Test.
-- [ ] `git diff --check`.
-- [ ] Coding Standard Review.
-
-**Commit:** `feat(app): add system composition root`
+Do not convert `NOT RUN` into `PASS`.
 
 ---
 
-## Task 7: CubeMX Thin Integration, Keil Integration, and Regression
+# 10. Task 6 — Keil Integration Gate
 
-**Files:**
+Perform a full Keil project rebuild using the repository's established method.
 
-- Modify USER CODE sections only: `Core/Src/freertos.c`
-- Modify: `MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx`
-
-### 7.1 freertos.c
-
-USER CODE include:
-
-```c
-#include "app_system.h"
-```
-
-In `MX_FREERTOS_Init()` USER CODE Init:
-
-```text
-result = app_system_init()
-if result != PLATFORM_ERR_OK:
-    Error_Handler()
-```
-
-Use a minimal local `platform_error_t result` declaration in a legal USER CODE section.
-
-Do not:
-
-```text
-move Communication Task into defaultTask
-remove defaultTask
-remove USART1_mutex_Init()
-put UART Service logic in freertos.c
-put HAL UART logic in APP glue
-```
-
-### 7.2 Keil project
-
-Add include paths:
-
-```text
-00_Config
-01_APP
-```
-
-Add sources:
-
-```text
-01_APP/app_system.c
-01_APP/app_communication.c
-```
-
-`project_config.h` is header-only and does not need a source entry.
-
-### 7.3 Regression gate
-
-Run new tests plus relevant lower-layer regressions at minimum:
-
-```text
-project_config
-app_communication
-app_system
-platform_bsp_uart
-service_uart
-platform_uart
-platform_os relevant tests
-ring_buffer
-```
-
-Use existing aggregate scripts when available.
-
-### 7.4 Keil Full Rebuild
-
-Required evidence:
+Required result:
 
 ```text
 0 Error(s)
 ```
 
-Review new warnings; do not weaken compiler settings.
+Warnings introduced by this refactor must be investigated.
 
-- [ ] Verify APP has no direct Impl/HAL/CMSIS/FreeRTOS dependency.
-- [ ] Verify APP source uses `PROJECT_COMM_*` for all frozen product parameters.
-- [ ] Verify no lower-layer frozen API/source changed for APP convenience.
-- [ ] Run `git diff --check`.
-- [ ] Coding Standard Review.
+- [ ] Confirm all new public symbols resolve.
+- [ ] Confirm no stale old symbol remains in project sources.
+- [ ] Confirm no duplicate compatibility symbol is accidentally exported.
 
-**Commit:** `build: integrate app phase1`
+If the Agent environment cannot run Keil:
+
+```text
+KEIL BUILD: NOT VERIFIED
+```
+
+Do not mark the phase complete until a real Keil result is provided by an appropriate environment/user verification.
 
 ---
 
-## Task 8: Target Board Production APP Verification
+# 11. Task 7 — RTT Runtime Regression
 
-**Goal:** prove the production `01_APP/` Communication Task now consumes the previously verified ISR -> UART Service chain.
+Because Log is a cross-cutting runtime facility, complete at least a small target-board/runtime smoke test after successful build.
 
-### 8.1 Baseline runtime
-
-Confirm after flash:
+Verify:
 
 ```text
-APP Communication state = RUNNING
-UART Service state       = RUNNING
-no immediate fatal error
-no restart storm
+platform_log_init()               -> success
+platform_log_i(...)               -> visible RTT output
+platform_log_e(...)               -> visible RTT output
+platform_log_set_level(...)       -> filtering still works
+platform_log_enable_output(false) -> output disabled
+platform_log_enable_output(true)  -> output restored
 ```
 
-### 8.2 RX payload
+Also verify startup logging before/around initialization does not cause a crash if such a path exists in the current product startup sequence.
 
-Reuse:
+Target board result must be recorded as one of:
 
 ```text
-00..FF repeated
-1280 bytes total
+PASS
+FAIL
+NOT RUN
 ```
-
-Expected:
-
-```text
-APP processedByteCount  = 1280
-Service rxBytesReceived = 1280
-Service rxBytesDropped  = 0
-DATA_LOSS               = false
-ERROR                   = not observed
-```
-
-### 8.3 Temporary content-integrity hook
-
-At the APP byte-consumption seam only, temporarily compare the repeating `00..FF` pattern.
-
-Requirements:
-
-```text
-Task Context only
-localized and clearly marked
-no lower-layer modification
-no ISR logging
-counts compared bytes and mismatches
-summary through Platform Log / RTT
-```
-
-Expected:
-
-```text
-compared bytes = 1280
-mismatch       = 0
-```
-
-Do not leave test-pattern behavior in production APP.
-
-### 8.4 Cleanup
-
-- [ ] Remove temporary compare hook.
-- [ ] Re-run Keil Full Rebuild.
-- [ ] Required: `0 Error(s)`.
-- [ ] Record only actual evidence.
-
-If hardware is unavailable, mark Board Verification `PENDING MANUAL TEST`; do not mark APP Phase 1 COMPLETED.
 
 ---
 
-## Task 9: Final Boundary Review and Handoff
+# 12. Task 8 — Final Static Review and Documentation Update
 
-**Files:**
+## 12.1 Old Symbol Scan
 
-- Modify: `00_Doc/04_Agent/handoff.md`
-
-### 9.1 Dependency/config review
-
-Confirm:
+Repository active-code scan must confirm:
 
 ```text
-00_Config -> public Platform types only where needed
-00_Config -> Impl/HAL/CMSIS/FreeRTOS concrete     ABSENT
-01_APP -> Service / Platform                      PRESENT
-01_APP -> Impl/HAL/CMSIS/FreeRTOS concrete        ABSENT
+Platform_Log_Level_t           -> 0 active occurrences
+Platform_Log_Init              -> 0 active occurrences
+Platform_Log_SetLevel          -> 0 active occurrences
+Platform_Log_EnableOutput      -> 0 active occurrences
+Platform_Log_GetOutputFn       -> 0 active occurrences
 ```
 
-Confirm:
+Private old names listed in Section 1.2 should also be zero in active code.
+
+## 12.2 Coding Standard Review
+
+Final status must be:
 
 ```text
-project_config.h owns product values
-app_system owns runtime object/storage composition
-Platform BSP owns Communication UART -> USART1 mapping
+Coding Standard Review: PASS
 ```
 
-Search APP source and ensure frozen values are not duplicated as product literals outside `project_config.h`.
+or the phase cannot be marked complete.
 
-### 9.2 Scope review
+## 12.3 Handoff Update
 
-Confirm no:
+Update:
 
 ```text
-Protocol Parser
-Frame Queue
-Async TX
-multi-UART
-Device Registry
-Factory/IoC
-runtime shutdown framework
+00_Doc/04_Agent/handoff.md
 ```
 
-### 9.3 Verification record
-
-Record actual results only:
+Change Platform Log naming technical debt from:
 
 ```text
-Project Config Header Test         PASS / actual
-APP Communication Host Test       PASS / actual
-APP System Host Test              PASS / actual
-Lower-layer Regression            PASS / actual
-Coding Standard Review            PASS / actual
-Keil Full Rebuild                 PASS / actual
-Production APP Board RX Test      PASS / PENDING
-Content Integrity Hook            PASS / PENDING
-Cleanup Rebuild                   PASS / PENDING
+CONFIRMED TECHNICAL DEBT
+REQUIRES DEDICATED REFACTOR
 ```
 
-### 9.4 Completion state
+to a resolved record only after all required verification has passed.
 
-Only when all mandatory Host/Keil/Board gates pass:
+Recommended final record:
 
 ```text
-APP Phase 1                    COMPLETED
-Production APP RX Vertical     VERIFIED
-Production APP Layer           IMPLEMENTED (Phase 1)
-Next Phase                     protocol/application behavior design
-Next State                     READY_FOR_NEXT_DESIGN
+Platform Log Naming Refactor       COMPLETED
+Public API Naming                  V2.0 COMPLIANT
+Host Regression                    PASS
+Keil Full Rebuild                  PASS
+RTT Runtime Regression             PASS
+Coding Standard Review             PASS
 ```
 
-If Board Test is pending:
-
-```text
-APP Phase 1                    IMPLEMENTED / HOST_KEIL_VERIFIED
-Production APP RX Vertical     BOARD_VERIFICATION_PENDING
-```
-
-- [ ] Run final:
-
-```bash
-git status --short
-git diff --check
-git log --oneline -n 15
-```
-
-**Commit:** `docs: complete app phase1 verification` only after actual completion criteria are met.
+If Keil or board verification remains pending, record the exact partial state instead of `COMPLETED`.
 
 ---
 
-# Completion Criteria
+# 13. Completion Criteria
 
-APP Phase 1 is complete only when all are true:
+This refactor is `COMPLETED` only when all applicable criteria are satisfied:
 
 ```text
-[ ] Main APP design and Config addendum followed without contract drift
-[ ] project_config.h centralizes all frozen product parameters
-[ ] 00_Config README documents static-config boundary
-[ ] project_config.h has no Impl/HAL/CMSIS/FreeRTOS concrete dependency
-[ ] app_system.h/.c implemented
-[ ] app_communication.h/.c implemented
-[ ] APP owns UART / Service / Thread / DMA / Ring storage
-[ ] runtime object/storage pointers remain in app_system, not project_config.h
-[ ] Communication UART obtained only through Platform BSP
-[ ] Communication Task created through Platform Thread
-[ ] Pre-scheduler composition order verified
-[ ] Post-scheduler UART init/start -> Service start order verified
-[ ] RX drain until EMPTY verified
-[ ] Combined event precedence verified
-[ ] DATA_LOSS stop/status/start recovery verified
-[ ] UART ERROR direct restart recovery verified
-[ ] timeout normal-idle behavior verified
-[ ] unexpected STOPPED fatal behavior verified
-[ ] no fast retry / busy-loop fatal path
-[ ] APP does not duplicate Service RX statistics
-[ ] APP has no direct Impl/HAL/CMSIS/FreeRTOS dependency
-[ ] Project Config Host Test PASS
-[ ] APP Host tests PASS
-[ ] relevant lower-layer regressions PASS
+[ ] platform_log_level_t is the only active Platform Log level public type
+[ ] all four public Platform Log functions use snake_case
+[ ] platform_log_e/w/i/d/v use platform_log_get_output_fn()
+[ ] affected self-developed Impl private symbols comply with current naming rules
+[ ] no default backward-compatibility alias remains
+[ ] active-code scan finds zero old public Platform Log symbols
+[ ] architecture unchanged
+[ ] runtime behavior unchanged
+[ ] Platform Log Host Test PASS
+[ ] relevant Host Regression PASS
+[ ] Header Isolation PASS where supported
+[ ] Dependency Boundary Scan PASS
+[ ] Keil Full Rebuild PASS
+[ ] RTT Runtime Regression PASS
 [ ] Coding Standard Review PASS
-[ ] Keil Full Rebuild 0 Error(s)
-[ ] Production APP board RX test PASS
-[ ] 1280-byte content comparison mismatch = 0
-[ ] temporary board-test hook removed
-[ ] cleanup Keil Rebuild 0 Error(s)
-[ ] handoff updated with actual evidence
+[ ] handoff.md updated
 ```
 
-After completion, stop. Do not begin Protocol Parser, command processing, async TX, or any next APP feature in the same scope without a new design/plan.
+If Host and source migration are complete but Keil / target runtime verification is pending, use:
+
+```text
+IMPLEMENTED / HOST_VERIFIED
+KEIL_OR_BOARD_VERIFICATION_PENDING
+```
+
+Do not mark `COMPLETED` prematurely.
+
+---
+
+# 14. Suggested Commit Sequence
+
+Recommended sequence:
+
+```text
+1. test(log): cover platform log behavior
+2. refactor(log): normalize platform log api naming
+3. test(log): run integration regressions
+4. docs: complete platform log naming refactor
+```
+
+A single implementation commit is acceptable if the rename is tightly atomic and all call sites must change together to preserve buildability.
+
+Do not mix unrelated technical debt cleanup into these commits.
+
+---
+
+# 15. Final Agent Report
+
+At completion, report:
+
+```text
+Files changed:
+<list>
+
+Public API migration:
+<old -> new>
+
+Old active symbol scan:
+PASS / FAIL
+
+Host Tests:
+<commands + PASS/FAIL/NOT RUN>
+
+Keil Full Rebuild:
+PASS / FAIL / NOT VERIFIED
+
+RTT Runtime Regression:
+PASS / FAIL / NOT RUN
+
+Coding Standard Review:
+PASS / NEEDS_FIX / EXCEPTION
+
+Architecture behavior changed:
+NO / YES
+
+Remaining issues:
+<none or exact list>
+```
+
+The Agent must not continue into protocol/application behavior implementation after completing this refactor.
