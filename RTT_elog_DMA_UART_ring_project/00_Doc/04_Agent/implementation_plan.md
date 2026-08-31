@@ -1,689 +1,817 @@
-# Service Log Phase 1 Implementation Plan
+# Platform GPIO Phase 1 Implementation Plan
 
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+>
 > 当前执行计划 / Current Active Plan  
-> 状态：COMPLETED / RESULT RECORDED
+> 状态：READY / NOT STARTED  
 > 日期：2026-08-31
 
-**Goal:** 建立一个薄的 Service Log 策略层，使 APP / Service 统一通过 `SERVICE_LOG_xxx()` 输出普通日志，同时复用现有 Platform Log + EasyLogger + RTT 实现。
+**Goal:** 在不依赖 STM32 HAL、CubeMX 具体 Pin 配置和 GPIO Impl 的前提下，实现可 Host Test 的普通数字 GPIO Platform Phase 1 抽象。
 
-**Architecture:**
+**Architecture:** GPIO 在本阶段定义为轻量 MCU Resource，而不是完整 `platform_device_t`。Platform 负责公共类型、对象状态、参数校验和 Ops 转发；具体硬件访问通过 opaque `implContext` 和后续 Impl 注入的 `platform_gpio_ops_t` 完成。本阶段只到 Platform Host Verified，不进入目标板验证。
 
-```text
-APP / Service
-    ↓
-service_log
-    ↓
-platform_log
-    ↓
-EasyLogger Adapter
-    ↓
-EasyLogger
-    ↓
-RTT
-```
+**Tech Stack:** C、现有 `platform_types.h`、`platform_error.h`、Host C tests；禁止引入 STM32 HAL、CMSIS-RTOS2、FreeRTOS 或 Vendor GPIO 类型。
 
-`service_log` 只负责上层统一 API、初始化编排、默认策略和 Level 映射，不重新实现日志 Core。
+**Spec:** `00_Doc/02_架构设计/Platform_GPIO_Phase1设计.md`
+
+## Global Constraints
+
+- 固定依赖方向保持 `APP -> Service -> Platform -> Impl -> Vendor`；本计划不得制造反向依赖。
+- `platform_gpio_t` 不继承 `platform_device_t`，不使用 `platform_lifecycle_t`。
+- 本阶段只允许 GPIO INPUT / OUTPUT、PULL、OUTPUT TYPE、INITIAL LEVEL、read / write / configure / deinit。
+- 不公开 GPIO Speed。
+- 不加入 EXTI / IRQ / NVIC / callback、Toggle、AF、Analog、LED / KEY、Debounce、GPIO Group / Registry。
+- 不修改 `04_Impl/`。
+- 不修改 CubeMX 具体 GPIO Pin 配置，不新增 `HAL_GPIO_xxx`、`GPIO_TypeDef`、`GPIO_PIN_x` 依赖。
+- 不使用动态内存和 RTOS 同步原语。
+- 生产代码和测试代码都必须遵守 `00_Doc/02_架构设计/嵌入式项目C代码设计规范.md`。
+- 发现仓库现实与冻结设计存在实质冲突时：`STOP / BLOCKED`，不得静默重新设计。
 
 ---
 
-# 0. Mandatory References
+# 0. Mandatory Preflight
 
 执行前必须读取：
 
 ```text
-00_Doc/02_架构设计/Service_Log_Phase1设计.md
+00_Doc/02_架构设计/Platform_GPIO_Phase1设计.md
 00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
 00_Doc/04_Agent/execution_rules.md
 00_Doc/04_Agent/architecture.md
 00_Doc/04_Agent/requirements.md
 00_Doc/04_Agent/handoff.md
-03_Platform/platform_middleware/platform_log.h
-04_Impl/impl_middleware/impl_log/easylogger_port.c
-01_APP/app_communication.c
-01_APP/app_system.c
-Core/Src/freertos.c
+03_Platform/platform_common/platform_types.h
+03_Platform/platform_common/platform_error.h
+03_Platform/platform_mcu/uart/platform_uart_types.h
+03_Platform/platform_mcu/uart/platform_uart.h
+Tests/platform_uart/test_platform_uart_types.c
+Tests/platform_uart/test_platform_uart.c
 ```
 
-Preflight 必须确认：
+Preflight 固定汇报：
 
 ```text
-Service Log Phase 1 Design: READ
-Coding Standard: READ
+GPIO Platform Phase 1 Design: READ
+Coding Standard:
+00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
+Status: READ
 Agent Execution Rules: READ
 Current repository state: INSPECTED
 Unrelated user changes: PRESERVED
 ```
 
-如果仓库现实与冻结设计存在实质冲突：
+执行前确认：
 
 ```text
-STOP / BLOCKED
+03_Platform/platform_mcu/gpio/ does not already contain conflicting production code
+Tests/platform_gpio/ does not contain conflicting current tests
+No current GPIO public contract contradicts the frozen spec
 ```
 
-不得静默重新设计。
+如果发现冲突，停止并报告，不覆盖既有用户代码。
 
 ---
 
-# 1. Frozen Scope
+# 1. Frozen Public Contract
 
-本阶段只实现：
+公共类型冻结为：
 
-1. `service_log` 统一普通日志入口；
-2. ERROR / WARN / INFO / DEBUG / VERBOSE 五个等级；
-3. `service_log_init()`；
-4. `service_log_set_level()`；
-5. `service_log_enable_output()`；
-6. `SERVICE_LOG_E/W/I/D/V()`；
-7. 产品默认 Level / Output Enable 配置；
-8. `freertos.c` 启动入口迁移；
-9. APP 现有 Platform Log 调用迁移；
-10. Host Test、静态依赖检查、Keil 编译和板级 RTT 验收准备。
+```c
+typedef struct platform_gpio platform_gpio_t;
+
+typedef enum
+{
+    PLATFORM_GPIO_LEVEL_LOW = 0,
+    PLATFORM_GPIO_LEVEL_HIGH,
+    PLATFORM_GPIO_LEVEL_MAX
+} platform_gpio_level_t;
+
+typedef enum
+{
+    PLATFORM_GPIO_DIRECTION_INPUT = 0,
+    PLATFORM_GPIO_DIRECTION_OUTPUT,
+    PLATFORM_GPIO_DIRECTION_MAX
+} platform_gpio_direction_t;
+
+typedef enum
+{
+    PLATFORM_GPIO_PULL_NONE = 0,
+    PLATFORM_GPIO_PULL_UP,
+    PLATFORM_GPIO_PULL_DOWN,
+    PLATFORM_GPIO_PULL_MAX
+} platform_gpio_pull_t;
+
+typedef enum
+{
+    PLATFORM_GPIO_OUTPUT_PUSH_PULL = 0,
+    PLATFORM_GPIO_OUTPUT_OPEN_DRAIN,
+    PLATFORM_GPIO_OUTPUT_MAX
+} platform_gpio_output_type_t;
+
+typedef struct
+{
+    platform_gpio_direction_t direction;
+    platform_gpio_pull_t pull;
+    platform_gpio_output_type_t outputType;
+    platform_gpio_level_t initialLevel;
+} platform_gpio_config_t;
+```
+
+公共对象与 Ops 冻结为：
+
+```c
+typedef struct
+{
+    platform_error_t (*configure)(platform_gpio_t *gpio,
+                                  const platform_gpio_config_t *config);
+    platform_error_t (*write)(platform_gpio_t *gpio,
+                              platform_gpio_level_t level);
+    platform_error_t (*read)(platform_gpio_t *gpio,
+                             platform_gpio_level_t *level);
+    platform_error_t (*deinit)(platform_gpio_t *gpio);
+} platform_gpio_ops_t;
+
+struct platform_gpio
+{
+    const char *name;
+    platform_gpio_config_t config;
+    const platform_gpio_ops_t *ops;
+    void *implContext;
+    platform_bool_t initialized;
+    platform_bool_t configured;
+};
+
+#define PLATFORM_GPIO_INITIALIZER {0}
+
+typedef struct
+{
+    const char *name;
+    const platform_gpio_ops_t *ops;
+    void *implContext;
+} platform_gpio_init_params_t;
+```
 
 公共 API 冻结为：
 
 ```c
-typedef enum
-{
-    SERVICE_LOG_LEVEL_ERROR = 0,
-    SERVICE_LOG_LEVEL_WARN,
-    SERVICE_LOG_LEVEL_INFO,
-    SERVICE_LOG_LEVEL_DEBUG,
-    SERVICE_LOG_LEVEL_VERBOSE,
-    SERVICE_LOG_LEVEL_MAX
-} service_log_level_t;
+platform_error_t platform_gpio_init(
+    platform_gpio_t *gpio,
+    const platform_gpio_init_params_t *params);
 
-platform_error_t service_log_init(void);
-platform_error_t service_log_set_level(service_log_level_t level);
-platform_error_t service_log_enable_output(platform_bool_t enable);
+platform_error_t platform_gpio_configure(
+    platform_gpio_t *gpio,
+    const platform_gpio_config_t *config);
 
-#define SERVICE_LOG_E(...)
-#define SERVICE_LOG_W(...)
-#define SERVICE_LOG_I(...)
-#define SERVICE_LOG_D(...)
-#define SERVICE_LOG_V(...)
+platform_error_t platform_gpio_write(
+    platform_gpio_t *gpio,
+    platform_gpio_level_t level);
+
+platform_error_t platform_gpio_read(
+    platform_gpio_t *gpio,
+    platform_gpio_level_t *level);
+
+platform_error_t platform_gpio_deinit(
+    platform_gpio_t *gpio);
 ```
 
-继续使用现有 `platform_error_t`，不得新增 `service_error_t`。
+不得在实施过程中擅自增加公共 API。
 
 ---
 
-# 2. Explicit Non-Goals
-
-本阶段不得：
-
-```text
-- 自研日志 RingBuffer
-- 新增日志后台 Task
-- 新增第二套 Async Queue
-- 新增 UART DMA Log Backend
-- Flash 日志持久化
-- 多 Backend 动态路由
-- 动态 Tag Registry
-- 按 Tag 独立设置日志等级
-- ISR 普通格式化日志
-- Crash Dump
-- CmBacktrace 集成
-- Diagnostic Service
-- 重构现有 Platform Log 公共 API 命名
-- 修改 EasyLogger Vendor 源码
-- 对无关模块进行格式化或重构
-```
-
-现有 EasyLogger Assert Hook 保持不变，Fatal Diagnostics 留给后续专项设计。
-
----
-
-# 3. Logging Ownership Contract
-
-普通底层错误：
-
-```text
-Impl / Platform
-    ↓
-return platform_error_t
-    ↓
-Service / APP 获取上下文并决定处理策略
-    ↓
-必要时记录一次 SERVICE_LOG_W/E
-```
-
-规则：
-
-> 同一根因只由拥有足够上下文、并决定如何处理它的最高合适层记录一次。
-
-禁止同一错误在 Impl / Platform / Service / APP 连续重复打印。
-
-普通日志上下文限制：
-
-```text
-Task Context: SERVICE_LOG_xxx() ALLOWED
-ISR Context:  SERVICE_LOG_xxx() FORBIDDEN
-```
-
-ISR 只设置状态、计数或事件，由 Task 统一输出日志。
-
----
-
-# 4. Target Files
+# 2. Target Files
 
 ## Create
 
 ```text
-00_Config/project_log_config.h
-Tests/service_log/test_service_log.c
+03_Platform/platform_mcu/gpio/platform_gpio_types.h
+03_Platform/platform_mcu/gpio/platform_gpio.h
+03_Platform/platform_mcu/gpio/platform_gpio.c
+Tests/platform_gpio/test_platform_gpio_types.c
+Tests/platform_gpio/test_platform_gpio.c
 ```
 
 ## Modify
 
 ```text
-02_Service/service_log/service_log.h
-02_Service/service_log/service_log.c
-01_APP/app_communication.c
-01_APP/app_system.c
-Core/Src/freertos.c
-Tests/app_communication/test_app_communication.c   # only if existing tests require adaptation
-Tests/app_system/test_app_system.c                 # only if existing tests require adaptation
+00_Doc/04_Agent/handoff.md   # only at final handoff after verified implementation
 ```
 
-## Delete
+## Forbidden in this plan
 
 ```text
-02_Service/service_log/service_log_cfg.h
+04_Impl/**
+Core/** GPIO behavior changes
+Drivers/**
+Middlewares/**
+01_APP/**
+02_Service/**
+03_Platform/platform_bsp/**
+CubeMX concrete pin configuration
 ```
-
-仅删除该文件的前提：确认它仍为空且没有真实引用。若仓库现实已发生变化，停止删除并报告。
 
 ---
 
-# 5. Task 1 — Public Contract and Product Configuration
+# 3. Task 1 — Public GPIO Types and Header Isolation
 
-## 5.1 Write failing Host Test first
+**Files:**
+- Create: `03_Platform/platform_mcu/gpio/platform_gpio_types.h`
+- Create: `Tests/platform_gpio/test_platform_gpio_types.c`
 
-建立：
+**Interfaces:**
+- Consumes: `platform_types.h`, `platform_error.h`
+- Produces: `platform_gpio_t` forward declaration, four enum types, `platform_gpio_config_t`
 
-```text
-Tests/service_log/test_service_log.c
-```
+- [ ] **Step 1: Write the failing public-type Host Test**
 
-测试首先覆盖：
-
-```text
-- service_log_level_t 存在
-- SERVICE_LOG_E/W/I/D/V 可编译
-- service_log_init() 可调用
-- service_log_set_level() 可调用
-- service_log_enable_output() 可调用
-- LOG_TAG 能通过 Service Log Macro 传递到底层输出函数
-- 格式参数能正确转发
-```
-
-使用 fake Platform Log，不引入新的测试框架。
-
-先编译，确认因为 Service Log 接口尚未建立而失败。
-
-## 5.2 Create product configuration
-
-建立：
-
-```text
-00_Config/project_log_config.h
-```
-
-配置冻结为：
+`Tests/platform_gpio/test_platform_gpio_types.c` 必须验证：
 
 ```c
-#define PROJECT_LOG_DEFAULT_LEVEL          SERVICE_LOG_LEVEL_INFO
-#define PROJECT_LOG_DEFAULT_OUTPUT_ENABLE  PLATFORM_TRUE
+#include "platform_gpio_types.h"
+
+int main(void)
+{
+    platform_gpio_config_t config = {
+        PLATFORM_GPIO_DIRECTION_OUTPUT,
+        PLATFORM_GPIO_PULL_NONE,
+        PLATFORM_GPIO_OUTPUT_PUSH_PULL,
+        PLATFORM_GPIO_LEVEL_LOW
+    };
+
+    return ((PLATFORM_GPIO_DIRECTION_OUTPUT == config.direction) &&
+            (PLATFORM_GPIO_LEVEL_LOW == config.initialLevel)) ? 0 : 1;
+}
 ```
 
-该文件只表达产品默认策略。
+同时添加 compile-time assertions，确认各 `*_MAX` 值位于合法枚举之后，公共头可以在没有 STM32 HAL Header 的 Host 环境独立编译。
 
-## 5.3 Implement `service_log.h`
+- [ ] **Step 2: Run the type test and verify RED**
+
+使用仓库现有 Host Test 编译方式；如果 Tests 没有统一脚本，则沿用 `Tests/platform_uart` 当前编译参数和 include path。
+
+预期：因 `platform_gpio_types.h` 不存在而失败。
+
+- [ ] **Step 3: Implement `platform_gpio_types.h`**
 
 要求：
 
 ```text
-- include guard 符合规范
-- 使用 platform_bool_t + platform_error_t
-- 暴露 Service 自有 Level enum
-- SERVICE_LOG_xxx 薄包装现有 platform_log_xxx
-- 不暴露 ASSERT Level
-- 不引入 HAL / CMSIS / FreeRTOS 类型
+- 文件头 / include guard / 注释符合 C 代码规范
+- include platform_types.h
+- include platform_error.h only if needed by the public declarations in this header
+- 不 include platform_device.h
+- 不 include platform_lifecycle.h
+- 不 include stm32f4xx_hal.h
+- 不出现 GPIO_TypeDef / GPIO_PIN_x / HAL_GPIO_xxx
+- enum / struct 名称与冻结设计完全一致
 ```
 
-当前 Platform Log Macro 已携带 `LOG_TAG / __FILE__ / __FUNCTION__ / __LINE__`，Phase 1 不重复实现 variadic formatter。
+- [ ] **Step 4: Run type/header isolation test and verify GREEN**
 
-## 5.4 Verify
+预期：PASS。
 
-重新编译 Host Test。
+- [ ] **Step 5: Perform Task 1 Coding Standard Review**
 
-预期：公共头可通过编译；若 `.c` 尚未实现，失败只应来自控制函数实现缺失。
+检查命名、文件头、注释、Header isolation、无 STM32 依赖。
 
-## 5.5 Commit
+- [ ] **Step 6: Commit Task 1**
 
-仅提交 Task 1 文件。
-
-建议提交信息：
+建议提交：
 
 ```text
-feat: define Service Log public contract
+feat: define Platform GPIO public types
 ```
 
 ---
 
-# 6. Task 2 — Service Log Policy Implementation
+# 4. Task 2 — GPIO Object, Ops and Init Contract
 
-## 6.1 Extend failing tests
+**Files:**
+- Create: `03_Platform/platform_mcu/gpio/platform_gpio.h`
+- Create: `03_Platform/platform_mcu/gpio/platform_gpio.c`
+- Create/Modify: `Tests/platform_gpio/test_platform_gpio.c`
 
-必须覆盖以下场景：
+**Interfaces:**
+- Consumes: Task 1 public types, `platform_error_t`
+- Produces: `platform_gpio_ops_t`, `platform_gpio_t`, `platform_gpio_init_params_t`, `PLATFORM_GPIO_INITIALIZER`, `platform_gpio_init()`
 
-```text
-A. platform_log_init() 失败
-   -> 原样返回错误
-   -> Service 不进入 initialized
-   -> 后续允许重试
+- [ ] **Step 1: Write failing tests for object construction**
 
-B. default level 配置失败
-   -> 原样返回错误
-   -> 后续允许重试
+Fake Ops 可使用 file-local functions，不依赖 HAL。
 
-C. default output enable 配置失败
-   -> 原样返回错误
-   -> 后续允许重试
-
-D. 第一次成功初始化
-   -> Platform Log 初始化一次
-   -> 设置 PROJECT_LOG_DEFAULT_LEVEL
-   -> 设置 PROJECT_LOG_DEFAULT_OUTPUT_ENABLE
-
-E. 初始化成功后重复调用
-   -> PLATFORM_ERR_OK
-   -> 不重复初始化
-   -> 不重新覆盖运行期已经修改的 level / enable
-
-F. service_log_set_level(SERVICE_LOG_LEVEL_MAX)
-   -> PLATFORM_ERR_INVALID_PARAM
-
-G. ERROR/WARN/INFO/DEBUG/VERBOSE
-   -> 正确映射到对应 PLATFORM_LOG_LEVEL_xxx
-
-H. service_log_enable_output()
-   -> 正确转发到 Platform Log
-```
-
-测试不得为了 reset 状态而给生产 API 增加 test-only 接口。可以通过独立测试进程、编译宏场景或测试源拆分解决。
-
-## 6.2 Implement level conversion
-
-在 `service_log.c` 内使用 file-local helper：
-
-```c
-static platform_log_level_t service_log_convert_level(service_log_level_t level);
-```
-
-映射：
+必须覆盖：
 
 ```text
-SERVICE ERROR   -> PLATFORM ERROR
-SERVICE WARN    -> PLATFORM WARN
-SERVICE INFO    -> PLATFORM INFO
-SERVICE DEBUG   -> PLATFORM DEBUG
-SERVICE VERBOSE -> PLATFORM VERBOSE
+PLATFORM_GPIO_INITIALIZER -> initialized=false / configured=false
+platform_gpio_init(NULL, params) -> PLATFORM_ERR_NULL_POINTER
+platform_gpio_init(gpio, NULL) -> PLATFORM_ERR_NULL_POINTER
+params->ops == NULL -> PLATFORM_ERR_INVALID_PARAM
+first init -> PLATFORM_ERR_OK
+first init binds name / ops / implContext
+first init -> initialized=true / configured=false
+second init -> PLATFORM_ERR_ALREADY_INITIALIZED
+individual ops may be NULL at construction time
 ```
 
-非法 Level 在公共 API 入口拒绝，不依赖 helper 的 default 分支承担参数验证。
+- [ ] **Step 2: Run tests and verify RED**
 
-## 6.3 Implement control APIs
+预期：因 `platform_gpio.h/.c` 尚未实现而失败。
 
-```c
-platform_error_t service_log_set_level(service_log_level_t level);
-platform_error_t service_log_enable_output(platform_bool_t enable);
-```
+- [ ] **Step 3: Implement public object declarations in `platform_gpio.h`**
 
-不要在 Service 再保存一份独立 runtime Level/Enable 真值；Platform Log / EasyLogger 保持过滤状态真值。
+严格使用 Frozen Public Contract，不增加 Device/Lifecycle、currentLevel、mutex、registry 等字段。
 
-## 6.4 Implement idempotent initialization
+- [ ] **Step 4: Implement minimal `platform_gpio_init()` in `platform_gpio.c`**
 
-初始化顺序冻结：
+行为顺序：
 
 ```text
-platform_log_init()
-    ↓
-service_log_set_level(PROJECT_LOG_DEFAULT_LEVEL)
-    ↓
-service_log_enable_output(PROJECT_LOG_DEFAULT_OUTPUT_ENABLE)
-    ↓
-mark initialized
-    ↓
-SERVICE_LOG_I("log service initialized")
+validate gpio
+validate params
+reject gpio->initialized
+validate params->ops
+bind fields
+initialized = true
+configured = false
+return OK
 ```
 
-任一步失败：
+`name == NULL` 和 `implContext == NULL` 均允许；它们不参与当前硬件语义。
+
+- [ ] **Step 5: Run tests and verify GREEN**
+
+预期：Task 2 construction tests PASS。
+
+- [ ] **Step 6: Coding Standard Review**
+
+特别确认：
 
 ```text
-return error
-initialized remains false
+No platform_device_t inheritance
+No platform_lifecycle_t
+No HAL / STM32 symbols
+No hidden hardware initialization in init()
 ```
 
-成功后的重复调用：
+- [ ] **Step 7: Commit Task 2**
+
+建议提交：
 
 ```text
-return PLATFORM_ERR_OK
-```
-
-不得重新应用默认 Level / Enable。
-
-## 6.5 Remove empty local cfg
-
-确认：
-
-```text
-02_Service/service_log/service_log_cfg.h
-```
-
-仍为空且无引用后删除。
-
-## 6.6 Run Host Tests
-
-要求：
-
-```text
--Wall -Wextra -Werror
-0 warning
-all Service Log scenarios PASS
-```
-
-## 6.7 Commit
-
-建议提交信息：
-
-```text
-feat: implement Service Log policy
+feat: add Platform GPIO object construction
 ```
 
 ---
 
-# 7. Task 3 — Migrate Startup and APP Call Sites
+# 5. Task 3 — Configure Contract and State Preservation
 
-## 7.1 `Core/Src/freertos.c`
+**Files:**
+- Modify: `03_Platform/platform_mcu/gpio/platform_gpio.c`
+- Modify: `03_Platform/platform_mcu/gpio/platform_gpio.h`
+- Modify: `Tests/platform_gpio/test_platform_gpio.c`
 
-现有：
+**Interfaces:**
+- Consumes: `platform_gpio_ops_t.configure`
+- Produces: `platform_gpio_configure()`
 
-```c
-platform_log_init();
-app_system_init();
-```
+- [ ] **Step 1: Add failing configure tests**
 
-迁移为：
-
-```c
-service_log_init();
-app_system_init();
-```
-
-要求：
+覆盖：
 
 ```text
-- 移除 freertos.c 对 platform_log.h 的直接依赖
-- 引入 service_log.h
-- 保持 Error_Handler() 错误处理不变
-- 不在 CubeMX 文件中增加新的业务逻辑
+not initialized -> PLATFORM_ERR_NOT_INITIALIZED
+config == NULL -> PLATFORM_ERR_NULL_POINTER
+direction >= MAX -> PLATFORM_ERR_INVALID_PARAM
+pull >= MAX -> PLATFORM_ERR_INVALID_PARAM
+outputType >= MAX -> PLATFORM_ERR_INVALID_PARAM
+initialLevel >= MAX -> PLATFORM_ERR_INVALID_PARAM
+configure op == NULL -> PLATFORM_ERR_NOT_SUPPORTED
+first configure success -> forwards exact config
+first configure success -> configured=true + config copied
+first configure Impl failure -> configured=false
+Impl error -> returned unchanged
+successful reconfigure -> new config replaces old config
+failed reconfigure after previous success -> configured stays true
+failed reconfigure after previous success -> previous successful config preserved
 ```
 
-## 7.2 `01_APP/app_communication.c`
+Fake configure op 必须记录调用次数、对象指针和收到的 config，并可配置返回值。
 
-现有 Platform Log 调用全部迁移：
+- [ ] **Step 2: Run tests and verify RED**
+
+预期：新 configure tests FAIL。
+
+- [ ] **Step 3: Implement file-local config validation helper**
+
+建议使用单一 file-local helper 校验四个枚举，避免公共 API 重复判断。
+
+合法条件：
 
 ```text
-platform_log_i -> SERVICE_LOG_I
-platform_log_e -> SERVICE_LOG_E
+direction < PLATFORM_GPIO_DIRECTION_MAX
+pull < PLATFORM_GPIO_PULL_MAX
+outputType < PLATFORM_GPIO_OUTPUT_MAX
+initialLevel < PLATFORM_GPIO_LEVEL_MAX
 ```
 
-保留模块 Tag：
+不得因为 INPUT 模式而允许非法 `outputType` 或 `initialLevel`。
 
-```c
-#define LOG_TAG "app_comm"
-```
+- [ ] **Step 4: Implement `platform_gpio_configure()`**
 
-至少保留：
+关键顺序：
 
 ```text
-communication runtime started
-communication fatal error
+validate
+snapshot is implicit in existing object state
+call ops->configure
+if failure: return without changing cached successful config/state
+if success: gpio->config = *config; gpio->configured = true
 ```
 
-可以增加低频恢复日志：
+重新配置失败时不得先清空 `configured`。
+
+- [ ] **Step 5: Run tests and verify GREEN**
+
+预期：所有 configure tests PASS。
+
+- [ ] **Step 6: Coding Standard Review**
+
+重点检查失败路径不会破坏旧成功配置。
+
+- [ ] **Step 7: Commit Task 3**
+
+建议提交：
 
 ```text
-UART error recovery
-DATA_LOSS recovery
-```
-
-但不得在正常 RX 高频数据路径按 chunk / byte 打日志。
-
-## 7.3 `01_APP/app_system.c`
-
-装配全部成功后增加一次：
-
-```c
-SERVICE_LOG_I("system composition initialized");
-```
-
-该日志即代表其前置构造 / Thread / UART Service 初始化链成功，不增加底层逐项 `init success` 日志。
-
-为该文件定义明确 `LOG_TAG`。
-
-## 7.4 Update affected Host Tests
-
-仅当现有 APP Host Test 因日志依赖变化而需要 fake / include 调整时修改：
-
-```text
-Tests/app_communication/test_app_communication.c
-Tests/app_system/test_app_system.c
-```
-
-不得借此重新设计 APP 测试体系。
-
-## 7.5 Commit
-
-建议提交信息：
-
-```text
-refactor: route application logging through Service Log
+feat: implement Platform GPIO configuration
 ```
 
 ---
 
-# 8. Task 4 — Verification and Design Review
+# 6. Task 4 — Write and Read Contracts
 
-## 8.1 Repository-wide static checks
+**Files:**
+- Modify: `03_Platform/platform_mcu/gpio/platform_gpio.c`
+- Modify: `03_Platform/platform_mcu/gpio/platform_gpio.h`
+- Modify: `Tests/platform_gpio/test_platform_gpio.c`
 
-搜索生产代码，确认 APP / Service 迁移边界。
+**Interfaces:**
+- Consumes: `platform_gpio_ops_t.write`, `platform_gpio_ops_t.read`
+- Produces: `platform_gpio_write()`, `platform_gpio_read()`
 
-除 `service_log` 本身和明确的 Platform/Impl 实现外，不应在 APP / Service 正常代码中继续存在：
+- [ ] **Step 1: Add failing write tests**
+
+覆盖：
 
 ```text
-platform_log_e(
-platform_log_w(
-platform_log_i(
-platform_log_d(
-platform_log_v(
-platform_log_init(
+not initialized -> NOT_INITIALIZED
+initialized but not configured -> INVALID_STATE
+configured INPUT -> INVALID_STATE
+invalid level -> INVALID_PARAM
+write op NULL -> NOT_SUPPORTED
+configured OUTPUT + valid level -> exact Ops forwarding
+Impl write error -> unchanged propagation
+successful write does not mutate gpio->config.initialLevel
 ```
 
-注意：
+最后一项用于确认 `initialLevel` 是配置时初值，不是 runtime currentLevel cache。
+
+- [ ] **Step 2: Add failing read tests**
+
+覆盖：
 
 ```text
-03_Platform/platform_middleware/platform_log.h
-04_Impl/impl_middleware/impl_log/*
-Tests/platform_log/*
+not initialized -> NOT_INITIALIZED
+not configured -> INVALID_STATE
+level == NULL -> NULL_POINTER
+read op NULL -> NOT_SUPPORTED
+configured INPUT -> read allowed
+configured OUTPUT -> read allowed
+Fake read LOW/HIGH -> exact value returned
+Impl read error -> unchanged propagation
 ```
 
-属于底层实现或专项测试，不应被误判为违规。
+- [ ] **Step 3: Run tests and verify RED**
 
-## 8.2 ISR check
+预期：write/read tests FAIL。
 
-搜索 `SERVICE_LOG_` 的所有调用点，确认不存在 UART / DMA ISR、HAL Callback 或其他中断上下文调用。
+- [ ] **Step 4: Implement `platform_gpio_write()`**
 
-## 8.3 Run Host Tests
+校验顺序应保证未构造对象不会解引用 Ops；只有 OUTPUT 才允许 write。
 
-至少运行：
+- [ ] **Step 5: Implement `platform_gpio_read()`**
+
+INPUT / OUTPUT 均允许，不增加方向限制。
+
+- [ ] **Step 6: Run tests and verify GREEN**
+
+预期：write/read tests 全部 PASS。
+
+- [ ] **Step 7: Coding Standard Review**
+
+重点确认：
 
 ```text
-Tests/service_log
-Tests/app_communication
-Tests/app_system
-Tests/platform_log
+No currentLevel state added
+No hardware-specific level mapping in Platform
+No input/output polarity semantics beyond logical HIGH/LOW
 ```
 
-并运行当前工程可用的相关回归测试。
+- [ ] **Step 8: Commit Task 4**
 
-要求：
-
-```text
-0 compile error
-0 warning under existing Host Test flags
-all relevant tests PASS
-```
-
-## 8.4 Keil build
-
-如果执行环境具备 Keil：
+建议提交：
 
 ```text
-Build target
-0 Error(s)
-0 Warning(s)
-```
-
-如果环境没有 Keil：
-
-```text
-NOT RUN — requires local Keil verification
-```
-
-不得虚构结果。
-
-## 8.5 Board RTT validation
-
-如果执行环境没有真实板卡：标记为人工验收，不得声称 PASS。
-
-人工板测至少检查：
-
-```text
-log service initialized
-system composition initialized
-communication runtime started
-```
-
-并验证：
-
-```text
-- 默认 INFO Level 生效
-- set_level 生效
-- output enable/disable 生效
-- fatal APP error 仍能输出
-- 正常 RX 高频路径不刷屏
-```
-
-## 8.6 Frozen-design review
-
-完成实现后单独审查：
-
-1. 是否引入第二套日志 Core / RingBuffer / Task；
-2. 是否仍有 APP / Service 绕过 `service_log`；
-3. 是否存在 ISR 普通日志；
-4. 是否存在同一错误跨层重复打印；
-5. 是否引入 `service_error_t`；
-6. 是否改动 Platform Log / EasyLogger 接口语义；
-7. 是否存在无关重构；
-8. 初始化失败、重试、幂等路径是否都有测试；
-9. Project Config 是否只有一个默认策略来源。
-
-发现范围内问题：直接修复并重新验证。
-
-发现范围外问题：记录，不擅自扩大任务。
-
----
-
-# 9. Git Discipline
-
-每个逻辑 Task 单独提交。
-
-推荐提交：
-
-```text
-feat: define Service Log public contract
-feat: implement Service Log policy
-refactor: route application logging through Service Log
-test: verify Service Log Phase 1 integration   # only if a separate verification commit is actually needed
-```
-
-要求：
-
-```text
-- 不提交无关文件
-- 不覆盖用户未提交修改
-- 不使用 force push
-- 不做 unrelated cleanup
+feat: add Platform GPIO read and write
 ```
 
 ---
 
-# 10. Completion Report
+# 7. Task 5 — Deinit and Reconfigure Lifecycle
 
-Codex 最终必须输出：
+**Files:**
+- Modify: `03_Platform/platform_mcu/gpio/platform_gpio.c`
+- Modify: `03_Platform/platform_mcu/gpio/platform_gpio.h`
+- Modify: `Tests/platform_gpio/test_platform_gpio.c`
+
+**Interfaces:**
+- Consumes: `platform_gpio_ops_t.deinit`
+- Produces: `platform_gpio_deinit()` and complete lightweight state cycle
+
+- [ ] **Step 1: Add failing deinit tests**
+
+覆盖：
 
 ```text
-1. 实际完成的 Task
-2. 修改 / 新增 / 删除文件
-3. Service Log Host Test 结果
-4. APP / Platform Log 回归测试结果
-5. 静态依赖检查结果
-6. ISR 日志检查结果
-7. Keil 编译结果（或 NOT RUN 原因）
-8. 尚需人工板测项目
-9. 实际提交 SHA
-10. 与 Service_Log_Phase1设计.md 是否存在偏差
-11. 未完成项及明确原因
+not initialized -> NOT_INITIALIZED
+initialized but not configured -> INVALID_STATE
+deinit op NULL -> NOT_SUPPORTED
+deinit Impl failure -> error unchanged
+deinit Impl failure -> configured remains true
+deinit success -> configured=false
+deinit success -> initialized remains true
+deinit success -> ops / implContext binding remains intact
+after successful deinit -> configure again succeeds
 ```
 
-不得用 TODO 代替未完成说明。
+- [ ] **Step 2: Run tests and verify RED**
+
+预期：deinit tests FAIL。
+
+- [ ] **Step 3: Implement `platform_gpio_deinit()`**
+
+成功时只修改：
+
+```text
+configured = false
+```
+
+不得：
+
+```text
+clear initialized
+clear ops
+clear implContext
+clear name
+free memory
+```
+
+- [ ] **Step 4: Run full Platform GPIO test suite and verify GREEN**
+
+预期：`test_platform_gpio_types` 与 `test_platform_gpio` 全部 PASS。
+
+- [ ] **Step 5: Coding Standard Review**
+
+确认 `deinit()` 语义是 hardware deconfiguration，不是 object destruction。
+
+- [ ] **Step 6: Commit Task 5**
+
+建议提交：
+
+```text
+feat: complete Platform GPIO lifecycle
+```
 
 ---
 
-# 11. Exit Criteria
+# 8. Task 6 — Boundary, Regression and Frozen-Design Review
 
-只有同时满足以下条件才可声明 Phase 1 软件实现完成：
+**Files:**
+- Inspect only production files created by Tasks 1-5
+- Modify only if a defect is found inside current scope
+
+**Interfaces:**
+- Produces: verified Phase 1 Platform-only implementation
+
+- [ ] **Step 1: Run complete GPIO Host Tests**
+
+Expected: PASS。
+
+- [ ] **Step 2: Header Isolation Scan**
+
+确认以下生产文件和 Tests 不包含：
 
 ```text
-[x] service_log public contract implemented
-[x] default project log policy centralized
-[x] init failure/retry/idempotency tested
-[x] level mapping tested
-[x] output enable tested
-[x] APP logging migrated
-[x] freertos startup migrated
-[x] no APP/Service direct Platform Log call remains outside allowed boundary
-[x] no ISR Service Log call exists
-[x] relevant Host Tests pass
-[x] design review passes
+stm32f4xx_hal.h
+GPIO_TypeDef
+GPIO_InitTypeDef
+GPIO_PIN_
+HAL_GPIO_
+FreeRTOS
+cmsis_os
 ```
 
-Keil 与真实板 RTT 若受执行环境限制，可以作为明确列出的人工 Gate 保留，但不得报告为已验证。
+- [ ] **Step 3: Dependency Boundary Scan**
+
+确认 `03_Platform/platform_mcu/gpio/` 不依赖：
+
+```text
+04_Impl
+01_APP
+02_Service
+platform_bsp concrete device semantics
+```
+
+允许依赖：
+
+```text
+platform_types.h
+platform_error.h
+```
+
+- [ ] **Step 4: Public Contract Diff Review**
+
+逐项对照 `Platform_GPIO_Phase1设计.md`：
+
+```text
+exact enums
+exact config fields
+exact object fields
+exact Ops
+exact public APIs
+state semantics
+error semantics
+reconfigure failure preservation
+deinit semantics
+```
+
+任何公共合同偏差都必须先修复或 STOP，不得自行合理化。
+
+- [ ] **Step 5: Explicit Non-Goal Scan**
+
+确认没有新增：
+
+```text
+GPIO speed
+Toggle
+IRQ / EXTI / callback
+AF / Analog
+LED / KEY
+RTOS lock
+Registry
+Dynamic memory
+STM32 Impl
+```
+
+- [ ] **Step 6: Run existing nearby regression tests**
+
+至少重新运行：
+
+```text
+Tests/platform_uart
+```
+
+如果仓库已有统一 Platform Host Test 脚本，则运行全部 Platform Host Tests。
+
+新增 GPIO 模块不应改变现有 UART / Common 行为。
+
+- [ ] **Step 7: Final Coding Standard Review**
+
+依据 `execution_rules.md` 回答：
+
+```text
+1. 命名 / 文件组织 / 注释是否符合规范？
+2. NULL / enum / state / return path 是否完整？
+3. 是否存在生命周期、所有权或并发问题？
+4. 是否修改生成代码 / Vendor / 无关模块？
+5. 是否存在冻结设计偏离？
+```
+
+结果必须为：
+
+```text
+Coding Standard Review: PASS
+```
+
+否则不得标记阶段完成。
+
+- [ ] **Step 8: Commit verification fixes if any**
+
+如果 Task 6 发现并修复当前范围缺陷，单独提交：
+
+```text
+fix: harden Platform GPIO Phase1 contract
+```
+
+若无修改，不制造空提交。
 
 ---
 
-# 12. Execution Result
+# 9. Task 7 — Handoff Update and Phase Closure
+
+**Files:**
+- Modify: `00_Doc/04_Agent/handoff.md`
+
+**Interfaces:**
+- Produces: current repository truth for the next Agent
+
+- [ ] **Step 1: Update GPIO status only after evidence exists**
+
+只有 Host Test / boundary / coding-standard Gate 都 PASS 后，才允许将：
 
 ```text
-Status       SOFTWARE IMPLEMENTATION COMPLETE / HOST VERIFIED / MANUAL RTT VERIFIED / KEIL WARNINGS DEFERRED
-Task 1 SHA   43eca5a
-Task 2 SHA   377d5ab
-Task 3 SHA   4fe5f42
-Task 4 SHA   recorded in Git history after this verification commit
-Keil         USER-VERIFIED — 0 Error(s), 15 Warning(s); warning remediation deferred by user
-Board RTT    USER-VERIFIED — startup, level mapping and output enable/disable verified via UART assistant and RTT Viewer
+GPIO Platform Phase 1 Implementation NOT STARTED
 ```
 
-本次实现按用户约束将 Service Log 的布尔参数定义为 `platform_bool_t`，使用 `PLATFORM_TRUE / PLATFORM_FALSE`；该项覆盖本计划原先的 `bool` 草案。Keil 工程已登记 `service_log.c` 和其头文件目录；用户已完成真实编译并报告 `0 Error(s), 15 Warning(s)`，Warning 按用户决定暂不处理。用户已通过串口助手和 RTT Viewer 完成真实板测，验证启动日志、默认 INFO、Level 映射及 Output Enable/Disable；临时板测代码已在板测后清理，未纳入正式提交。
+更新为：
+
+```text
+GPIO Platform Phase 1                COMPLETED / HOST VERIFIED
+GPIO Platform Host Tests             PASS
+Header Isolation                     PASS
+Platform Dependency Boundary         PASS
+Coding Standard Review               PASS
+STM32 Impl                            NOT STARTED
+Target Board GPIO                    NOT YET VERIFIED
+```
+
+- [ ] **Step 2: Preserve verification boundaries**
+
+不得写：
+
+```text
+Keil Build Verified
+Target Board Verified
+LED Verified
+```
+
+除非用户后续真实提供对应证据；这些不属于当前 Platform-only Phase。
+
+- [ ] **Step 3: Set next phase**
+
+下一阶段入口写为：
+
+```text
+GPIO STM32 Impl Phase 1 Design
+```
+
+强调必须重新设计和重新生成新的 `implementation_plan.md`，不得直接延长当前计划。
+
+- [ ] **Step 4: Commit handoff**
+
+建议提交：
+
+```text
+docs: close Platform GPIO Phase1
+```
+
+---
+
+# 10. Final Acceptance Gate
+
+只有以下全部满足，GPIO Platform Phase 1 才算完成：
+
+```text
+[ ] Frozen spec unchanged or explicitly re-approved
+[ ] platform_gpio_types.h implemented
+[ ] platform_gpio.h implemented
+[ ] platform_gpio.c implemented
+[ ] Host type test PASS
+[ ] Host behavior test PASS
+[ ] configure failure preserves prior successful state
+[ ] deinit failure preserves configured state
+[ ] Header Isolation PASS
+[ ] No STM32 HAL dependency PASS
+[ ] Platform dependency boundary PASS
+[ ] Existing Platform UART regression PASS
+[ ] Coding Standard Review PASS
+[ ] No 04_Impl changes
+[ ] No CubeMX concrete GPIO pin configuration changes
+[ ] handoff.md updated with evidence-backed status
+```
+
+阶段允许的最终标签：
+
+```text
+GPIO Platform Phase 1
+COMPLETED / HOST VERIFIED
+```
+
+后续真实硬件链路必须通过独立阶段完成：
+
+```text
+GPIO STM32 Impl Phase 1 Design
+    -> Impl plan
+    -> STM32 GPIO mapping
+    -> Board / BSP binding
+    -> target-board GPIO verification
+```
