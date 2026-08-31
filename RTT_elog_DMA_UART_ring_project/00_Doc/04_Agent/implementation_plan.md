@@ -1,38 +1,37 @@
-# Platform Log Naming Refactor Implementation Plan
+# Service Log Phase 1 Implementation Plan
 
-> **For agentic workers:** Execute this plan task-by-task. Do not expand scope. Every self-developed `.c/.h` modification must follow `00_Doc/04_Agent/execution_rules.md` and the current V2.0 coding standard.
+> 当前执行计划 / Current Active Plan  
+> 状态：READY FOR EXECUTION  
+> 日期：2026-08-31
 
-**Goal:** Resolve the confirmed Platform Log naming technical debt by migrating the self-developed public Log API and affected private Impl symbols to the current project naming convention, while preserving architecture, runtime behavior, EasyLogger/RTT integration, initialization semantics, and all existing Log features.
+**Goal:** 建立一个薄的 Service Log 策略层，使 APP / Service 统一通过 `SERVICE_LOG_xxx()` 输出普通日志，同时复用现有 Platform Log + EasyLogger + RTT 实现。
 
-**Refactor Type:** Repository-internal breaking rename with complete call-site migration. No backward-compatibility aliases are required unless an actual external consumer is discovered during preflight.
-
-**Architecture:** Keep the existing chain unchanged:
+**Architecture:**
 
 ```text
 APP / Service
     ↓
-Platform Log API
+service_log
     ↓
-Impl Log Adapter
+platform_log
     ↓
-EasyLogger / RTT
+EasyLogger Adapter
+    ↓
+EasyLogger
+    ↓
+RTT
 ```
 
-**Behavioral Principle:**
-
-```text
-API spelling changes
-Behavior does not
-Architecture does not
-```
+`service_log` 只负责上层统一 API、初始化编排、默认策略和 Level 映射，不重新实现日志 Core。
 
 ---
 
 # 0. Mandatory References
 
-Before modifying any project C/H file, read at minimum:
+执行前必须读取：
 
 ```text
+00_Doc/02_架构设计/Service_Log_Phase1设计.md
 00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
 00_Doc/04_Agent/execution_rules.md
 00_Doc/04_Agent/architecture.md
@@ -40,678 +39,635 @@ Before modifying any project C/H file, read at minimum:
 00_Doc/04_Agent/handoff.md
 03_Platform/platform_middleware/platform_log.h
 04_Impl/impl_middleware/impl_log/easylogger_port.c
-04_Impl/impl_middleware/impl_log/easylogger_port.h
+01_APP/app_communication.c
+01_APP/app_system.c
+Core/Src/freertos.c
 ```
 
-Also inspect every production/test/documentation call site discovered by repository-wide search.
-
-Preflight report must explicitly contain:
+Preflight 必须确认：
 
 ```text
-Coding Standard:
-00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
-Status: READ
-
-Agent Execution Rules:
-00_Doc/04_Agent/execution_rules.md
-Status: READ
-
-Platform Log Naming Refactor Scope:
-Status: CONFIRMED
+Service Log Phase 1 Design: READ
+Coding Standard: READ
+Agent Execution Rules: READ
+Current repository state: INSPECTED
+Unrelated user changes: PRESERVED
 ```
 
-Current naming baseline:
-
-```text
-Functions           snake_case
-Types               lower_snake_case_t
-Macros              UPPER_SNAKE_CASE
-Enum members        UPPER_SNAKE_CASE
-File-local mutable  g_ + lowerCamelCase
-```
-
-If repository reality materially differs from this plan:
+如果仓库现实与冻结设计存在实质冲突：
 
 ```text
 STOP / BLOCKED
 ```
 
-Do not silently redesign the module.
+不得静默重新设计。
 
 ---
 
 # 1. Frozen Scope
 
-## 1.1 Public API Rename
+本阶段只实现：
 
-Required public symbol migration:
+1. `service_log` 统一普通日志入口；
+2. ERROR / WARN / INFO / DEBUG / VERBOSE 五个等级；
+3. `service_log_init()`；
+4. `service_log_set_level()`；
+5. `service_log_enable_output()`；
+6. `SERVICE_LOG_E/W/I/D/V()`；
+7. 产品默认 Level / Output Enable 配置；
+8. `freertos.c` 启动入口迁移；
+9. APP 现有 Platform Log 调用迁移；
+10. Host Test、静态依赖检查、Keil 编译和板级 RTT 验收准备。
 
-```text
-Platform_Log_Level_t
-    -> platform_log_level_t
+公共 API 冻结为：
 
-Platform_Log_Init()
-    -> platform_log_init()
+```c
+typedef enum
+{
+    SERVICE_LOG_LEVEL_ERROR = 0,
+    SERVICE_LOG_LEVEL_WARN,
+    SERVICE_LOG_LEVEL_INFO,
+    SERVICE_LOG_LEVEL_DEBUG,
+    SERVICE_LOG_LEVEL_VERBOSE,
+    SERVICE_LOG_LEVEL_MAX
+} service_log_level_t;
 
-Platform_Log_SetLevel()
-    -> platform_log_set_level()
+platform_error_t service_log_init(void);
+platform_error_t service_log_set_level(service_log_level_t level);
+platform_error_t service_log_enable_output(bool enable);
 
-Platform_Log_EnableOutput()
-    -> platform_log_enable_output()
-
-Platform_Log_GetOutputFn()
-    -> platform_log_get_output_fn()
+#define SERVICE_LOG_E(...)
+#define SERVICE_LOG_W(...)
+#define SERVICE_LOG_I(...)
+#define SERVICE_LOG_D(...)
+#define SERVICE_LOG_V(...)
 ```
 
-Keep unchanged:
-
-```text
-platform_log_output_fn_t
-
-PLATFORM_LOG_LEVEL_ASSERT
-PLATFORM_LOG_LEVEL_ERROR
-PLATFORM_LOG_LEVEL_WARN
-PLATFORM_LOG_LEVEL_INFO
-PLATFORM_LOG_LEVEL_DEBUG
-PLATFORM_LOG_LEVEL_VERBOSE
-PLATFORM_LOG_LEVEL_MAX
-
-platform_log_e(...)
-platform_log_w(...)
-platform_log_i(...)
-platform_log_d(...)
-platform_log_v(...)
-```
-
-The Log macros must only update their internal getter reference:
-
-```text
-Platform_Log_GetOutputFn()
-    -> platform_log_get_output_fn()
-```
-
-## 1.2 Affected Impl Private Symbols
-
-Within the self-developed Log adapter, migrate affected private functions to the current naming convention:
-
-```text
-Impl_Elog_NoOutput
-    -> impl_elog_no_output
-
-Impl_Elog_ConfigFormat
-    -> impl_elog_config_format
-
-Impl_Elog_ConvertLevel
-    -> impl_elog_convert_level
-
-Impl_Elog_AssertHook
-    -> impl_elog_assert_hook
-
-Impl_Elog_AsyncTask
-    -> impl_elog_async_task
-```
-
-Only rename private symbols that belong to the same Log adapter and are directly within this refactor scope.
-
-Do not use this task to rename unrelated modules.
-
-## 1.3 Third-Party Symbols
-
-The following are third-party / middleware APIs and must not be renamed merely for style:
-
-```text
-elog_init()
-elog_start()
-elog_output()
-elog_set_filter_lvl()
-elog_set_output_enabled()
-elog_assert_set_hook()
-elog_async_get_line_log()
-elog_port_output()
-CMSIS-RTOS2 APIs
-SEGGER RTT APIs
-```
+继续使用现有 `platform_error_t`，不得新增 `service_error_t`。
 
 ---
 
 # 2. Explicit Non-Goals
 
-This refactor must NOT:
+本阶段不得：
 
 ```text
-- add service_log forwarding layer
-- redesign Platform Log architecture
-- redesign EasyLogger adapter
-- redesign RTT output
-- change synchronous/asynchronous Log mode
-- change Log level semantics
-- change filter behavior
-- change no-op pre-init output behavior
-- change initialization or failure cleanup semantics
-- change Platform OS
-- change UART / RingBuffer / APP logic
-- introduce Config / Context / Data structures without real need
-- add dynamic allocation
-- add compatibility aliases by default
-- edit Vendor / EasyLogger source merely for naming consistency
-- perform repository-wide unrelated formatting cleanup
+- 自研日志 RingBuffer
+- 新增日志后台 Task
+- 新增第二套 Async Queue
+- 新增 UART DMA Log Backend
+- Flash 日志持久化
+- 多 Backend 动态路由
+- 动态 Tag Registry
+- 按 Tag 独立设置日志等级
+- ISR 普通格式化日志
+- Crash Dump
+- CmBacktrace 集成
+- Diagnostic Service
+- 重构现有 Platform Log 公共 API 命名
+- 修改 EasyLogger Vendor 源码
+- 对无关模块进行格式化或重构
 ```
 
-If an unrelated defect is discovered:
-
-```text
-record it separately
-continue only if it does not block this refactor
-```
-
-If it blocks correctness:
-
-```text
-STOP / BLOCKED
-```
+现有 EasyLogger Assert Hook 保持不变，Fatal Diagnostics 留给后续专项设计。
 
 ---
 
-# 3. Behavioral Contracts That Must Remain Unchanged
+# 3. Logging Ownership Contract
 
-## 3.1 Pre-init Logging
-
-Before successful initialization:
+普通底层错误：
 
 ```text
-platform_log_e/w/i/d/v(...)
+Impl / Platform
     ↓
-platform_log_get_output_fn()
+return platform_error_t
     ↓
-no-op backend
+Service / APP 获取上下文并决定处理策略
+    ↓
+必要时记录一次 SERVICE_LOG_W/E
 ```
 
-Logging before init must remain safe and non-crashing.
+规则：
 
-## 3.2 Initialization
+> 同一根因只由拥有足够上下文、并决定如何处理它的最高合适层记录一次。
 
-`platform_log_init()` must preserve current behavior:
+禁止同一错误在 Impl / Platform / Service / APP 连续重复打印。
+
+普通日志上下文限制：
 
 ```text
-already initialized
-    -> return PLATFORM_ERR_OK
-
-successful init
-    -> configure EasyLogger
-    -> register assert hook
-    -> start EasyLogger
-    -> switch output function to elog_output
-    -> return PLATFORM_ERR_OK
+Task Context: SERVICE_LOG_xxx() ALLOWED
+ISR Context:  SERVICE_LOG_xxx() FORBIDDEN
 ```
 
-Failure paths and cleanup behavior must remain equivalent to the current implementation.
-
-## 3.3 Level Filtering
-
-`platform_log_set_level()` must preserve:
-
-```text
-not initialized
-    -> PLATFORM_ERR_NOT_INITIALIZED
-
-invalid level >= PLATFORM_LOG_LEVEL_MAX
-    -> PLATFORM_ERR_INVALID_PARAM
-
-valid level
-    -> map Platform level to EasyLogger level
-    -> PLATFORM_ERR_OK
-```
-
-## 3.4 Output Enable
-
-`platform_log_enable_output()` must preserve current enable/disable semantics and error handling.
-
-## 3.5 Backend Getter
-
-`platform_log_get_output_fn()` must continue returning the currently bound output backend.
+ISR 只设置状态、计数或事件，由 Task 统一输出日志。
 
 ---
 
-# 4. Task 0 — Preflight and Impact Analysis
+# 4. Target Files
 
-**Files:** read only initially.
-
-- [ ] Run repository status/history checks:
-
-```bash
-git status --short
-git log --oneline -n 15
-```
-
-- [ ] Read all Mandatory References.
-- [ ] Confirm current `platform_log.h` public symbols match the expected old naming baseline.
-- [ ] Confirm `easylogger_port.c` is the current implementation location for the Platform Log API.
-- [ ] Search the entire repository for all old public symbols:
+## Create
 
 ```text
-Platform_Log_Level_t
-Platform_Log_Init
-Platform_Log_SetLevel
-Platform_Log_EnableOutput
-Platform_Log_GetOutputFn
+00_Config/project_log_config.h
+Tests/service_log/test_service_log.c
 ```
 
-- [ ] Search for affected old private symbols:
+## Modify
 
 ```text
-Impl_Elog_NoOutput
-Impl_Elog_ConfigFormat
-Impl_Elog_ConvertLevel
-Impl_Elog_AssertHook
-Impl_Elog_AsyncTask
+02_Service/service_log/service_log.h
+02_Service/service_log/service_log.c
+01_APP/app_communication.c
+01_APP/app_system.c
+Core/Src/freertos.c
+Tests/app_communication/test_app_communication.c   # only if existing tests require adaptation
+Tests/app_system/test_app_system.c                 # only if existing tests require adaptation
 ```
 
-- [ ] Classify every match:
+## Delete
 
 ```text
-production C/H
-Host Test
-CubeMX generated file / USER CODE
-documentation
-historical-only text
-third-party/vendor
+02_Service/service_log/service_log_cfg.h
 ```
 
-- [ ] Determine whether any external/public consumer outside this repository is actually required.
-
-Default assumption:
-
-```text
-Repository-internal API only
-No compatibility aliases
-```
-
-If evidence shows a required external consumer:
-
-```text
-STOP / BLOCKED
-```
-
-Return for compatibility-policy decision.
-
-- [ ] Run `git diff --check`.
-
-**Gate:** No production code changes before impact analysis is complete.
+仅删除该文件的前提：确认它仍为空且没有真实引用。若仓库现实已发生变化，停止删除并报告。
 
 ---
 
-# 5. Task 1 — Strengthen / Update Platform Log Host Tests First
+# 5. Task 1 — Public Contract and Product Configuration
 
-**Goal:** Ensure the rename is behavior-preserving and not validated only by compilation.
+## 5.1 Write failing Host Test first
 
-**Files:** inspect existing Log tests first; modify/create only the minimum necessary test files.
-
-Required behavioral coverage where feasible in the existing Host Test architecture:
+建立：
 
 ```text
-pre-init getter returns safe backend
-pre-init macro/backend invocation does not crash
-init success
-repeat init keeps existing behavior
-set_level before init -> NOT_INITIALIZED
-set_level invalid level -> INVALID_PARAM
-set_level valid level -> success / expected backend mapping path
-enable_output before init -> NOT_INITIALIZED
-enable_output true/false -> expected backend call
-get_output_fn after init -> active backend
+Tests/service_log/test_service_log.c
 ```
 
-- [ ] Reuse existing test harness instead of creating a parallel Log test framework if one exists.
-- [ ] Update tests to target the new public names.
-- [ ] If strict TDD is practical, demonstrate the expected compile failure against old public names before production rename.
-- [ ] Do not weaken existing assertions merely to make the rename pass.
+测试首先覆盖：
 
-**Gate:** Tests must define the expected behavior before or together with the implementation rename.
+```text
+- service_log_level_t 存在
+- SERVICE_LOG_E/W/I/D/V 可编译
+- service_log_init() 可调用
+- service_log_set_level() 可调用
+- service_log_enable_output() 可调用
+- LOG_TAG 能通过 Service Log Macro 传递到底层输出函数
+- 格式参数能正确转发
+```
+
+使用 fake Platform Log，不引入新的测试框架。
+
+先编译，确认因为 Service Log 接口尚未建立而失败。
+
+## 5.2 Create product configuration
+
+建立：
+
+```text
+00_Config/project_log_config.h
+```
+
+配置冻结为：
+
+```c
+#define PROJECT_LOG_DEFAULT_LEVEL          SERVICE_LOG_LEVEL_INFO
+#define PROJECT_LOG_DEFAULT_OUTPUT_ENABLE  true
+```
+
+该文件只表达产品默认策略。
+
+## 5.3 Implement `service_log.h`
+
+要求：
+
+```text
+- include guard 符合规范
+- 使用 bool + platform_error_t
+- 暴露 Service 自有 Level enum
+- SERVICE_LOG_xxx 薄包装现有 platform_log_xxx
+- 不暴露 ASSERT Level
+- 不引入 HAL / CMSIS / FreeRTOS 类型
+```
+
+当前 Platform Log Macro 已携带 `LOG_TAG / __FILE__ / __FUNCTION__ / __LINE__`，Phase 1 不重复实现 variadic formatter。
+
+## 5.4 Verify
+
+重新编译 Host Test。
+
+预期：公共头可通过编译；若 `.c` 尚未实现，失败只应来自控制函数实现缺失。
+
+## 5.5 Commit
+
+仅提交 Task 1 文件。
+
+建议提交信息：
+
+```text
+feat: define Service Log public contract
+```
 
 ---
 
-# 6. Task 2 — Rename Platform Public API
+# 6. Task 2 — Service Log Policy Implementation
 
-**Primary file:**
+## 6.1 Extend failing tests
+
+必须覆盖以下场景：
+
+```text
+A. platform_log_init() 失败
+   -> 原样返回错误
+   -> Service 不进入 initialized
+   -> 后续允许重试
+
+B. default level 配置失败
+   -> 原样返回错误
+   -> 后续允许重试
+
+C. default output enable 配置失败
+   -> 原样返回错误
+   -> 后续允许重试
+
+D. 第一次成功初始化
+   -> Platform Log 初始化一次
+   -> 设置 PROJECT_LOG_DEFAULT_LEVEL
+   -> 设置 PROJECT_LOG_DEFAULT_OUTPUT_ENABLE
+
+E. 初始化成功后重复调用
+   -> PLATFORM_ERR_OK
+   -> 不重复初始化
+   -> 不重新覆盖运行期已经修改的 level / enable
+
+F. service_log_set_level(SERVICE_LOG_LEVEL_MAX)
+   -> PLATFORM_ERR_INVALID_PARAM
+
+G. ERROR/WARN/INFO/DEBUG/VERBOSE
+   -> 正确映射到对应 PLATFORM_LOG_LEVEL_xxx
+
+H. service_log_enable_output()
+   -> 正确转发到 Platform Log
+```
+
+测试不得为了 reset 状态而给生产 API 增加 test-only 接口。可以通过独立测试进程、编译宏场景或测试源拆分解决。
+
+## 6.2 Implement level conversion
+
+在 `service_log.c` 内使用 file-local helper：
+
+```c
+static platform_log_level_t service_log_convert_level(service_log_level_t level);
+```
+
+映射：
+
+```text
+SERVICE ERROR   -> PLATFORM ERROR
+SERVICE WARN    -> PLATFORM WARN
+SERVICE INFO    -> PLATFORM INFO
+SERVICE DEBUG   -> PLATFORM DEBUG
+SERVICE VERBOSE -> PLATFORM VERBOSE
+```
+
+非法 Level 在公共 API 入口拒绝，不依赖 helper 的 default 分支承担参数验证。
+
+## 6.3 Implement control APIs
+
+```c
+platform_error_t service_log_set_level(service_log_level_t level);
+platform_error_t service_log_enable_output(bool enable);
+```
+
+不要在 Service 再保存一份独立 runtime Level/Enable 真值；Platform Log / EasyLogger 保持过滤状态真值。
+
+## 6.4 Implement idempotent initialization
+
+初始化顺序冻结：
+
+```text
+platform_log_init()
+    ↓
+service_log_set_level(PROJECT_LOG_DEFAULT_LEVEL)
+    ↓
+service_log_enable_output(PROJECT_LOG_DEFAULT_OUTPUT_ENABLE)
+    ↓
+mark initialized
+    ↓
+SERVICE_LOG_I("log service initialized")
+```
+
+任一步失败：
+
+```text
+return error
+initialized remains false
+```
+
+成功后的重复调用：
+
+```text
+return PLATFORM_ERR_OK
+```
+
+不得重新应用默认 Level / Enable。
+
+## 6.5 Remove empty local cfg
+
+确认：
+
+```text
+02_Service/service_log/service_log_cfg.h
+```
+
+仍为空且无引用后删除。
+
+## 6.6 Run Host Tests
+
+要求：
+
+```text
+-Wall -Wextra -Werror
+0 warning
+all Service Log scenarios PASS
+```
+
+## 6.7 Commit
+
+建议提交信息：
+
+```text
+feat: implement Service Log policy
+```
+
+---
+
+# 7. Task 3 — Migrate Startup and APP Call Sites
+
+## 7.1 `Core/Src/freertos.c`
+
+现有：
+
+```c
+platform_log_init();
+app_system_init();
+```
+
+迁移为：
+
+```c
+service_log_init();
+app_system_init();
+```
+
+要求：
+
+```text
+- 移除 freertos.c 对 platform_log.h 的直接依赖
+- 引入 service_log.h
+- 保持 Error_Handler() 错误处理不变
+- 不在 CubeMX 文件中增加新的业务逻辑
+```
+
+## 7.2 `01_APP/app_communication.c`
+
+现有 Platform Log 调用全部迁移：
+
+```text
+platform_log_i -> SERVICE_LOG_I
+platform_log_e -> SERVICE_LOG_E
+```
+
+保留模块 Tag：
+
+```c
+#define LOG_TAG "app_comm"
+```
+
+至少保留：
+
+```text
+communication runtime started
+communication fatal error
+```
+
+可以增加低频恢复日志：
+
+```text
+UART error recovery
+DATA_LOSS recovery
+```
+
+但不得在正常 RX 高频数据路径按 chunk / byte 打日志。
+
+## 7.3 `01_APP/app_system.c`
+
+装配全部成功后增加一次：
+
+```c
+SERVICE_LOG_I("system composition initialized");
+```
+
+该日志即代表其前置构造 / Thread / UART Service 初始化链成功，不增加底层逐项 `init success` 日志。
+
+为该文件定义明确 `LOG_TAG`。
+
+## 7.4 Update affected Host Tests
+
+仅当现有 APP Host Test 因日志依赖变化而需要 fake / include 调整时修改：
+
+```text
+Tests/app_communication/test_app_communication.c
+Tests/app_system/test_app_system.c
+```
+
+不得借此重新设计 APP 测试体系。
+
+## 7.5 Commit
+
+建议提交信息：
+
+```text
+refactor: route application logging through Service Log
+```
+
+---
+
+# 8. Task 4 — Verification and Design Review
+
+## 8.1 Repository-wide static checks
+
+搜索生产代码，确认 APP / Service 迁移边界。
+
+除 `service_log` 本身和明确的 Platform/Impl 实现外，不应在 APP / Service 正常代码中继续存在：
+
+```text
+platform_log_e(
+platform_log_w(
+platform_log_i(
+platform_log_d(
+platform_log_v(
+platform_log_init(
+```
+
+注意：
 
 ```text
 03_Platform/platform_middleware/platform_log.h
+04_Impl/impl_middleware/impl_log/*
+Tests/platform_log/*
 ```
 
-Required changes:
+属于底层实现或专项测试，不应被误判为违规。
 
-- [ ] Rename `Platform_Log_Level_t` -> `platform_log_level_t`.
-- [ ] Rename four Platform Log public functions to snake_case.
-- [ ] Update `platform_log_e/w/i/d/v` internal getter references.
-- [ ] Keep enum member values/order unchanged.
-- [ ] Keep `platform_log_output_fn_t` signature unchanged.
-- [ ] Preserve existing public API semantics and Doxygen meaning.
-- [ ] Update comments only where required by renamed symbols or current mandatory comment rules.
-- [ ] Do not perform unrelated formatting rewrite.
+## 8.2 ISR check
 
-Header isolation check:
+搜索 `SERVICE_LOG_` 的所有调用点，确认不存在 UART / DMA ISR、HAL Callback 或其他中断上下文调用。
+
+## 8.3 Run Host Tests
+
+至少运行：
 
 ```text
-platform_log.h must remain independently includable
+Tests/service_log
+Tests/app_communication
+Tests/app_system
+Tests/platform_log
 ```
 
-- [ ] Run header compile/isolation test if repository has an established mechanism.
-- [ ] Run `git diff --check`.
+并运行当前工程可用的相关回归测试。
 
----
-
-# 7. Task 3 — Rename Impl Definitions and Private Symbols
-
-**Primary file:**
+要求：
 
 ```text
-04_Impl/impl_middleware/impl_log/easylogger_port.c
+0 compile error
+0 warning under existing Host Test flags
+all relevant tests PASS
 ```
 
-Potential companion file:
+## 8.4 Keil build
+
+如果执行环境具备 Keil：
 
 ```text
-04_Impl/impl_middleware/impl_log/easylogger_port.h
-```
-
-Required changes:
-
-- [ ] Rename public function definitions to match `platform_log.h`.
-- [ ] Update parameter type from `Platform_Log_Level_t` to `platform_log_level_t`.
-- [ ] Rename affected self-developed private functions listed in Section 1.2.
-- [ ] Update all declarations and references consistently.
-- [ ] Preserve EasyLogger and CMSIS-RTOS2 calls exactly in behavior.
-- [ ] Preserve async cleanup paths exactly in behavior.
-- [ ] Preserve no-op backend binding before initialization.
-- [ ] Preserve `elog_output` binding after successful initialization.
-
-Do NOT rename third-party function names.
-Do NOT change resource lifecycle or error mapping merely because the file is being touched.
-
-- [ ] Run Log Host Tests.
-- [ ] Run `git diff --check`.
-- [ ] Perform Coding Standard Review for modified C/H files.
-
-Review must explicitly answer:
-
-```text
-1. Public functions now snake_case?
-2. Public type now lower_snake_case_t?
-3. Modified private self-developed functions compliant?
-4. Any third-party symbol accidentally renamed?
-5. Any behavior/resource/error-path change introduced?
-```
-
----
-
-# 8. Task 4 — Repository-Wide Call-Site Migration
-
-Search and migrate all active call sites.
-
-Potential areas include:
-
-```text
-APP
-Service
-Platform
-Impl
-Core USER CODE
-Tests
-Debug / Board test code
-```
-
-Rules:
-
-- [ ] Replace old public symbol references with new names.
-- [ ] Update type references.
-- [ ] Do not add compatibility macros such as:
-
-```c
-#define Platform_Log_Init platform_log_init
-```
-
-unless Task 0 discovered a real required external compatibility contract and design approval was obtained.
-
-- [ ] Documentation should be updated only where it describes the current API; historical narrative may retain old names if explicitly historical.
-- [ ] Do not use broad search/replace that can corrupt unrelated text.
-
-After migration, repository-wide active-code search must show zero old public symbols:
-
-```text
-Platform_Log_Level_t
-Platform_Log_Init
-Platform_Log_SetLevel
-Platform_Log_EnableOutput
-Platform_Log_GetOutputFn
-```
-
-Any intentional historical-document occurrence must be reviewed manually.
-
-- [ ] Run `git diff --check`.
-
----
-
-# 9. Task 5 — Host Regression Gate
-
-Run the repository's existing Host Test suite relevant to this change.
-
-Minimum expected coverage:
-
-```text
-Platform Log Host Test               PASS
-Platform Log Header Isolation        PASS if available
-APP Host Tests using Platform Log    PASS
-UART Service regression              PASS if linked against Log
-Platform OS regression               PASS if test build shares middleware integration
-Dependency boundary checks           PASS
-```
-
-Do not claim a test passed unless the command actually ran successfully.
-
-If some tests are unavailable in the environment, report:
-
-```text
-NOT RUN
-reason: <exact reason>
-```
-
-Do not convert `NOT RUN` into `PASS`.
-
----
-
-# 10. Task 6 — Keil Integration Gate
-
-Perform a full Keil project rebuild using the repository's established method.
-
-Required result:
-
-```text
+Build target
 0 Error(s)
+0 Warning(s)
 ```
 
-Warnings introduced by this refactor must be investigated.
-
-- [ ] Confirm all new public symbols resolve.
-- [ ] Confirm no stale old symbol remains in project sources.
-- [ ] Confirm no duplicate compatibility symbol is accidentally exported.
-
-If the Agent environment cannot run Keil:
+如果环境没有 Keil：
 
 ```text
-KEIL BUILD: NOT VERIFIED
+NOT RUN — requires local Keil verification
 ```
 
-Do not mark the phase complete until a real Keil result is provided by an appropriate environment/user verification.
+不得虚构结果。
+
+## 8.5 Board RTT validation
+
+如果执行环境没有真实板卡：标记为人工验收，不得声称 PASS。
+
+人工板测至少检查：
+
+```text
+log service initialized
+system composition initialized
+communication runtime started
+```
+
+并验证：
+
+```text
+- 默认 INFO Level 生效
+- set_level 生效
+- output enable/disable 生效
+- fatal APP error 仍能输出
+- 正常 RX 高频路径不刷屏
+```
+
+## 8.6 Frozen-design review
+
+完成实现后单独审查：
+
+1. 是否引入第二套日志 Core / RingBuffer / Task；
+2. 是否仍有 APP / Service 绕过 `service_log`；
+3. 是否存在 ISR 普通日志；
+4. 是否存在同一错误跨层重复打印；
+5. 是否引入 `service_error_t`；
+6. 是否改动 Platform Log / EasyLogger 接口语义；
+7. 是否存在无关重构；
+8. 初始化失败、重试、幂等路径是否都有测试；
+9. Project Config 是否只有一个默认策略来源。
+
+发现范围内问题：直接修复并重新验证。
+
+发现范围外问题：记录，不擅自扩大任务。
 
 ---
 
-# 11. Task 7 — RTT Runtime Regression
+# 9. Git Discipline
 
-Because Log is a cross-cutting runtime facility, complete at least a small target-board/runtime smoke test after successful build.
+每个逻辑 Task 单独提交。
 
-Verify:
+推荐提交：
 
 ```text
-platform_log_init()               -> success
-platform_log_i(...)               -> visible RTT output
-platform_log_e(...)               -> visible RTT output
-platform_log_set_level(...)       -> filtering still works
-platform_log_enable_output(false) -> output disabled
-platform_log_enable_output(true)  -> output restored
+feat: define Service Log public contract
+feat: implement Service Log policy
+refactor: route application logging through Service Log
+test: verify Service Log Phase 1 integration   # only if a separate verification commit is actually needed
 ```
 
-Also verify startup logging before/around initialization does not cause a crash if such a path exists in the current product startup sequence.
-
-Target board result must be recorded as one of:
+要求：
 
 ```text
-PASS
-FAIL
-NOT RUN
+- 不提交无关文件
+- 不覆盖用户未提交修改
+- 不使用 force push
+- 不做 unrelated cleanup
 ```
 
 ---
 
-# 12. Task 8 — Final Static Review and Documentation Update
+# 10. Completion Report
 
-## 12.1 Old Symbol Scan
-
-Repository active-code scan must confirm:
+Codex 最终必须输出：
 
 ```text
-Platform_Log_Level_t           -> 0 active occurrences
-Platform_Log_Init              -> 0 active occurrences
-Platform_Log_SetLevel          -> 0 active occurrences
-Platform_Log_EnableOutput      -> 0 active occurrences
-Platform_Log_GetOutputFn       -> 0 active occurrences
+1. 实际完成的 Task
+2. 修改 / 新增 / 删除文件
+3. Service Log Host Test 结果
+4. APP / Platform Log 回归测试结果
+5. 静态依赖检查结果
+6. ISR 日志检查结果
+7. Keil 编译结果（或 NOT RUN 原因）
+8. 尚需人工板测项目
+9. 实际提交 SHA
+10. 与 Service_Log_Phase1设计.md 是否存在偏差
+11. 未完成项及明确原因
 ```
 
-Private old names listed in Section 1.2 should also be zero in active code.
-
-## 12.2 Coding Standard Review
-
-Final status must be:
-
-```text
-Coding Standard Review: PASS
-```
-
-or the phase cannot be marked complete.
-
-## 12.3 Handoff Update
-
-Update:
-
-```text
-00_Doc/04_Agent/handoff.md
-```
-
-Change Platform Log naming technical debt from:
-
-```text
-CONFIRMED TECHNICAL DEBT
-REQUIRES DEDICATED REFACTOR
-```
-
-to a resolved record only after all required verification has passed.
-
-Recommended final record:
-
-```text
-Platform Log Naming Refactor       COMPLETED
-Public API Naming                  V2.0 COMPLIANT
-Host Regression                    PASS
-Keil Full Rebuild                  PASS
-RTT Runtime Regression             PASS
-Coding Standard Review             PASS
-```
-
-If Keil or board verification remains pending, record the exact partial state instead of `COMPLETED`.
+不得用 TODO 代替未完成说明。
 
 ---
 
-# 13. Completion Criteria
+# 11. Exit Criteria
 
-This refactor is `COMPLETED` only when all applicable criteria are satisfied:
-
-```text
-[ ] platform_log_level_t is the only active Platform Log level public type
-[ ] all four public Platform Log functions use snake_case
-[ ] platform_log_e/w/i/d/v use platform_log_get_output_fn()
-[ ] affected self-developed Impl private symbols comply with current naming rules
-[ ] no default backward-compatibility alias remains
-[ ] active-code scan finds zero old public Platform Log symbols
-[ ] architecture unchanged
-[ ] runtime behavior unchanged
-[ ] Platform Log Host Test PASS
-[ ] relevant Host Regression PASS
-[ ] Header Isolation PASS where supported
-[ ] Dependency Boundary Scan PASS
-[ ] Keil Full Rebuild PASS
-[ ] RTT Runtime Regression PASS
-[ ] Coding Standard Review PASS
-[ ] handoff.md updated
-```
-
-If Host and source migration are complete but Keil / target runtime verification is pending, use:
+只有同时满足以下条件才可声明 Phase 1 软件实现完成：
 
 ```text
-IMPLEMENTED / HOST_VERIFIED
-KEIL_OR_BOARD_VERIFICATION_PENDING
+[ ] service_log public contract implemented
+[ ] default project log policy centralized
+[ ] init failure/retry/idempotency tested
+[ ] level mapping tested
+[ ] output enable tested
+[ ] APP logging migrated
+[ ] freertos startup migrated
+[ ] no APP/Service direct Platform Log call remains outside allowed boundary
+[ ] no ISR Service Log call exists
+[ ] relevant Host Tests pass
+[ ] design review passes
 ```
 
-Do not mark `COMPLETED` prematurely.
-
----
-
-# 14. Suggested Commit Sequence
-
-Recommended sequence:
-
-```text
-1. test(log): cover platform log behavior
-2. refactor(log): normalize platform log api naming
-3. test(log): run integration regressions
-4. docs: complete platform log naming refactor
-```
-
-A single implementation commit is acceptable if the rename is tightly atomic and all call sites must change together to preserve buildability.
-
-Do not mix unrelated technical debt cleanup into these commits.
-
----
-
-# 15. Final Agent Report
-
-At completion, report:
-
-```text
-Files changed:
-<list>
-
-Public API migration:
-<old -> new>
-
-Old active symbol scan:
-PASS / FAIL
-
-Host Tests:
-<commands + PASS/FAIL/NOT RUN>
-
-Keil Full Rebuild:
-PASS / FAIL / NOT VERIFIED
-
-RTT Runtime Regression:
-PASS / FAIL / NOT RUN
-
-Coding Standard Review:
-PASS / NEEDS_FIX / EXCEPTION
-
-Architecture behavior changed:
-NO / YES
-
-Remaining issues:
-<none or exact list>
-```
-
-The Agent must not continue into protocol/application behavior implementation after completing this refactor.
+Keil 与真实板 RTT 若受执行环境限制，可以作为明确列出的人工 Gate 保留，但不得报告为已验证。
