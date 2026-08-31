@@ -99,7 +99,9 @@ static void fake_output(uint8_t level,
     g_log.outputLevel = level;
     g_log.tag = tag;
     g_log.format = format;
-    g_log.argument = va_arg(args, int);
+    if (0 == strcmp("value=%d", format)) {
+        g_log.argument = va_arg(args, int);
+    }
     g_log.outputCallCount++;
     va_end(args);
 }
@@ -219,12 +221,14 @@ int main(void)
     TEST_ASSERT(1U == g_log.initCallCount);
     TEST_ASSERT(0U == g_log.setLevelCallCount);
     TEST_ASSERT(0U == g_log.enableCallCount);
+    TEST_ASSERT(0U == g_log.outputCallCount);
 
     g_initResult = PLATFORM_ERR_OK;
     TEST_ASSERT(PLATFORM_ERR_OK == service_log_init());
     TEST_ASSERT(2U == g_log.initCallCount);
     TEST_ASSERT(1U == g_log.setLevelCallCount);
     TEST_ASSERT(1U == g_log.enableCallCount);
+    TEST_ASSERT(1U == g_log.outputCallCount);
 
     return 0;
 }
@@ -237,12 +241,14 @@ int main(void)
     TEST_ASSERT(1U == g_log.initCallCount);
     TEST_ASSERT(1U == g_log.setLevelCallCount);
     TEST_ASSERT(0U == g_log.enableCallCount);
+    TEST_ASSERT(0U == g_log.outputCallCount);
 
     g_setLevelResult = PLATFORM_ERR_OK;
     TEST_ASSERT(PLATFORM_ERR_OK == service_log_init());
     TEST_ASSERT(2U == g_log.initCallCount);
     TEST_ASSERT(2U == g_log.setLevelCallCount);
     TEST_ASSERT(1U == g_log.enableCallCount);
+    TEST_ASSERT(1U == g_log.outputCallCount);
 
     return 0;
 }
@@ -255,12 +261,14 @@ int main(void)
     TEST_ASSERT(1U == g_log.initCallCount);
     TEST_ASSERT(1U == g_log.setLevelCallCount);
     TEST_ASSERT(1U == g_log.enableCallCount);
+    TEST_ASSERT(0U == g_log.outputCallCount);
 
     g_enableResult = PLATFORM_ERR_OK;
     TEST_ASSERT(PLATFORM_ERR_OK == service_log_init());
     TEST_ASSERT(2U == g_log.initCallCount);
     TEST_ASSERT(2U == g_log.setLevelCallCount);
     TEST_ASSERT(2U == g_log.enableCallCount);
+    TEST_ASSERT(1U == g_log.outputCallCount);
 
     return 0;
 }

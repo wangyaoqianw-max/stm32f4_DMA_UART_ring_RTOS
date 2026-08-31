@@ -24,11 +24,11 @@
 #include "cmsis_os.h"
 
 /* Private includes ----------------------------------------------------------*/
-  /* USER CODE BEGIN Includes */
-  #include "usart.h"
-  #include "service_log.h"
-  #include "app_system.h"
-  /* USER CODE END Includes */
+/* USER CODE BEGIN Includes */
+#include "usart.h"
+#include "service_log.h"
+#include "app_system.h"
+/* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */

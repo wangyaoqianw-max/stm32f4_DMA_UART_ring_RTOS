@@ -55,7 +55,7 @@ platform_error_t service_log_set_level(service_log_level_t level);
 
 /**
  * @brief 打开或关闭 Service Log 的全局输出。
- * @param[in] enable true 表示启用输出，false 表示关闭输出。
+ * @param[in] enable 使用 PLATFORM_TRUE 表示启用输出，使用 PLATFORM_FALSE 表示关闭输出。
  * @return PLATFORM_ERR_OK 表示成功，其他 platform_error_t 表示失败。
  */
 platform_error_t service_log_enable_output(platform_bool_t enable);

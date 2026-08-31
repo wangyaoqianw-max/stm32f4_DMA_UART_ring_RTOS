@@ -94,7 +94,7 @@ typedef enum
 
 platform_error_t service_log_init(void);
 platform_error_t service_log_set_level(service_log_level_t level);
-platform_error_t service_log_enable_output(bool enable);
+platform_error_t service_log_enable_output(platform_bool_t enable);
 
 #define SERVICE_LOG_E(...)
 #define SERVICE_LOG_W(...)
@@ -233,7 +233,7 @@ Tests/service_log/test_service_log.c
 
 ```c
 #define PROJECT_LOG_DEFAULT_LEVEL          SERVICE_LOG_LEVEL_INFO
-#define PROJECT_LOG_DEFAULT_OUTPUT_ENABLE  true
+#define PROJECT_LOG_DEFAULT_OUTPUT_ENABLE  PLATFORM_TRUE
 ```
 
 该文件只表达产品默认策略。
@@ -244,7 +244,7 @@ Tests/service_log/test_service_log.c
 
 ```text
 - include guard 符合规范
-- 使用 bool + platform_error_t
+- 使用 platform_bool_t + platform_error_t
 - 暴露 Service 自有 Level enum
 - SERVICE_LOG_xxx 薄包装现有 platform_log_xxx
 - 不暴露 ASSERT Level
@@ -337,7 +337,7 @@ SERVICE VERBOSE -> PLATFORM VERBOSE
 
 ```c
 platform_error_t service_log_set_level(service_log_level_t level);
-platform_error_t service_log_enable_output(bool enable);
+platform_error_t service_log_enable_output(platform_bool_t enable);
 ```
 
 不要在 Service 再保存一份独立 runtime Level/Enable 真值；Platform Log / EasyLogger 保持过滤状态真值。
@@ -657,17 +657,33 @@ Codex 最终必须输出：
 只有同时满足以下条件才可声明 Phase 1 软件实现完成：
 
 ```text
-[ ] service_log public contract implemented
-[ ] default project log policy centralized
-[ ] init failure/retry/idempotency tested
-[ ] level mapping tested
-[ ] output enable tested
-[ ] APP logging migrated
-[ ] freertos startup migrated
-[ ] no APP/Service direct Platform Log call remains outside allowed boundary
-[ ] no ISR Service Log call exists
-[ ] relevant Host Tests pass
-[ ] design review passes
+[x] service_log public contract implemented
+[x] default project log policy centralized
+[x] init failure/retry/idempotency tested
+[x] level mapping tested
+[x] output enable tested
+[x] APP logging migrated
+[x] freertos startup migrated
+[x] no APP/Service direct Platform Log call remains outside allowed boundary
+[x] no ISR Service Log call exists
+[x] relevant Host Tests pass
+[x] design review passes
 ```
 
 Keil 与真实板 RTT 若受执行环境限制，可以作为明确列出的人工 Gate 保留，但不得报告为已验证。
+
+---
+
+# 12. Execution Result
+
+```text
+Status       SOFTWARE IMPLEMENTATION COMPLETE / HOST VERIFIED
+Task 1 SHA   43eca5a
+Task 2 SHA   377d5ab
+Task 3 SHA   4fe5f42
+Task 4 SHA   recorded in Git history after this verification commit
+Keil         NOT RUN — UV4/UV5 unavailable in the execution environment
+Board RTT    NOT YET VERIFIED — requires a real target board and RTT session
+```
+
+本次实现按用户约束将 Service Log 的布尔参数定义为 `platform_bool_t`，使用 `PLATFORM_TRUE / PLATFORM_FALSE`；该项覆盖本计划原先的 `bool` 草案。Keil 工程已登记 `service_log.c` 和其头文件目录，待具备 Keil 环境后执行真实构建。
