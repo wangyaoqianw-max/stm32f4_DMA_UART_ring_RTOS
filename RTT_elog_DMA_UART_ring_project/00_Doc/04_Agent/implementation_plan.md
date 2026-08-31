@@ -677,13 +677,13 @@ Keil 与真实板 RTT 若受执行环境限制，可以作为明确列出的人�
 # 12. Execution Result
 
 ```text
-Status       SOFTWARE IMPLEMENTATION COMPLETE / HOST VERIFIED
+Status       SOFTWARE IMPLEMENTATION COMPLETE / HOST VERIFIED / KEIL WARNING GATE OPEN
 Task 1 SHA   43eca5a
 Task 2 SHA   377d5ab
 Task 3 SHA   4fe5f42
 Task 4 SHA   recorded in Git history after this verification commit
-Keil         NOT RUN — UV4/UV5 unavailable in the execution environment
+Keil         USER-VERIFIED — 0 Error(s), 15 Warning(s); zero-warning gate not met
 Board RTT    NOT YET VERIFIED — requires a real target board and RTT session
 ```
 
-本次实现按用户约束将 Service Log 的布尔参数定义为 `platform_bool_t`，使用 `PLATFORM_TRUE / PLATFORM_FALSE`；该项覆盖本计划原先的 `bool` 草案。Keil 工程已登记 `service_log.c` 和其头文件目录，待具备 Keil 环境后执行真实构建。
+本次实现按用户约束将 Service Log 的布尔参数定义为 `platform_bool_t`，使用 `PLATFORM_TRUE / PLATFORM_FALSE`；该项覆盖本计划原先的 `bool` 草案。Keil 工程已登记 `service_log.c` 和其头文件目录；用户已完成真实编译并报告 `0 Error(s), 15 Warning(s)`，Warning 具体内容尚未提供，零警告 Gate 尚未满足。

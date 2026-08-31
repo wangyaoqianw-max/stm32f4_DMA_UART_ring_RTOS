@@ -88,9 +88,9 @@ APP Phase 1 Implementation          COMPLETED
 Production APP RX Vertical          VERIFIED
 Production APP Layer                IMPLEMENTED (Phase 1)
 Service Log Phase 1                 COMPLETED (HOST VERIFIED)
-Service Log Keil Build              NOT RUN (TOOL UNAVAILABLE)
+Service Log Keil Build              USER-VERIFIED (0 Error(s), 15 Warning(s))
 Service Log Board RTT               NOT YET VERIFIED
-Current State                       HOST_VERIFIED / MANUAL_GATES_PENDING
+Current State                       HOST_VERIFIED / KEIL_WARNINGS_PENDING / MANUAL_RTT_PENDING
 ```
 
 `01_APP/` 已存在正式生产 APP 实现：
@@ -152,7 +152,7 @@ Project Config Regression            PASS
 APP/Service direct-log scan          PASS
 ISR Service Log scan                 PASS
 Frozen-design review                 PASS
-Keil Build                           NOT RUN — UV4/UV5 unavailable
+Keil Build                           USER-VERIFIED — 0 Error(s), 15 Warning(s)
 Target Board RTT                     NOT YET VERIFIED
 ```
 
@@ -489,7 +489,7 @@ Platform Log -> EasyLogger Adapter -> EasyLogger -> RTT
 - 删除空的 `service_log_cfg.h`，未改 Platform Log 或 EasyLogger Vendor；
 - 生产接口使用 Platform 层既有 `platform_bool_t`，不新增 Service 层布尔类型或错误码。
 
-软件验证已在 Host 完成；Keil 构建因当前环境没有 UV4/UV5 未执行，真实板 RTT 尚需人工验收。
+软件验证已在 Host 完成；用户已在 Keil 环境完成编译并报告 `0 Error(s), 15 Warning(s)`，尚未达到零警告 Gate；真实板 RTT 尚需人工验收。
 
 ---
 
@@ -570,7 +570,7 @@ board_types.h
 
 `02_Service/service_log/` 已实现为薄策略层，只负责上层统一 API、初始化编排、默认策略和 Level 映射；日志 Core、异步机制、RingBuffer、Backend 和 Vendor 仍由既有下层负责。
 
-当前已完成 Host 验证；Keil 构建和真实板 RTT 仍未验证。人工板测至少检查：`log service initialized`、`system composition initialized`、`communication runtime started`、默认 INFO、运行期 Level/Output 开关、fatal APP 错误输出以及正常 RX 路径不刷屏。
+当前已完成 Host 验证和用户报告的 Keil `0 Error(s), 15 Warning(s)` 编译验证，但尚未达到零警告 Gate；真实板 RTT 仍未验证。人工板测至少检查：`log service initialized`、`system composition initialized`、`communication runtime started`、默认 INFO、运行期 Level/Output 开关、fatal APP 错误输出以及正常 RX 路径不刷屏。
 
 ## 8.4 architecture.md 部分描述已过期
 
@@ -712,7 +712,7 @@ APP Phase 1 已完成，不再继续执行原 APP Phase 1 implementation plan。
 当前状态：
 
 ```text
-HOST_VERIFIED / MANUAL_GATES_PENDING
+HOST_VERIFIED / KEIL_WARNINGS_PENDING / MANUAL_RTT_PENDING
 ```
 
 当前收口状态：
@@ -721,10 +721,10 @@ HOST_VERIFIED / MANUAL_GATES_PENDING
 RingBuffer SPSC Review        REVIEWED / NO REFACTOR
 Platform Log Naming Refactor  COMPLETED
 USART1 Multi-UART             DEFERRED
-Next Phase                    Manual Keil/RTT Gates, then Protocol / Application Behavior Design
+Next Phase                    Resolve Keil Warnings, then Manual RTT Gate and Protocol / Application Behavior Design
 ```
 
-完成 Keil/RTT 人工 Gate 后进入 Protocol / Application Behavior Design；USART1 多实例路由继续 DEFERRED，不进入当前阶段。
+完成 Keil 零警告 Gate 和 RTT 人工 Gate 后进入 Protocol / Application Behavior Design；USART1 多实例路由继续 DEFERRED，不进入当前阶段。
 
 协议 / Application Behavior 阶段建议首先明确：
 
