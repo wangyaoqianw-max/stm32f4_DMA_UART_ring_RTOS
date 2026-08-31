@@ -18,8 +18,13 @@
 #include "project_config.h"
 #include "platform_bsp_uart.h"
 #include "platform_thread.h"
+#include "service_log.h"
 #include "service_uart.h"
 //******************************** Includes *********************************//
+
+//******************************** Defines **********************************//
+#define LOG_TAG                                "app_system"
+//******************************** Defines **********************************//
 
 //******************************** Variables *********************************//
 static platform_uart_t g_communicationUart = PLATFORM_UART_INITIALIZER;
@@ -91,6 +96,7 @@ platform_error_t app_system_init(void)
     }
 
     g_isInitialized = PLATFORM_TRUE;
+    SERVICE_LOG_I("system composition initialized");
 
     return PLATFORM_ERR_OK;
 }

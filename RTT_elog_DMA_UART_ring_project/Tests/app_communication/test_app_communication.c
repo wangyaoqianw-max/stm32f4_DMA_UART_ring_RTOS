@@ -12,7 +12,9 @@
  *****************************************************************************/
 
 #include "app_communication.h"
-#include "platform_log.h"
+#include "service_log.h"
+
+#include <string.h>
 
 #define TEST_ASSERT(condition) \
     do { \
@@ -42,6 +44,10 @@ typedef struct
     uint8_t readData[2];
     platform_size_t readLength;
     service_uart_status_t serviceStatus;
+    uint32_t logCallCount;
+    platform_log_level_t logLevel;
+    const char *logTag;
+    const char *logFormat;
 } fake_runtime_t;
 
 static fake_runtime_t g_fakeRuntime;
@@ -150,12 +156,13 @@ static void fake_log_output(
     const char *format,
     ...)
 {
-    (void)level;
-    (void)tag;
+    g_fakeRuntime.logCallCount++;
+    g_fakeRuntime.logLevel = (platform_log_level_t)level;
+    g_fakeRuntime.logTag = tag;
     (void)file;
     (void)func;
     (void)line;
-    (void)format;
+    g_fakeRuntime.logFormat = format;
 }
 
 platform_log_output_fn_t platform_log_get_output_fn(void)
@@ -218,6 +225,10 @@ static int test_start_runs_uart_then_service(void)
     TEST_ASSERT(1U == g_fakeRuntime.startCallCount);
     TEST_ASSERT(1U == g_fakeRuntime.serviceStartCallCount);
     TEST_ASSERT(APP_COMMUNICATION_STATE_RUNNING == communication.context.state);
+    TEST_ASSERT(1U == g_fakeRuntime.logCallCount);
+    TEST_ASSERT(PLATFORM_LOG_LEVEL_INFO == g_fakeRuntime.logLevel);
+    TEST_ASSERT(0 == strcmp("app_comm", g_fakeRuntime.logTag));
+    TEST_ASSERT(0 == strcmp("communication runtime started", g_fakeRuntime.logFormat));
 
     return 0;
 }
