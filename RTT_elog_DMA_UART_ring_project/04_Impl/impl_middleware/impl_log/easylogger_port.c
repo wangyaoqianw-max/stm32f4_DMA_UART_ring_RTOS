@@ -25,7 +25,7 @@
 #define IMPL_ELOG_ASYNC_TASK_STACK_SIZE  (4096U)
 
 //初始化状态，默认为false，初始化成功置true
-static bool s_app_log_inited = false;
+static bool g_appLogInited = false;
 
 /**
  * @brief  日志未初始化时丢弃输出
@@ -37,7 +37,7 @@ static void impl_elog_no_output(uint8_t level,
                                long line,
                                const char *format,
                                ...);
-static platform_log_output_fn_t s_log_output_fn = impl_elog_no_output;
+static platform_log_output_fn_t g_logOutputFn = impl_elog_no_output;
 
 /**
  * @brief  各个级别的日志输出内容设置
@@ -64,9 +64,9 @@ static void impl_elog_assert_hook(const char *expr,const char *func,size_t line)
 /*异步模式*/
 #if defined(ELOG_ASYNC_OUTPUT_ENABLE)
 //创建信号量的句柄
-static osSemaphoreId_t s_elog_async_sem_handle;
+static osSemaphoreId_t g_elogAsyncSemHandle;
 //创建日志任务的句柄
-static osThreadId_t s_elog_async_task_handle;
+static osThreadId_t g_elogAsyncTaskHandle;
 static const osThreadAttr_t s_elog_async_task_attributes = {
     .name = "elogAsync",
     .stack_size = IMPL_ELOG_ASYNC_TASK_STACK_SIZE,
@@ -94,18 +94,18 @@ platform_error_t platform_log_init(void)
 {
     platform_error_t result = PLATFORM_ERR_OK;
     //防止重复初始化
-    if (s_app_log_inited == true) {
+    if (g_appLogInited == true) {
         return PLATFORM_ERR_OK;
     }
 
     //如果是异步状态，需要创建信号量和任务
 #if defined(ELOG_ASYNC_OUTPUT_ENABLE)
-    s_elog_async_sem_handle = osSemaphoreNew(IMPL_ELOG_ASYNC_SEM_MAX_COUNT, 0, NULL);
-    if (s_elog_async_sem_handle == NULL) {
+    g_elogAsyncSemHandle = osSemaphoreNew(IMPL_ELOG_ASYNC_SEM_MAX_COUNT, 0, NULL);
+    if (g_elogAsyncSemHandle == NULL) {
         return PLATFORM_ERR_NO_RESOURCE;
     }
-    s_elog_async_task_handle = osThreadNew(impl_elog_async_task, NULL, &s_elog_async_task_attributes);
-    if (s_elog_async_task_handle == NULL) {
+    g_elogAsyncTaskHandle = osThreadNew(impl_elog_async_task, NULL, &s_elog_async_task_attributes);
+    if (g_elogAsyncTaskHandle == NULL) {
         result = PLATFORM_ERR_NO_RESOURCE;
         goto init_failed;
     }
@@ -122,25 +122,25 @@ platform_error_t platform_log_init(void)
     impl_elog_config_format();
     //日志开始运行
     elog_start();
-    s_app_log_inited = true;
-    s_log_output_fn = elog_output;
+    g_appLogInited = true;
+    g_logOutputFn = elog_output;
     return PLATFORM_ERR_OK;
 
 init_failed:
 //异步模式下如果初始化失败，释放信号量和线程申请的资源
 #if defined(ELOG_ASYNC_OUTPUT_ENABLE)
-    if (s_elog_async_task_handle != NULL) {
-        osThreadTerminate(s_elog_async_task_handle);
-        s_elog_async_task_handle = NULL;
+    if (g_elogAsyncTaskHandle != NULL) {
+        osThreadTerminate(g_elogAsyncTaskHandle);
+        g_elogAsyncTaskHandle = NULL;
     }
 
-    if (s_elog_async_sem_handle != NULL) {
-        osSemaphoreDelete(s_elog_async_sem_handle);
-        s_elog_async_sem_handle = NULL;
+    if (g_elogAsyncSemHandle != NULL) {
+        osSemaphoreDelete(g_elogAsyncSemHandle);
+        g_elogAsyncSemHandle = NULL;
     }
 #endif
-    s_app_log_inited = false;
-    s_log_output_fn = impl_elog_no_output;
+    g_appLogInited = false;
+    g_logOutputFn = impl_elog_no_output;
     return result;
 }
 /**
@@ -151,7 +151,7 @@ init_failed:
 platform_error_t platform_log_set_level(platform_log_level_t level)
 {
     //初始化和参数校验
-    if (!s_app_log_inited) {
+    if (!g_appLogInited) {
         return PLATFORM_ERR_NOT_INITIALIZED;
     }
 
@@ -169,7 +169,7 @@ platform_error_t platform_log_set_level(platform_log_level_t level)
  */
 platform_error_t platform_log_enable_output(bool enable)
 {
-    if (!s_app_log_inited) {
+    if (!g_appLogInited) {
         return PLATFORM_ERR_NOT_INITIALIZED;
     }
 
@@ -179,7 +179,7 @@ platform_error_t platform_log_enable_output(bool enable)
 
 platform_log_output_fn_t platform_log_get_output_fn(void)
 {
-    return s_log_output_fn;
+    return g_logOutputFn;
 }
 
 #if defined(ELOG_ASYNC_OUTPUT_ENABLE)
@@ -188,8 +188,8 @@ platform_log_output_fn_t platform_log_get_output_fn(void)
  */
 void elog_async_output_notice(void)
 {
-    if (s_elog_async_sem_handle != NULL) {
-        osSemaphoreRelease(s_elog_async_sem_handle);
+    if (g_elogAsyncSemHandle != NULL) {
+        osSemaphoreRelease(g_elogAsyncSemHandle);
     }
 }
 #endif
@@ -221,7 +221,7 @@ static void impl_elog_async_task(void *argument)
     size_t log_size;
 
     for (;;) {
-        if (osSemaphoreAcquire(s_elog_async_sem_handle, osWaitForever) != osOK) {
+        if (osSemaphoreAcquire(g_elogAsyncSemHandle, osWaitForever) != osOK) {
             SEGGER_RTT_WriteString(0U, "Semaphore failed. Task delete.\r\n");
             vTaskDelete(NULL);
         }

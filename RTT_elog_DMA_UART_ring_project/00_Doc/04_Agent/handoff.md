@@ -140,7 +140,7 @@ Coding Standard Review               PASS
 后续 Agent 不得再把 APP Phase 1 判断为“正在实施”或“尚未正式接入 APP”。
 
 当前没有新的冻结专项设计和新的实施计划。
-`00_Doc/04_Agent/implementation_plan.md` 当前保存的是已完成 APP Phase 1 的历史实施计划，不能直接作为下一阶段执行入口。
+`00_Doc/04_Agent/implementation_plan.md` 当前保存的是已完成 Platform Log Naming Refactor 的历史实施计划，不能直接作为下一阶段执行入口。
 
 ---
 
@@ -670,22 +670,16 @@ APP Phase 1 已完成，不再继续执行原 APP Phase 1 implementation plan。
 READY_FOR_NEXT_DESIGN
 ```
 
-推荐近期顺序：
+当前收口状态：
 
 ```text
-Small Technical Debt Gate
-    ├─ RingBuffer SPSC toolchain / memory-order contract review
-    └─ Platform Log API naming refactor design
-            ↓
-Protocol / Application Behavior Design
+RingBuffer SPSC Review        REVIEWED / NO REFACTOR
+Platform Log Naming Refactor  COMPLETED
+USART1 Multi-UART             DEFERRED
+Next Phase                    Protocol / Application Behavior Design
 ```
 
-其中：
-
-- RingBuffer 当前不预设需要代码重构；只有复核证明现有目标工具链合同不足时才进入修改；
-- Platform Log rename 属于明确的公共 API 重构，需要独立设计与实施计划；
-- USART1 多实例路由继续 DEFERRED，不进入当前技术债 Gate；
-- 如果决定先推进业务，也可以将 Platform Log rename 延后，但必须继续保留本文件中的已知技术债记录。
+后续直接进入 Protocol / Application Behavior Design；USART1 多实例路由继续 DEFERRED，不进入当前阶段。
 
 协议 / Application Behavior 阶段建议首先明确：
 
