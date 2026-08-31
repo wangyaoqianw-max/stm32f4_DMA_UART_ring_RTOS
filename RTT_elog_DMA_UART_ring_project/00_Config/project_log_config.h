@@ -15,13 +15,12 @@
 #define PROJECT_LOG_CONFIG_H
 
 //******************************** Includes *********************************//
-#include <stdbool.h>
 #include "service_log.h"
 //******************************** Includes *********************************//
 
 //******************************** Defines *********************************//
 #define PROJECT_LOG_DEFAULT_LEVEL          SERVICE_LOG_LEVEL_INFO
-#define PROJECT_LOG_DEFAULT_OUTPUT_ENABLE  true
+#define PROJECT_LOG_DEFAULT_OUTPUT_ENABLE  PLATFORM_TRUE
 //******************************** Defines *********************************//
 
 #endif
