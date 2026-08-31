@@ -14,7 +14,7 @@
 //******************************** Includes *********************************//
 #include "app_communication.h"
 #include "project_config.h"
-#include "platform_log.h"
+#include "service_log.h"
 #include "platform_time.h"
 //******************************** Includes *********************************//
 
@@ -168,7 +168,7 @@ platform_error_t app_communication_start(app_communication_t *communication)
 
     communication->context.state = APP_COMMUNICATION_STATE_RUNNING;
     communication->context.lastError = PLATFORM_ERR_OK;
-    platform_log_i("communication runtime started");
+    SERVICE_LOG_I("communication runtime started");
 
     return PLATFORM_ERR_OK;
 }
@@ -263,8 +263,8 @@ void app_communication_task_entry(void *argument)
         result = app_communication_process(communication, PROJECT_COMM_WAIT_TIMEOUT_MS);
     }
 
+    SERVICE_LOG_E("communication fatal error: %d", (int)communication->context.lastError);
     for (;;) {
-        platform_log_e("communication fatal error: %d", (int)communication->context.lastError);
         (void)platform_time_delay_ms(PROJECT_COMM_ERROR_IDLE_DELAY_MS);
     }
 }

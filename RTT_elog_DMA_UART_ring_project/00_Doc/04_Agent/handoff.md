@@ -1,6 +1,6 @@
 # 工程长期记忆与交接说明
 
-更新时间：2026-08-30
+更新时间：2026-08-31
 
 > 本文件是 AI Agent 与人工开发者恢复工程上下文时的长期入口。
 > 只保存长期目标、稳定架构合同、已验证能力、当前边界、技术债和下一步。
@@ -73,7 +73,7 @@ Correctness
 当前分支：
 
 ```text
-main
+codex/service-log-phase1
 ```
 
 当前阶段状态：
@@ -87,7 +87,10 @@ APP Phase 1 Design                  FROZEN
 APP Phase 1 Implementation          COMPLETED
 Production APP RX Vertical          VERIFIED
 Production APP Layer                IMPLEMENTED (Phase 1)
-Current State                       READY_FOR_NEXT_DESIGN
+Service Log Phase 1                 COMPLETED (HOST + MANUAL RTT VERIFIED)
+Service Log Keil Build              USER-VERIFIED (0 Error(s), 15 Warning(s)); warning remediation deferred
+Service Log Board RTT               USER-VERIFIED
+Current State                       HOST_VERIFIED / KEIL_WARNINGS_DEFERRED / MANUAL_RTT_VERIFIED
 ```
 
 `01_APP/` 已存在正式生产 APP 实现：
@@ -137,10 +140,26 @@ Lower-layer Regression               PASS
 Coding Standard Review               PASS
 ```
 
+Service Log Phase 1 当前验证：
+
+```text
+Service Log Host Tests               PASS
+APP Communication Host Test          PASS
+APP System Host Test                 PASS
+Platform Log Regression              PASS
+Service UART Regression              PASS
+Project Config Regression            PASS
+APP/Service direct-log scan          PASS
+ISR Service Log scan                 PASS
+Frozen-design review                 PASS
+Keil Build                           USER-VERIFIED — 0 Error(s), 15 Warning(s); warning remediation deferred
+Target Board RTT                     USER-VERIFIED — startup, level mapping and output enable/disable
+```
+
 后续 Agent 不得再把 APP Phase 1 判断为“正在实施”或“尚未正式接入 APP”。
 
-当前没有新的冻结专项设计和新的实施计划。
-`00_Doc/04_Agent/implementation_plan.md` 当前保存的是已完成 Platform Log Naming Refactor 的历史实施计划，不能直接作为下一阶段执行入口。
+Service Log Phase 1 的实现计划已按本次执行完成，并保留在
+`00_Doc/04_Agent/implementation_plan.md` 中作为结果记录；后续任务仍需新的专项设计和新的实施计划，不能直接扩大本次范围。
 
 ---
 
@@ -449,6 +468,31 @@ APP 已正式接管：
 
 ---
 
+## 5.8 Service Log Phase 1 — COMPLETED / HOST + MANUAL RTT VERIFIED
+
+已建立薄的 Service Log 策略层：
+
+```text
+APP / Service
+    ↓
+service_log
+    ↓
+Platform Log -> EasyLogger Adapter -> EasyLogger -> RTT
+```
+
+本阶段已完成：
+
+- `SERVICE_LOG_E/W/I/D/V()` 统一上层普通日志入口；
+- `service_log_init()` 幂等、失败可重试，继续返回 `platform_error_t`；
+- 项目默认 Level / Output Enable 集中在 `00_Config/project_log_config.h`；
+- APP Communication、APP System 和 FreeRTOS 启动链迁移；
+- 删除空的 `service_log_cfg.h`，未改 Platform Log 或 EasyLogger Vendor；
+- 生产接口使用 Platform 层既有 `platform_bool_t`，不新增 Service 层布尔类型或错误码。
+
+软件验证已在 Host 完成；用户已在 Keil 环境完成编译并报告 `0 Error(s), 15 Warning(s)`，Warning 暂不处理并保留为当前工程状态。用户已通过串口助手发送临时板测命令、在 RTT Viewer 中验证启动日志、默认 INFO、运行期 Level 映射以及 Output Enable/Disable；临时板测代码已清理，未纳入正式工程。
+
+---
+
 # 6. 当前冻结接口与行为
 
 未经专项设计评审，不修改：
@@ -522,10 +566,11 @@ board_types.h
 
 随着真实需求逐步清理，不进行无关的大规模改写。
 
-## 8.3 service_log 占位目录
+## 8.3 Service Log Phase 1 验证边界
 
-`02_Service/service_log/` 当前只是占位。
-Platform Log 已可直接供 APP / Service 使用，不因为目录存在而强行增加 Service 转发层。
+`02_Service/service_log/` 已实现为薄策略层，只负责上层统一 API、初始化编排、默认策略和 Level 映射；日志 Core、异步机制、RingBuffer、Backend 和 Vendor 仍由既有下层负责。
+
+当前已完成 Host 验证和用户报告的 Keil `0 Error(s), 15 Warning(s)` 编译验证；Warning 暂不处理。用户已完成人工 RTT 验收，检查了 `log service initialized`、`system composition initialized`、`communication runtime started`、默认 INFO、运行期 Level/Output 开关以及正常日志输出路径。Fatal APP error 未被主动制造，HardFault / BusFault / UsageFault / Assert 仍不属于本阶段普通日志板测范围。
 
 ## 8.4 architecture.md 部分描述已过期
 
@@ -667,7 +712,7 @@ APP Phase 1 已完成，不再继续执行原 APP Phase 1 implementation plan。
 当前状态：
 
 ```text
-READY_FOR_NEXT_DESIGN
+HOST_VERIFIED / KEIL_WARNINGS_DEFERRED / MANUAL_RTT_VERIFIED
 ```
 
 当前收口状态：
@@ -679,7 +724,7 @@ USART1 Multi-UART             DEFERRED
 Next Phase                    Protocol / Application Behavior Design
 ```
 
-后续直接进入 Protocol / Application Behavior Design；USART1 多实例路由继续 DEFERRED，不进入当前阶段。
+Keil Warning 处理按用户决定暂缓；RTT 人工 Gate 已完成，下一阶段进入 Protocol / Application Behavior Design。USART1 多实例路由继续 DEFERRED，不进入当前阶段。
 
 协议 / Application Behavior 阶段建议首先明确：
 

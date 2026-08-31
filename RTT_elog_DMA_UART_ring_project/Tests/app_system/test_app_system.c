@@ -15,7 +15,10 @@
 #include "app_system.h"
 #include "platform_bsp_uart.h"
 #include "platform_thread.h"
+#include "service_log.h"
 #include "service_uart.h"
+
+#include <string.h>
 
 #define TEST_ASSERT(condition) \
     do { \
@@ -32,9 +35,36 @@ typedef struct
     uint32_t threadStep;
     uint32_t serviceStep;
     const service_uart_config_t *serviceConfig;
+    uint32_t logCallCount;
+    platform_log_level_t logLevel;
+    const char *logTag;
+    const char *logFormat;
 } fake_system_t;
 
 static fake_system_t g_fakeSystem;
+
+static void fake_log_output(
+    uint8_t level,
+    const char *tag,
+    const char *file,
+    const char *func,
+    long line,
+    const char *format,
+    ...)
+{
+    g_fakeSystem.logCallCount++;
+    g_fakeSystem.logLevel = (platform_log_level_t)level;
+    g_fakeSystem.logTag = tag;
+    g_fakeSystem.logFormat = format;
+    (void)file;
+    (void)func;
+    (void)line;
+}
+
+platform_log_output_fn_t platform_log_get_output_fn(void)
+{
+    return fake_log_output;
+}
 
 void app_communication_task_entry(void *argument)
 {
@@ -97,6 +127,10 @@ int main(void)
     TEST_ASSERT(NULL != g_fakeSystem.serviceConfig->ringBufferStorage);
     TEST_ASSERT(512U == g_fakeSystem.serviceConfig->ringBufferStorageSize);
     TEST_ASSERT(NULL != g_fakeSystem.serviceConfig->consumerThread);
+    TEST_ASSERT(1U == g_fakeSystem.logCallCount);
+    TEST_ASSERT(PLATFORM_LOG_LEVEL_INFO == g_fakeSystem.logLevel);
+    TEST_ASSERT(0 == strcmp("app_system", g_fakeSystem.logTag));
+    TEST_ASSERT(0 == strcmp("system composition initialized", g_fakeSystem.logFormat));
 
     return 0;
 }
