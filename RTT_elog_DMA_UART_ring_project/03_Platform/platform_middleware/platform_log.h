@@ -35,7 +35,7 @@ typedef enum
     PLATFORM_LOG_LEVEL_DEBUG,
     PLATFORM_LOG_LEVEL_VERBOSE,
     PLATFORM_LOG_LEVEL_MAX
-}Platform_Log_Level_t;
+} platform_log_level_t;
 
 typedef void (*platform_log_output_fn_t)(
     uint8_t level,
@@ -47,23 +47,23 @@ typedef void (*platform_log_output_fn_t)(
     ...);
 
 #define platform_log_e(...)                                                   \
-    Platform_Log_GetOutputFn()((uint8_t)PLATFORM_LOG_LEVEL_ERROR, LOG_TAG,  \
+    platform_log_get_output_fn()((uint8_t)PLATFORM_LOG_LEVEL_ERROR, LOG_TAG,  \
                                __FILE__, __FUNCTION__, (long)__LINE__,      \
                                __VA_ARGS__)
 #define platform_log_w(...)                                                   \
-    Platform_Log_GetOutputFn()((uint8_t)PLATFORM_LOG_LEVEL_WARN, LOG_TAG,   \
+    platform_log_get_output_fn()((uint8_t)PLATFORM_LOG_LEVEL_WARN, LOG_TAG,   \
                                __FILE__, __FUNCTION__, (long)__LINE__,      \
                                __VA_ARGS__)
 #define platform_log_i(...)                                                   \
-    Platform_Log_GetOutputFn()((uint8_t)PLATFORM_LOG_LEVEL_INFO, LOG_TAG,   \
+    platform_log_get_output_fn()((uint8_t)PLATFORM_LOG_LEVEL_INFO, LOG_TAG,   \
                                __FILE__, __FUNCTION__, (long)__LINE__,      \
                                __VA_ARGS__)
 #define platform_log_d(...)                                                   \
-    Platform_Log_GetOutputFn()((uint8_t)PLATFORM_LOG_LEVEL_DEBUG, LOG_TAG,  \
+    platform_log_get_output_fn()((uint8_t)PLATFORM_LOG_LEVEL_DEBUG, LOG_TAG,  \
                                __FILE__, __FUNCTION__, (long)__LINE__,      \
                                __VA_ARGS__)
 #define platform_log_v(...)                                                   \
-    Platform_Log_GetOutputFn()((uint8_t)PLATFORM_LOG_LEVEL_VERBOSE, LOG_TAG,\
+    platform_log_get_output_fn()((uint8_t)PLATFORM_LOG_LEVEL_VERBOSE, LOG_TAG,\
                                __FILE__, __FUNCTION__, (long)__LINE__,      \
                                __VA_ARGS__)
 //******************************** Defines *********************************//
@@ -73,27 +73,27 @@ typedef void (*platform_log_output_fn_t)(
  * @brief  对日志进行初始化
  * @return PLATFORM_ERR_OK 表示成功，其他 platform_error_t 表示失败
  */
-platform_error_t Platform_Log_Init(void);
+platform_error_t platform_log_init(void);
 
 /**
  * @brief  设置可以输出的日志的级别
  * @param  level  代表要设置的日志级别
  * @return PLATFORM_ERR_OK 表示成功，其他 platform_error_t 表示失败
  */
-platform_error_t Platform_Log_SetLevel(Platform_Log_Level_t level);
+platform_error_t platform_log_set_level(platform_log_level_t level);
 
 /**
  * @brief  打开/关闭日志输出
  * @param  enable  代表日志的开关指令
  * @return PLATFORM_ERR_OK 表示成功，其他 platform_error_t 表示失败
  */
-platform_error_t Platform_Log_EnableOutput(bool enable);
+platform_error_t platform_log_enable_output(bool enable);
 
 /**
  * @brief  获取当前日志输出后端
  * @return 当前 Impl 绑定的输出函数，初始化前返回 no-op 后端
  */
-platform_log_output_fn_t Platform_Log_GetOutputFn(void);
+platform_log_output_fn_t platform_log_get_output_fn(void);
 //******************************** Function *********************************//
 
 #endif

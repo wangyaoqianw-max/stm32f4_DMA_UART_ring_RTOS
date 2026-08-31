@@ -564,38 +564,28 @@ NO STRUCTURAL REFACTOR REQUIRED FOR CURRENT TARGET
 
 不得为了消除该审查提示直接给当前 ISR Producer 路径加入普通 Mutex。
 
-## 8.7 Platform Log 公共命名不符合 V2.0 规范
+## 8.7 Platform Log Naming Refactor — IMPLEMENTED / HOST_VERIFIED
 
-当前 `platform_log.h` 仍存在历史公共符号：
-
-```text
-Platform_Log_Level_t
-Platform_Log_Init()
-Platform_Log_SetLevel()
-Platform_Log_EnableOutput()
-Platform_Log_GetOutputFn()
-```
-
-而当前 V2.0 规范要求类型 `lower_snake_case_t`、函数 `snake_case`。
-
-状态：
+Platform Log 公共 API 和同模块私有适配符号已完成 V2.0 命名迁移：
 
 ```text
-CONFIRMED TECHNICAL DEBT
-REQUIRES DEDICATED REFACTOR
+Public API Naming                  V2.0 COMPLIANT
+Platform Log Host Regression       PASS
+Platform Log Header Isolation      PASS
+APP Communication Host Regression  PASS
+Active-Code Old Symbol Scan        PASS
+Coding Standard Review             PASS
+Architecture / Runtime Behavior    UNCHANGED
 ```
 
-建议后续独立 Refactor Phase 统一为类似：
+本机未发现 Keil 可执行环境，且未连接目标板，因此以下验证尚未执行：
 
 ```text
-platform_log_level_t
-platform_log_init()
-platform_log_set_level()
-platform_log_enable_output()
-platform_log_get_output_fn()
+Keil Full Rebuild                  NOT VERIFIED
+RTT Runtime Regression             NOT RUN
 ```
 
-该修改会影响公共 API 和仓库调用点，不能在普通风格修正中顺手执行；重构后必须执行 Host / Keil / Log runtime regression。
+在获得 Keil `0 Error(s)` 和目标板 RTT 冒烟验证前，本项不得标记为 `COMPLETED`。
 
 ## 8.8 USART1 Callback 当前为单实例路由
 

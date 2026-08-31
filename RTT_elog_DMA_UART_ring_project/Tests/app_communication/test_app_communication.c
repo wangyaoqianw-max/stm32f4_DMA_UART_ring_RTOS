@@ -158,7 +158,7 @@ static void fake_log_output(
     (void)format;
 }
 
-platform_log_output_fn_t Platform_Log_GetOutputFn(void)
+platform_log_output_fn_t platform_log_get_output_fn(void)
 {
     return fake_log_output;
 }
