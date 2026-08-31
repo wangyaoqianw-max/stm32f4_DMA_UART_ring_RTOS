@@ -1,7 +1,7 @@
 # Service Log Phase 1 Implementation Plan
 
 > 当前执行计划 / Current Active Plan  
-> 状态：READY FOR EXECUTION  
+> 状态：COMPLETED / RESULT RECORDED
 > 日期：2026-08-31
 
 **Goal:** 建立一个薄的 Service Log 策略层，使 APP / Service 统一通过 `SERVICE_LOG_xxx()` 输出普通日志，同时复用现有 Platform Log + EasyLogger + RTT 实现。
@@ -677,13 +677,13 @@ Keil 与真实板 RTT 若受执行环境限制，可以作为明确列出的人�
 # 12. Execution Result
 
 ```text
-Status       SOFTWARE IMPLEMENTATION COMPLETE / HOST VERIFIED / KEIL WARNING GATE OPEN
+Status       SOFTWARE IMPLEMENTATION COMPLETE / HOST VERIFIED / MANUAL RTT VERIFIED / KEIL WARNINGS DEFERRED
 Task 1 SHA   43eca5a
 Task 2 SHA   377d5ab
 Task 3 SHA   4fe5f42
 Task 4 SHA   recorded in Git history after this verification commit
-Keil         USER-VERIFIED — 0 Error(s), 15 Warning(s); zero-warning gate not met
-Board RTT    NOT YET VERIFIED — requires a real target board and RTT session
+Keil         USER-VERIFIED — 0 Error(s), 15 Warning(s); warning remediation deferred by user
+Board RTT    USER-VERIFIED — startup, level mapping and output enable/disable verified via UART assistant and RTT Viewer
 ```
 
-本次实现按用户约束将 Service Log 的布尔参数定义为 `platform_bool_t`，使用 `PLATFORM_TRUE / PLATFORM_FALSE`；该项覆盖本计划原先的 `bool` 草案。Keil 工程已登记 `service_log.c` 和其头文件目录；用户已完成真实编译并报告 `0 Error(s), 15 Warning(s)`，Warning 具体内容尚未提供，零警告 Gate 尚未满足。
+本次实现按用户约束将 Service Log 的布尔参数定义为 `platform_bool_t`，使用 `PLATFORM_TRUE / PLATFORM_FALSE`；该项覆盖本计划原先的 `bool` 草案。Keil 工程已登记 `service_log.c` 和其头文件目录；用户已完成真实编译并报告 `0 Error(s), 15 Warning(s)`，Warning 按用户决定暂不处理。用户已通过串口助手和 RTT Viewer 完成真实板测，验证启动日志、默认 INFO、Level 映射及 Output Enable/Disable；临时板测代码已在板测后清理，未纳入正式提交。
