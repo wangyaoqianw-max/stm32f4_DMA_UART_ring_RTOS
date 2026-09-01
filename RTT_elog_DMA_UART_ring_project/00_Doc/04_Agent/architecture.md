@@ -1,15 +1,16 @@
 # Embedded Firmware Architecture Contract
 
-> 文档类型：Architecture Contract
-> 状态：Baseline
-> 版本：V1.0
+> 文档类型：Architecture Contract  
+> 状态：Baseline  
+> 版本：V2.0  
+> 更新时间：2026-09-01  
 > 适用工程：`stm32f4_DMA_UART_ring_RTOS`
 
-------
+---
 
 # 1. 架构目标
 
-本工程采用分层式嵌入式软件架构：
+本工程采用：
 
 ```text
 APP
@@ -20,60 +21,100 @@ Platform
  ↓
 Impl
  ↓
-Vendor / HAL / Hardware
+Vendor / HAL / RTOS / Hardware
 ```
 
-目标是：
+目标：
 
-- 降低业务逻辑与具体 MCU、HAL、RTOS 的耦合。
-- 明确模块职责和数据所有权。
-- 控制中断、任务和共享资源之间的并发复杂度。
-- 提高代码可测试性、可维护性和可移植性。
-- 限制底层实现变化向上层扩散。
+- 降低业务与 STM32 / HAL / FreeRTOS 的耦合；
+- 明确产品状态、设备能力、数据处理和底层实现之间的边界；
+- 明确 Buffer、ISR / Task、异步发送和共享总线所有权；
+- 保持模块可测试、可替换、可维护；
+- 在不破坏既有 UART 基线的前提下完成最终传感器采集闭环。
 
-本架构服务于工程，不追求为简单功能增加不必要的抽象。
+架构服务于当前工程，不为简单功能增加无实际收益的抽象。
 
-------
+---
 
-# 2. 总体依赖规则
-
-推荐依赖方向：
+# 2. 固定依赖规则
 
 ```text
-APP
- ↓
-Service
- ↓
-Platform
- ↓
-Impl
- ↓
-Vendor / HAL / Hardware
+APP -> Service       ALLOWED
+APP -> Platform      ALLOWED
+Service -> Platform  ALLOWED
+Platform -> Impl     ALLOWED
+APP -> Impl          FORBIDDEN
+Service -> Impl      FORBIDDEN
 ```
 
-必须遵守：
+同时要求：
 
-- 上层依赖下层提供的抽象能力。
-- 下层不得依赖具体业务逻辑。
-- APP 不直接依赖 HAL。
-- Service 不直接依赖 STM32 HAL、UART Handle、DMA Handle。
-- Platform 公共接口不依赖具体 MCU、HAL 或 FreeRTOS 类型。
-- Impl 可以依赖 HAL、CMSIS、FreeRTOS 和 CubeMX Handle。
-- Vendor 不依赖项目业务代码。
-- 禁止为了快速解决问题长期保留跨层调用。
+- APP / Service 不直接依赖 STM32 HAL、CubeMX Handle、Impl 私有接口；
+- Platform 公共 Header 不暴露 HAL / FreeRTOS concrete handle；
+- Impl 可以依赖 HAL、CMSIS、FreeRTOS、CubeMX Handle、IRQ / DMA；
+- Vendor 不依赖产品业务代码；
+- 下层事件向上传递使用 callback / event / notification / queue 等明确机制，不由 Impl 直接调用 APP 业务函数；
+- 禁止为快速联调长期保留跨层捷径。
 
-允许底层事件向上传递，但必须通过：
+---
 
-- Callback
-- Event
-- Notification
-- 明确定义的接口
+# 3. 最终系统结构
 
-完成，不得由下层直接调用 APP 业务函数。
+当前最终业务架构：
 
-------
+```text
+                             +---------------- KEY
+                             |
+                             v
+PC -> UART RX -> RingBuffer -> Command Parser
+                             |
+                             v
+                      APP Control FSM
+                      STOPPED / RUNNING
+                       |            |
+                       |            +-------> LED
+                       |
+                       v
+                 Acquisition Flow
+                       |
+              +--------+--------+
+              |                 |
+              v                 v
+            DHT20             MPU6050
+              \                 /
+               +-- Software I2C
+                       |
+                 Platform GPIO
 
-# 3. APP 层
+Sensor Data
+    -> APP / Communication
+    -> UART Service
+    -> Platform UART
+    -> STM32 UART Impl
+    -> DMA TX
+    -> PC Serial Assistant
+
+Runtime State / Error
+    -> Service Log
+    -> Platform Log
+    -> EasyLogger Adapter
+    -> RTT
+```
+
+核心原则：
+
+```text
+APP Control FSM = 唯一业务状态源
+KEY / UART      = 控制输入
+Sensor          = 数据来源
+UART            = 业务数据通道
+RTT             = 诊断通道
+LED             = 用户状态反馈
+```
+
+---
+
+# 4. APP 层
 
 目录：
 
@@ -81,48 +122,41 @@ Vendor / HAL / Hardware
 01_APP/
 ```
 
-职责：
+APP 负责：
 
-- 产品级业务流程。
-- 应用状态机。
-- 应用任务组织。
-- 调用 Service。
-- 根据 Service 数据执行业务行为。
+- 系统级对象装配；
+- Task lifecycle；
+- 产品级业务流程；
+- STOPPED / RUNNING 唯一采集状态；
+- 将按键事件和 UART 命令统一为控制语义；
+- START / STOP / ONCE / STATUS 决策；
+- 5 s 周期采集业务编排；
+- 将采集结果交给既有通信链路；
+- 决定 LED 产品语义；
+- 根据 Service / Platform 返回结果做错误决策和关键日志。
 
-APP 可以知道：
-
-- 业务数据结构。
-- Service 接口。
-- 产品运行状态。
+APP 可以依赖 Service，也允许依赖经过架构确认的 Platform 公共能力。
 
 APP 不应知道：
 
-- `UART_HandleTypeDef`
-- `DMA_HandleTypeDef`
-- USART1
-- DMA Stream / Channel
-- HAL UART API
-- Ring Buffer 内部读写指针
-- Vendor 具体实现
-
-APP 原则上：
-
 ```text
-APP → Service
+UART_HandleTypeDef
+DMA_HandleTypeDef
+GPIO_TypeDef
+GPIO_PIN_x
+USART1 concrete registers
+HAL_UART_xxx
+HAL_GPIO_xxx
+FreeRTOS concrete handles
+RingBuffer internal indices
+Impl private context
 ```
 
-而不是：
+按键和 UART 不得各自拥有一套 `running` 标志。
 
-```text
-APP → Platform
-APP → HAL
-```
+---
 
-若简单测试代码临时绕过 Service，必须明确标记为测试或过渡代码。
-
-------
-
-# 4. Service 层
+# 5. Service 层
 
 目录：
 
@@ -130,58 +164,56 @@ APP → HAL
 02_Service/
 ```
 
-职责：
+Service 提供可复用的软件语义和数据处理能力。
 
-- 提供可复用软件服务。
-- 管理数据流和运行上下文。
-- 管理 Ring Buffer。
-- 处理通信数据。
-- 协议解析。
-- 数据转换。
-- 状态与统计。
-- 将中断产生的数据转换为任务可消费的数据。
-
-典型模块：
+当前稳定模块：
 
 ```text
 UART Service
-Ring Buffer
 Log Service
-Storage Service
-Sensor Service
-Protocol Parser
-Firmware Update Service
+Service Common / RingBuffer composition
 ```
 
-Service 可以依赖：
+最终功能允许新增的典型能力：
 
 ```text
-Platform
-Service 内部通用模块
+Button Service
+Environment Service
+Motion Service
+Command Parser（也可由 APP Communication 内聚，需专项设计确认）
 ```
 
-Service 不应直接依赖：
+Button Service 的职责是：
 
 ```text
-STM32 HAL
-USART1
-DMA Stream
-CubeMX Handle
-Vendor 私有接口
+raw key state
+ -> debounce
+ -> single / double / long event
 ```
 
-Service 是：
+Button Service 不负责：
 
-> 硬件能力与业务逻辑之间的主要数据处理层。
+- START / STOP 最终业务决策；
+- LED 常亮 / 常灭；
+- 直接启动 DHT20 / MPU6050。
 
-------
+Sensor 类 Service 如引入，应负责数据转换、状态、错误语义，不直接依赖 HAL。
 
-# 5. Platform 层
+UART Service 继续只负责通信数据流、RingBuffer 和 UART 生命周期，不直接解释传感器业务。
+
+---
+
+# 6. Platform 层
 
 目录：
 
 ```text
 03_Platform/
+├── platform_common/
+├── platform_mcu/
+├── platform_os/
+├── platform_middleware/
+└── platform_bsp/
 ```
 
 Platform 定义：
@@ -190,975 +222,489 @@ Platform 定义：
 
 而不是：
 
-> 当前 STM32 如何实现这种能力。
+> STM32 HAL 如何调用。
 
-Platform 主要子目录：
-
-```text
-platform_common/
-platform_mcu/
-platform_os/
-platform_middleware/
-platform_bsp/
-```
-
-Platform 可以定义：
-
-- 公共数据类型。
-- Error。
-- Object。
-- Device。
-- Lifecycle。
-- UART API。
-- OS 抽象 API。
-- Log 抽象 API。
-- Storage 抽象 API。
-- 其他硬件或系统能力接口。
-
-Platform 公共头文件不得暴露：
+当前稳定公共能力：
 
 ```text
-UART_HandleTypeDef
-DMA_HandleTypeDef
-TIM_HandleTypeDef
-osThreadId_t
-osMutexId_t
-FreeRTOS TaskHandle_t
-HAL_StatusTypeDef
-USART_TypeDef
+Platform Common
+Platform UART
+Platform OS
+Platform Log
+Platform GPIO
 ```
 
-Platform 应尽可能保持：
+## 6.1 Platform GPIO
+
+`platform_gpio_t` 是轻量 MCU Resource，不继承 `platform_device_t`，当前 Phase 1 公共合同保持冻结。
+
+职责：
+
+- INPUT / OUTPUT；
+- PULL；
+- OUTPUT TYPE；
+- INITIAL LEVEL；
+- configure / read / write / deinit；
+- 隐藏具体 GPIO Port / Pin / HAL。
+
+Platform GPIO 不知道：
 
 ```text
-MCU independent
-RTOS independent
-Vendor independent
+LED
+KEY
+SCL
+SDA
+DHT20
+MPU6050
 ```
 
-------
+设备语义和有效电平不得回流进 GPIO 通用接口。
 
-# 6. Platform Common 对象模型
+## 6.2 Software I2C
 
-当前工程采用统一基础对象模型。
-
-基础关系：
+Software I2C 是 GPIO 之上的通信协议能力：
 
 ```text
-platform_object_t
-        │
-        ├── platform_device_t
-        │       │
-        │       └── platform_uart_t
-        │
-        └── platform_service_t
+Software I2C
+    -> Platform GPIO
+    -> GPIO Impl
+    -> HAL / Hardware
 ```
 
-`platform_object_t` 用于保存：
+协议逻辑必须避免直接依赖 `HAL_GPIO_xxx`。
 
-- 对象身份。
-- 对象类型。
-- 名称。
-- 生命周期状态。
-- 父对象。
-- 扩展上下文。
-- Flags。
+Software I2C 的具体目录、对象模型、delay-us 注入方式和公共 API 必须在专项设计中冻结后再编码。
 
-`platform_device_t` 在此基础上增加：
+架构只先冻结以下边界：
 
-- 设备类别。
-- 能力。
-- 电源状态。
-- 生命周期接口。
+- 依赖 Platform GPIO；
+- 提供 DHT20 / MPU6050 所需 I2C transaction 能力；
+- 使用微秒级 delay；
+- 不使用 RTOS tick delay 直接 bit-bang；
+- 不把传感器业务逻辑写入 I2C 层。
 
-具体设备对象可以通过 C 结构体组合方式扩展 `platform_device_t`。
+## 6.3 Board / BSP
 
-要求：
-
-> 基础对象模型只负责所有对象共有的属性，不得逐渐堆积 UART、Sensor、Storage 等具体功能。
-
-------
-
-# 7. 生命周期模型
-
-需要生命周期管理的对象统一采用：
+Board / BSP 表达具体板级设备语义，例如：
 
 ```text
-CREATED
-   ↓
-INITIALIZED
-   ↓
-STARTED
-   ↓
-STOPPED
-   ↓
-DEINIT
+Status LED
+User Key
+DHT20
+MPU6050
 ```
 
-公共生命周期操作：
+适合封装：
 
-```text
-init
-start
-process
-stop
-deinit
-```
+- LED 高 / 低有效极性；
+- KEY 高 / 低有效极性；
+- 具体 Soft I2C bus 绑定；
+- 具体传感器地址 / 板级连接；
+- 设备基础读写能力。
 
-生命周期与数据操作必须区分。
+BSP 不负责 APP 的 START / STOP / ONCE 业务状态机。
 
-例如 UART：
+---
 
-```text
-Lifecycle:
-init()
-start()
-stop()
-deinit()
-
-Data Ops:
-write()
-read()
-writeAsync()
-readAsync()
-cancel()
-```
-
-禁止因为某个设备需要特殊操作就无限扩展公共生命周期接口。
-
-------
-
-# 8. UART Platform 架构
-
-UART 当前采用：
-
-```text
-platform_uart_t
-├── platform_device_t device
-├── config
-├── ops
-├── implContext
-├── callback
-└── callbackContext
-```
-
-Platform UART 负责：
-
-- UART 公共配置。
-- UART 公共参数检查。
-- UART 对象状态检查。
-- 阻塞接口。
-- 异步接口。
-- 事件通知。
-- Error 传播。
-- Buffer 生命周期契约。
-
-Platform UART 不负责：
-
-- DMA Channel 选择。
-- IDLE IRQ。
-- HAL Callback。
-- Ring Buffer。
-- Protocol Parser。
-- RTOS Task。
-- Mutex 创建。
-- USART1 资源分配。
-
-UART 数据操作通过：
-
-```text
-platform_uart_ops_t
-```
-
-由 Impl 注入。
-
-现有 Platform UART 公共接口视为当前阶段冻结接口。
-
-除非经过架构评审，不得为了适配 Impl 随意修改 Platform UART API。
-
-------
-
-# 9. Impl 层
+# 7. Impl 层
 
 目录：
 
 ```text
 04_Impl/
+├── impl_board/
+├── impl_bsp/
+├── impl_mcu/
+├── impl_os/
+└── impl_middleware/
 ```
 
 Impl 回答：
 
-> Platform 定义的能力在当前目标平台上如何实现。
+> Platform 定义的能力在 STM32F411 + FreeRTOS 环境如何实现。
 
-主要子目录：
+可以依赖：
 
-```text
-impl_board/
-impl_mcu/
-impl_os/
-impl_middleware/
-impl_bsp/
-```
+- STM32 HAL；
+- CMSIS；
+- FreeRTOS；
+- CubeMX Handle；
+- IRQ / DMA；
+- EasyLogger / RTT。
 
-Impl 可以直接使用：
-
-- STM32 HAL。
-- CMSIS。
-- FreeRTOS。
-- CubeMX Handle。
-- UART。
-- DMA。
-- IRQ。
-- GPIO。
-- TIM。
-- EasyLogger。
-- RTT。
-
-Impl 负责：
-
-- Platform Ops 实现。
-- HAL Error 到 Platform Error 的转换。
-- MCU Handle 绑定。
-- DMA 状态维护。
-- IRQ / HAL Callback 适配。
-- RTOS API 适配。
-- Vendor Port。
+当前下一阶段可能需要新增的具体实现是 GPIO STM32 Impl，但必须先经过对应专项设计 / 计划确认。
 
 Impl 不负责：
 
-- 产品业务。
-- 完整协议解析。
-- APP 状态机。
-- 与硬件无关的通用数据处理。
+- 按键单双击业务；
+- 5 s 采集策略；
+- UART 命令语义；
+- APP 状态机；
+- DHT20 / MPU6050 产品级行为。
 
-------
+---
 
-# 10. Vendor 层
-
-目录：
-
-```text
-05_Vendors/
-Drivers/
-Middlewares/
-```
+# 8. Vendor 层
 
 包括：
 
-- STM32 HAL。
-- CMSIS。
-- FreeRTOS。
-- EasyLogger。
-- SEGGER RTT。
-- 第三方协议或算法库。
+```text
+STM32 HAL
+CMSIS
+FreeRTOS
+EasyLogger
+SEGGER RTT
+```
 
 原则：
 
-> 尽量不修改第三方源码。
+- 不因业务功能直接修改第三方源码；
+- 通过 Impl Adapter / Vendor Port 适配；
+- APP / Service 不直接调用 Vendor private API。
 
-如果需要适配，应优先：
+---
 
-```text
-Vendor
-  ↑
-Impl Adapter
-  ↑
-Platform
-```
+# 9. CubeMX 边界
 
-而不是：
-
-```text
-APP / Service
-    ↓
-Vendor API
-```
-
-------
-
-# 11. CubeMX 生成代码边界
-
-CubeMX 相关目录主要包括：
-
-```text
-Core/
-Drivers/
-Middlewares/
-*.ioc
-```
-
-其中：
+CubeMX 生成文件：
 
 ```text
 main.c
 freertos.c
+gpio.c
 usart.c
 stm32f4xx_it.c
+...
 ```
 
-主要作为：
+只承担：
 
-- 初始化入口。
-- IRQ 入口。
-- HAL Callback 入口。
-- Scheduler 启动入口。
-- 与自定义架构的薄适配入口。
+- Clock / peripheral 基础初始化；
+- Scheduler 启动；
+- IRQ / HAL Callback 入口；
+- 与自研架构的薄胶水。
 
-长期业务逻辑不得堆积在这些文件中。
+要求：
 
-必须修改 CubeMX 文件时：
+- 优先只改 `USER CODE` 区；
+- 不在生成文件中写 APP FSM；
+- 不在生成文件中写 Button Service；
+- 不在生成文件中写 DHT20 / MPU6050 完整驱动；
+- 不在生成文件中写软件 I2C 协议实现；
+- 不将 CubeMX 文件作为长期 Service / Platform 模块。
 
-- 优先使用 `USER CODE` 区域。
-- 修改内容必须尽量短。
-- 不在生成文件中建立复杂状态机。
-- 不在生成文件中实现完整 Service。
-- 不将生成文件作为长期模块实现文件。
+---
 
-------
-
-# 12. UART 数据流
-
-目标 RX 数据流：
+# 10. 已冻结 UART RX 数据流
 
 ```text
-USART Hardware
-      ↓
-DMA / IRQ
-      ↓
-STM32 UART Impl
-      ↓
-Platform UART Event
-      ↓
-UART Service
-      ↓
-Ring Buffer
-      ↓
-APP / Communication Task
+USART1
+  -> DMA Circular + IDLE / HT / TC
+  -> STM32 UART Impl
+  -> Platform UART RX_DATA / ERROR / CANCELED
+  -> UART Service
+  -> SPSC RingBuffer
+  -> Platform Notify From ISR
+  -> APP Communication Task
+  -> Application byte-stream handling
 ```
 
-目标 TX 数据流：
+新增命令解析必须消费该链路，不得重新设计第二套 RX。
+
+UART 下层只产生字节流和通信事件，不负责识别 `START` / `STOP` 等业务命令。
+
+---
+
+# 11. UART TX 数据流
+
+最终业务 TX：
 
 ```text
-APP
- ↓
-Service
- ↓
-Platform UART
- ↓
-STM32 UART Impl
- ↓
-HAL / DMA
- ↓
-USART
+Sensor Data / Command Response
+    -> APP / Communication
+    -> UART Service
+    -> Platform UART
+    -> STM32 UART Impl
+    -> HAL / DMA
+    -> USART1
+    -> PC
 ```
 
-每层只处理属于自己的职责。
+异步 TX Buffer 生命周期继续遵守现有 UART 合同：
 
-------
+> 在 TX Complete / Error / Canceled 之前不得被修改或失效。
 
-# 13. DMA Buffer 与 Ring Buffer
+ONCE LED 成功反馈如依赖“发送成功”，应优先使用明确的 TX Complete 语义。
 
-必须区分：
+---
+
+# 12. RingBuffer 与并发合同
+
+RingBuffer 继续是：
 
 ```text
-DMA Buffer
+SPSC byte stream
+caller-owned storage
+usable capacity = storageSize - 1
+no malloc/free
+no HAL / UART / DMA knowledge
+no silent overwrite
 ```
 
-和：
+当前生产者 / 消费者：
 
 ```text
-Ring Buffer
+Producer = UART Service RX callback
+Consumer = APP Communication Task
 ```
 
-DMA Buffer：
+不得因为增加命令解析而给现有 SPSC 路径加入普通 Mutex。
 
-- 属于 UART Impl。
-- 面向硬件。
-- 保存 DMA 刚接收到的数据。
-- 生命周期与 DMA 配置相关。
+命令解析发生在 Task 上下文。
 
-Ring Buffer：
+---
 
-- 属于 Service 或独立通用软件模块。
-- 面向数据流。
-- 保存上层尚未消费的数据。
-- 不知道 UART、DMA 和 HAL。
+# 13. Software I2C 并发合同
 
-禁止让 Ring Buffer 直接访问：
+第一阶段 DHT20 与 MPU6050 共用一条软件 I2C 总线。
+
+推荐第一版使用单一采集执行上下文串行访问：
 
 ```text
-huart
-hdma
-DMA counter
-UART registers
+Acquisition context
+    -> DHT20 transaction
+    -> MPU6050 transaction
 ```
 
-------
+这样不需要为了两个设备提前引入总线 Mutex。
 
-# 14. 数据所有权
-
-所有跨层数据必须能够明确回答：
+若未来存在多个并发访问者：
 
 ```text
-Who owns it?
-Who may write it?
-Who may read it?
-How long is it valid?
+LOCK BUS
+START ... STOP
+UNLOCK BUS
 ```
 
-至少区分：
+互斥范围必须覆盖完整 transaction，而不是单 byte。
 
-- DMA RX Buffer。
-- Ring Buffer Storage。
-- Platform Event Data。
-- Service Context。
-- APP Read Buffer。
-- UART TX Buffer。
+---
 
-异步发送期间：
+# 14. RTOS 任务组织原则
 
-> TX Buffer 在完成、取消或错误事件发生前不得修改或失效。
+第一阶段原则：
 
-异步接收事件中的数据：
+> Task 数量由真实并发职责决定，不由设备数量决定。
 
-> 默认只保证在接口约定的有效期内可访问，上层如需长期保存，应复制进入自己的存储区域。
-
-禁止依赖未声明的 Buffer 生命周期。
-
-------
-
-# 15. 中断上下文规则
-
-ISR / HAL Callback 只做最小必要工作。
-
-允许：
-
-- 读取硬件状态。
-- 计算 DMA 新数据位置。
-- 更新轻量 Context。
-- 产生 Platform Event。
-- 写入明确支持 ISR 使用的数据结构。
-- 发送 ISR-safe Notification。
-
-禁止：
-
-- 阻塞。
-- 普通 Mutex。
-- 动态内存。
-- 完整协议解析。
-- 大量日志。
-- 长时间循环。
-- 长时间 HAL UART 输出。
-- 调用非 ISR-safe RTOS API。
-
-原则：
+推荐逻辑职责：
 
 ```text
-ISR
- ↓
-capture / notify
- ↓
-exit quickly
-```
-
-复杂处理必须转入 Task Context。
-
-------
-
-# 16. Task Context 规则
-
-Task Context 负责：
-
-- Ring Buffer 消费。
-- 协议解析。
-- 状态机。
-- 日志。
-- 数据处理。
-- 复杂错误恢复。
-- 上层业务。
-
-推荐：
-
-```text
-ISR
- ↓
-Notification
- ↓
 Communication Task
- ↓
-Service
+- UART RingBuffer consumption
+- text command assembly / parsing
+- control event submission
+
+Acquisition / Control execution context
+- APP state handling
+- 5 s periodic acquisition
+- ONCE execution
+
+Button processing context
+- polling / debounce / click recognition
 ```
 
-禁止使用 Task 轮询高速硬件状态来代替本应由 IRQ/DMA 完成的实时处理。
+具体采用 Thread、Queue、Notification、Timer 还是复用现有 Task，必须在对应专项设计中确定。
 
-------
-
-# 17. 并发原则
-
-共享数据在设计前必须明确：
-
-- ISR 是否访问。
-- Task 是否访问。
-- 是否单生产者。
-- 是否单消费者。
-- 是否需要临界区。
-- 是否需要原子操作。
-- 是否需要 Mutex。
-- 是否需要 Semaphore / Notification。
-
-不得因为存在 FreeRTOS 就默认所有共享数据都使用 Mutex。
-
-ISR 与 Task 共享数据优先采用：
-
-- SPSC 模型。
-- 短临界区。
-- ISR-safe Notification。
-- 明确读写所有权。
-
-Mutex 主要用于 Task 与 Task 之间的共享资源保护。
-
-------
-
-# 18. Error 处理架构
-
-Error 处理采用分层原则。
-
-Impl：
-
-- 检测硬件和 Vendor Error。
-- 转换为 Platform Error。
-- 保存必要底层状态。
-
-Platform：
-
-- 校验参数与对象状态。
-- 传播标准化 Error。
-
-Service：
-
-- 决定是否重试。
-- 决定是否丢弃数据。
-- 更新统计。
-- 执行软件级恢复。
-
-APP：
-
-- 只处理影响产品行为的错误。
-
-禁止底层发现普通通信错误后直接：
+禁止无必要创建：
 
 ```text
-while(1)
+DHT20 Task
+MPU6050 Task
+LED Task
 ```
 
-除非该错误确实属于不可恢复系统故障。
+---
 
-------
+# 15. APP Control FSM
 
-# 19. 日志架构
+业务状态只允许一个真实来源：
 
-目标依赖：
+```text
+STOPPED
+RUNNING
+```
+
+统一控制来源：
+
+```text
+Button single -> START
+Button double -> SAMPLE_ONCE
+Button long   -> STOP
+UART START    -> START
+UART STOP     -> STOP
+UART ONCE     -> SAMPLE_ONCE
+UART STATUS   -> GET_STATUS
+```
+
+状态机负责：
+
+- 是否允许事件；
+- LED 产品状态；
+- 是否启动 5 s 周期业务；
+- ONCE 是否执行；
+- 错误和命令响应。
+
+Button Service 与 Command Parser 不得直接拥有产品状态。
+
+---
+
+# 16. LED 架构边界
+
+LED 的业务语义：
+
+```text
+STOPPED -> OFF
+RUNNING -> ON
+ONCE successful TX -> blink 3 times -> OFF
+```
+
+分层：
+
+```text
+APP decides semantic state
+    -> LED / BSP capability
+    -> Platform GPIO
+    -> GPIO Impl
+```
+
+APP 不知道 LED 是高电平还是低电平点亮。
+
+连续 RUNNING 期间 5 s UART 发送不改变 LED 常亮状态。
+
+LED 三闪不能在 ISR 内通过阻塞 delay 完成。
+
+---
+
+# 17. 日志架构
+
+正式日志链：
 
 ```text
 APP / Service
-      ↓
-Platform Log
-      ↓
-Impl Log Adapter
-      ↓
-EasyLogger / RTT
+    -> service_log
+    -> Platform Log
+    -> EasyLogger Adapter
+    -> RTT
 ```
 
-上层不得依赖：
-
-- EasyLogger Header。
-- RTT Header。
-- Vendor Log API。
-
-当前工程中的：
+日志职责：
 
 ```text
-Platform Log → easylogger_port.h
+INFO  = 生命周期、控制事件、业务状态变化
+DEBUG = 5 s 采集摘要、完整命令、业务 TX 状态
+WARN  = 可恢复异常
+ERROR = 初始化或关键通信失败
 ```
 
-属于待清理技术债，不作为新模块参考模式。
+禁止把日志变成：
 
-后续新增模块不得复制这种依赖方式。
+- UART byte trace；
+- I2C bit / ACK trace；
+- ISR 高频打印。
 
-------
+Platform / Impl 主要负责返回错误和事件。关键初始化信息可由 APP / Service 根据返回值统一记录，不要求所有底层层级直接调用日志 API。
 
-# 20. 基础类型边界
+---
 
-公共 Platform 类型应属于稳定的公共基础设施。
+# 18. Config / Context / Data
 
-Platform 公共头文件不应长期依赖 Impl 私有类型。
-
-当前：
+继续使用项目的数据模型原则：
 
 ```text
-platform_types.h
-    ↓
-board_types.h
+Config  -> 模块应怎样工作
+Context -> 模块当前怎样运行
+Data    -> 模块当前有什么结果
 ```
 
-属于需要后续重新确认归属的技术债。
-
-在明确迁移方案前：
-
-- 不扩大这种依赖。
-- 不让更多 Platform 接口直接依赖 Impl 私有头文件。
-
-------
-
-# 21. 配置模型
-
-项目配置应按三类信息区分：
+当前新增静态配置至少包括：
 
 ```text
-Static Configuration
-Runtime Context
-Runtime Data
+Acquisition period = 5000 ms
+Button debounce
+Button double-click window
+Button long-press = 3000 ms
+LED one-shot blink count = 3
+LED blink interval
 ```
 
-## Static Configuration
+放入 `00_Config`，具体宏名在专项设计中确认。
 
-例如：
+业务状态属于 Context，不应混入 Config。
 
-- Baud Rate。
-- Buffer Size。
-- Timeout。
-- Task Priority。
-- Feature Enable。
+传感器采集结果属于 Data，不应作为全局散乱变量跨层共享。
 
-原则上初始化后很少改变。
+---
 
-## Runtime Context
+# 19. 当前冻结与待设计边界
 
-例如：
-
-- UART 当前状态。
-- DMA 上次位置。
-- Ring Buffer Index。
-- Error Counter。
-- Busy State。
-
-用于描述模块当前运行环境。
-
-## Runtime Data
-
-例如：
-
-- 实际接收字节。
-- 发送 Payload。
-- 协议数据。
-
-不得将这三类数据无边界混合到单一大型结构体中。
-
-------
-
-# 22. Cross-Cutting Concerns
-
-以下属于横切关注点：
-
-- Logging。
-- Error。
-- Statistics。
-- Trace。
-- Assertions。
-- Timing。
-- Diagnostics。
-
-这些能力可以跨模块使用，但不得因此破坏主业务依赖方向。
-
-例如：
+已冻结 / 已验证：
 
 ```text
-Service → Platform Log
-```
-
-允许。
-
-但：
-
-```text
-EasyLogger → Service
-```
-
-不允许。
-
-横切能力只提供辅助观测，不拥有主业务流程。
-
-------
-
-# 23. 内存原则
-
-核心通信链路默认使用：
-
-```text
-Static Allocation
-```
-
-优先用于：
-
-- DMA Buffer。
-- Ring Buffer。
-- UART Context。
-- Service Context。
-- 固定 Task 资源。
-
-正常收发路径禁止频繁：
-
-```text
-malloc/free
-```
-
-如必须动态分配，必须明确：
-
-- 所有者。
-- 释放者。
-- 失败行为。
-- 并发约束。
-- Fragmentation 风险。
-
-------
-
-# 24. 接口设计原则
-
-公共接口应：
-
-- 语义明确。
-- 参数方向明确。
-- 返回值明确。
-- Buffer 所有权明确。
-- Error 语义明确。
-- Context 明确。
-- 支持独立测试。
-
-避免：
-
-- 隐式全局状态。
-- 通过函数名无法判断阻塞/异步。
-- 上层传入 HAL Handle。
-- 接口同时承担配置、运行、协议处理等多种职责。
-
-------
-
-# 25. 文件与模块原则
-
-一个模块至少应能够回答：
-
-1. 本模块负责什么。
-2. 本模块不负责什么。
-3. 本模块依赖谁。
-4. 谁依赖本模块。
-5. 本模块的数据由谁拥有。
-6. 本模块运行在哪种上下文。
-7. 本模块如何测试。
-
-文件数量不以多为目标。
-
-如果一个简单模块能够通过：
-
-```text
-interface.h
-implementation.c
-```
-
-清晰表达职责，则无需为了“分层形式完整”增加额外文件。
-
-只有存在明确独立职责时才拆分文件。
-
-------
-
-# 26. 测试边界
-
-优先测试硬件无关部分：
-
-```text
-Ring Buffer
 Platform UART
-Service State
-Error Handling
-Data Flow
+UART Service
+SPSC RingBuffer RX
+APP Communication Phase 1
+Platform OS
+Service Log / Platform Log / RTT
+Platform GPIO Phase 1 public contract
 ```
 
-Platform Unit Test：
-
-- 不依赖 HAL。
-- 不依赖真实 UART。
-- 使用 Fake Ops。
-
-Impl Test：
-
-- 可以依赖 STM32。
-- 重点验证 HAL / DMA / IRQ 绑定。
-
-Integration Test：
+当前需求已冻结、但专项设计尚需逐项完成：
 
 ```text
-UART → DMA → Platform → Service → RingBuffer → Task
+STM32 GPIO Impl + board binding
+LED / KEY BSP
+Button event service
+Software I2C
+DHT20
+MPU6050
+APP final acquisition/control FSM
+UART command parser integration
+5 s report integration
+final board verification
 ```
 
-用于验证完整数据链路。
+不得把上述多个子系统一次性无设计地塞进同一实现提交。
 
-------
+---
 
-# 27. Agent 修改规则
-
-AI Agent 在修改工程时必须先读取：
+# 20. 当前明确不做
 
 ```text
-docs/agent/architecture.md
-docs/agent/requirements.md
-docs/agent/implementation_plan.md
-docs/agent/handoff.md
+SPI / LCD
+Roll / Pitch / Yaw
+DMP
+Kalman / complementary filter
+W25Q64 / AT24C02
+Bluetooth
+复杂 GUI
+复杂二进制应用协议
+与最终验收无关的通用框架扩张
 ```
 
-执行时必须遵守：
+---
 
-- 不擅自改变架构方向。
-- 不擅自修改冻结公共接口。
-- 不为了消除编译错误制造跨层依赖。
-- 不进行与当前任务无关的重构。
-- 不修改 Vendor 源码，除非计划明确要求。
-- 不在 CubeMX 文件中增加大量业务逻辑。
-- 优先最小范围修改。
-- 新增依赖前检查其方向是否合法。
-- 发现架构设计问题时，不自行扩大任务范围。
-
-如果实施过程中发现当前方案无法正确实现，应：
+# 21. 架构核心结论
 
 ```text
-STOP ARCHITECTURAL CHANGE
-        ↓
-记录 handoff.md
-        ↓
-标记 BLOCKED
-        ↓
-说明原因
-        ↓
-提出建议
-        ↓
-等待重新设计
+UART 基线继续冻结。
+GPIO 是底层通用能力。
+Software I2C 建立在 GPIO 之上。
+Sensor 驱动建立在 I2C 之上。
+Button / UART 只产生控制输入。
+APP FSM 是唯一业务状态源。
+UART 输出业务数据。
+RTT 输出内部诊断。
 ```
 
-------
-
-# 28. 冻结边界
-
-当前阶段默认冻结：
-
-- 五层依赖方向。
-- Platform Object 基础模型。
-- Platform Device 基础模型。
-- Platform Lifecycle 基本接口。
-- Platform UART 公共语义。
-- Platform UART 不暴露 HAL/DMA/RTOS Handle。
-- DMA Buffer 与 Ring Buffer 职责分离。
-- ISR 与 Task 职责分离。
-
-如需修改以上内容，应先进行架构评审，而不是在实现过程中顺手修改。
-
-------
-
-# 29. 当前已知技术债
-
-以下问题已经识别，但不要求在无关任务中顺便重构。
-
-## 29.1 Log 依赖泄漏
-
-当前存在：
-
-```text
-Platform Log
-    ↓
-Impl / EasyLogger Header
-```
-
-长期目标应调整为：
-
-```text
-Platform Log API
-    ↓
-Impl Adapter
-    ↓
-EasyLogger / RTT
-```
-
-------
-
-## 29.2 Platform Types 依赖 Impl
-
-当前存在：
-
-```text
-platform_types.h
-    ↓
-board_types.h
-```
-
-需要后续明确：
-
-- `board_types.h` 是否真正属于 Impl。
-- 或基础类型是否应迁移到更低层的公共区域。
-
-在正式设计前不扩大该依赖。
-
-------
-
-## 29.3 CubeMX 文件中仍存在业务代码
-
-例如：
-
-- UART Mutex。
-- `fputc()`。
-- Log 初始化。
-- 默认 Task 日志逻辑。
-
-这些属于架构迁移前遗留代码。
-
-应随着对应模块正式接入逐步迁移，而不是一次性大规模重构。
-
-------
-
-# 30. 当前架构实施优先级
-
-当前项目下一阶段优先完成第一条完整垂直链路：
-
-```text
-APP
- ↓
-Service
- ↓
-Platform UART
- ↓
-STM32 UART Impl
- ↓
-DMA / IRQ
- ↓
-HAL
-```
-
-然后形成完整 RX 数据路径：
-
-```text
-UART
- ↓
-DMA
- ↓
-Impl
- ↓
-Platform Event
- ↓
-Service
- ↓
-Ring Buffer
- ↓
-Task
-```
-
-在这条链路跑通前，不优先继续扩展大量新的 Platform 基础框架。
-
-原则：
-
-> 优先验证架构能承载真实功能，再继续抽象更多设备。
+任何下一阶段实现都必须先确定自己属于上述哪一职责，再进入专项设计和执行计划。
