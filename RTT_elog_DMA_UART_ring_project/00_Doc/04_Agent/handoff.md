@@ -1,6 +1,6 @@
 # 工程长期记忆与交接说明
 
-更新时间：2026-08-31
+更新时间：2026-09-01
 
 > 本文件是 AI Agent 与人工开发者恢复工程上下文时的长期入口。
 > 只保存长期目标、稳定架构合同、已验证能力、当前边界、技术债和下一步。
@@ -93,9 +93,15 @@ RingBuffer SPSC Review              REVIEWED / NO STRUCTURAL REFACTOR
 
 ```text
 GPIO Platform Phase 1 Design        FROZEN
-GPIO Platform Phase 1 Plan          ACTIVE
-GPIO Platform Implementation        NOT STARTED
-GPIO STM32 Impl                     OUT OF CURRENT SCOPE
+GPIO Platform Phase 1 Plan          COMPLETED
+GPIO Platform Implementation        COMPLETED / HOST VERIFIED
+GPIO Platform Host Tests             PASS
+Header Isolation                     PASS
+Platform Dependency Boundary         PASS
+Coding Standard Review               PASS
+No STM32 HAL Dependency              PASS
+GPIO STM32 Impl                     NOT STARTED
+Target Board GPIO                   NOT YET VERIFIED
 ```
 
 当前专项设计：
@@ -431,7 +437,7 @@ GPIO registry
 
 # 8. GPIO Platform Phase 1 当前验证目标
 
-当前实现尚未开始。
+当前实现已完成并通过 Host 验证。
 
 本阶段完成 Gate：
 
@@ -444,6 +450,14 @@ Header Isolation               PASS
 Platform Dependency Boundary   PASS
 Coding Standard Review         PASS
 No STM32 HAL Dependency        PASS
+```
+
+验证边界：
+
+```text
+Host Test                       VERIFIED
+Keil Build                      NOT YET VERIFIED
+Target Board GPIO               NOT YET VERIFIED
 ```
 
 完成状态只能标记为：
@@ -546,25 +560,21 @@ Not Yet Verified
 
 # 11. 下一阶段入口
 
-当前唯一 Active Implementation Phase：
+当前 GPIO Platform 阶段状态：
 
 ```text
-GPIO Platform Phase 1
+GPIO Platform Phase 1           COMPLETED / HOST VERIFIED
 ```
 
-执行入口：
+下一阶段入口：
 
 ```text
-00_Doc/04_Agent/implementation_plan.md
+GPIO STM32 Impl Phase 1 Design
 ```
 
-当前阶段收口后：
+下一阶段必须重新建立：
 
 ```text
-GPIO Platform Phase 1 Host Verified
-        ↓
-人工 Review / merge
-        ↓
 GPIO STM32 Impl Phase 1 Design
         ↓
 新的专项设计 + 新的 implementation_plan.md
