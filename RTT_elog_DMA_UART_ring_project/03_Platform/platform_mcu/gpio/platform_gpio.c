@@ -18,6 +18,41 @@
 //******************************** Includes *********************************//
 
 //******************************** Functions *********************************//
+/**
+ * @brief 校验 GPIO 配置的公共枚举范围
+ * @param[in] config : GPIO 配置
+ * @return 配置校验结果
+ */
+static platform_error_t platform_gpio_validate_config(
+    const platform_gpio_config_t *config)
+{
+    if (config == NULL) {
+        return PLATFORM_ERR_NULL_POINTER;
+    }
+
+    if ((config->direction < PLATFORM_GPIO_DIRECTION_INPUT) ||
+        (config->direction >= PLATFORM_GPIO_DIRECTION_MAX)) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    if ((config->pull < PLATFORM_GPIO_PULL_NONE) ||
+        (config->pull >= PLATFORM_GPIO_PULL_MAX)) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    if ((config->outputType < PLATFORM_GPIO_OUTPUT_PUSH_PULL) ||
+        (config->outputType >= PLATFORM_GPIO_OUTPUT_MAX)) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    if ((config->initialLevel < PLATFORM_GPIO_LEVEL_LOW) ||
+        (config->initialLevel >= PLATFORM_GPIO_LEVEL_MAX)) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    return PLATFORM_ERR_OK;
+}
+
 platform_error_t platform_gpio_init(
     platform_gpio_t *gpio,
     const platform_gpio_init_params_t *params)
@@ -43,6 +78,40 @@ platform_error_t platform_gpio_init(
     gpio->implContext = params->implContext;
     gpio->initialized = 1U;
     gpio->configured = 0U;
+
+    return PLATFORM_ERR_OK;
+}
+
+platform_error_t platform_gpio_configure(
+    platform_gpio_t *gpio,
+    const platform_gpio_config_t *config)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    if (gpio == NULL) {
+        return PLATFORM_ERR_NULL_POINTER;
+    }
+
+    if (gpio->initialized == 0U) {
+        return PLATFORM_ERR_NOT_INITIALIZED;
+    }
+
+    result = platform_gpio_validate_config(config);
+    if (result != PLATFORM_ERR_OK) {
+        return result;
+    }
+
+    if ((gpio->ops == NULL) || (gpio->ops->configure == NULL)) {
+        return PLATFORM_ERR_NOT_SUPPORTED;
+    }
+
+    result = gpio->ops->configure(gpio, config);
+    if (result != PLATFORM_ERR_OK) {
+        return result;
+    }
+
+    gpio->config = *config;
+    gpio->configured = 1U;
 
     return PLATFORM_ERR_OK;
 }
