@@ -19,13 +19,30 @@
 #include <stddef.h>
 //******************************** Includes *********************************//
 
+//******************************** Defines *********************************//
+#define STM32_GPIO_DEFAULT_SPEED GPIO_SPEED_FREQ_LOW
+//******************************** Defines *********************************//
+
 //******************************** Declaring *********************************//
 static platform_bool_t stm32_gpio_is_single_pin(uint16_t pin);
+static platform_error_t stm32_gpio_get_context(
+    platform_gpio_t *gpio,
+    impl_platform_gpio_context_t **context);
+static platform_error_t stm32_gpio_map_mode(
+    const platform_gpio_config_t *config,
+    uint32_t *mode);
+static platform_error_t stm32_gpio_map_pull(
+    platform_gpio_pull_t pull,
+    uint32_t *halPull);
+static GPIO_PinState stm32_gpio_map_level(platform_gpio_level_t level);
+static platform_error_t stm32_gpio_configure(
+    platform_gpio_t *gpio,
+    const platform_gpio_config_t *config);
 //******************************** Declaring *********************************//
 
 //******************************** Constants *********************************//
 static const platform_gpio_ops_t g_stm32GpioOps = {
-    NULL,
+    stm32_gpio_configure,
     NULL,
     NULL,
     NULL
@@ -41,6 +58,134 @@ static platform_bool_t stm32_gpio_is_single_pin(uint16_t pin)
 
     return (((uint16_t)(pin & (uint16_t)(pin - 1U))) == 0U) ?
            PLATFORM_TRUE : PLATFORM_FALSE;
+}
+
+static platform_error_t stm32_gpio_get_context(
+    platform_gpio_t *gpio,
+    impl_platform_gpio_context_t **context)
+{
+    if ((gpio == NULL) || (context == NULL)) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    if (gpio->implContext == NULL) {
+        return PLATFORM_ERR_NOT_INITIALIZED;
+    }
+
+    *context = (impl_platform_gpio_context_t *)gpio->implContext;
+    if ((*context)->port == NULL) {
+        return PLATFORM_ERR_NOT_INITIALIZED;
+    }
+
+    if (stm32_gpio_is_single_pin((*context)->pin) != PLATFORM_TRUE) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    return PLATFORM_ERR_OK;
+}
+
+static platform_error_t stm32_gpio_map_mode(
+    const platform_gpio_config_t *config,
+    uint32_t *mode)
+{
+    if ((config == NULL) || (mode == NULL)) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    if (config->direction == PLATFORM_GPIO_DIRECTION_INPUT) {
+        *mode = GPIO_MODE_INPUT;
+        return PLATFORM_ERR_OK;
+    }
+
+    if (config->direction != PLATFORM_GPIO_DIRECTION_OUTPUT) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    if (config->outputType == PLATFORM_GPIO_OUTPUT_PUSH_PULL) {
+        *mode = GPIO_MODE_OUTPUT_PP;
+        return PLATFORM_ERR_OK;
+    }
+
+    if (config->outputType == PLATFORM_GPIO_OUTPUT_OPEN_DRAIN) {
+        *mode = GPIO_MODE_OUTPUT_OD;
+        return PLATFORM_ERR_OK;
+    }
+
+    return PLATFORM_ERR_INVALID_PARAM;
+}
+
+static platform_error_t stm32_gpio_map_pull(
+    platform_gpio_pull_t pull,
+    uint32_t *halPull)
+{
+    if (halPull == NULL) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    switch (pull) {
+        case PLATFORM_GPIO_PULL_NONE:
+            *halPull = GPIO_NOPULL;
+            return PLATFORM_ERR_OK;
+
+        case PLATFORM_GPIO_PULL_UP:
+            *halPull = GPIO_PULLUP;
+            return PLATFORM_ERR_OK;
+
+        case PLATFORM_GPIO_PULL_DOWN:
+            *halPull = GPIO_PULLDOWN;
+            return PLATFORM_ERR_OK;
+
+        default:
+            return PLATFORM_ERR_INVALID_PARAM;
+    }
+}
+
+static GPIO_PinState stm32_gpio_map_level(platform_gpio_level_t level)
+{
+    return (level == PLATFORM_GPIO_LEVEL_HIGH) ?
+           GPIO_PIN_SET : GPIO_PIN_RESET;
+}
+
+static platform_error_t stm32_gpio_configure(
+    platform_gpio_t *gpio,
+    const platform_gpio_config_t *config)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+    impl_platform_gpio_context_t *context = NULL;
+    GPIO_InitTypeDef halConfig = {0};
+
+    if (config == NULL) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    result = stm32_gpio_get_context(gpio, &context);
+    if (result != PLATFORM_ERR_OK) {
+        return result;
+    }
+
+    result = stm32_gpio_map_mode(config, &halConfig.Mode);
+    if (result != PLATFORM_ERR_OK) {
+        return result;
+    }
+
+    result = stm32_gpio_map_pull(config->pull, &halConfig.Pull);
+    if (result != PLATFORM_ERR_OK) {
+        return result;
+    }
+
+    halConfig.Pin = context->pin;
+    halConfig.Speed = STM32_GPIO_DEFAULT_SPEED;
+    halConfig.Alternate = 0U;
+
+    if (config->direction == PLATFORM_GPIO_DIRECTION_OUTPUT) {
+        HAL_GPIO_WritePin(context->port,
+                          context->pin,
+                          stm32_gpio_map_level(config->initialLevel));
+    }
+
+    HAL_GPIO_Init(context->port, &halConfig);
+
+    return PLATFORM_ERR_OK;
 }
 //******************************** Private Functions *************************//
 
