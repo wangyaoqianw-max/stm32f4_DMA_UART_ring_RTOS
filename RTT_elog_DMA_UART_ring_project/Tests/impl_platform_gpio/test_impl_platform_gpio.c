@@ -22,11 +22,11 @@
         }                            \
     } while (0)
 
-GPIO_TypeDef g_fakePort;
-uint32_t g_fakeHalInitCount;
-uint32_t g_fakeHalWriteCount;
-uint32_t g_fakeHalReadCount;
-uint32_t g_fakeHalDeinitCount;
+static GPIO_TypeDef g_fakePort;
+static uint32_t g_fakeHalInitCount;
+static uint32_t g_fakeHalWriteCount;
+static uint32_t g_fakeHalReadCount;
+static uint32_t g_fakeHalDeinitCount;
 
 enum
 {
@@ -34,12 +34,12 @@ enum
     FAKE_HAL_CALL_INIT
 };
 
-uint32_t g_fakeHalCallSequence[4];
-GPIO_TypeDef *g_fakeHalLastPort;
-uint16_t g_fakeHalLastPin;
-GPIO_PinState g_fakeHalLastState;
-GPIO_PinState g_fakeHalReadState;
-GPIO_InitTypeDef g_fakeHalLastInit;
+static uint32_t g_fakeHalCallSequence[4];
+static GPIO_TypeDef *g_fakeHalLastPort;
+static uint16_t g_fakeHalLastPin;
+static GPIO_PinState g_fakeHalLastState;
+static GPIO_PinState g_fakeHalReadState;
+static GPIO_InitTypeDef g_fakeHalLastInit;
 
 void HAL_GPIO_Init(GPIO_TypeDef *GPIOx, GPIO_InitTypeDef *GPIO_Init)
 {
