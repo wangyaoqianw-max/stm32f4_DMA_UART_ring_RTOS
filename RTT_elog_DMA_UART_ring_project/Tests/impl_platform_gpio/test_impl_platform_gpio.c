@@ -38,6 +38,7 @@ uint32_t g_fakeHalCallSequence[4];
 GPIO_TypeDef *g_fakeHalLastPort;
 uint16_t g_fakeHalLastPin;
 GPIO_PinState g_fakeHalLastState;
+GPIO_PinState g_fakeHalReadState;
 GPIO_InitTypeDef g_fakeHalLastInit;
 
 void HAL_GPIO_Init(GPIO_TypeDef *GPIOx, GPIO_InitTypeDef *GPIO_Init)
@@ -63,7 +64,7 @@ GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin)
     (void)GPIO_Pin;
     g_fakeHalReadCount++;
 
-    return GPIO_PIN_RESET;
+    return g_fakeHalReadState;
 }
 
 void HAL_GPIO_WritePin(GPIO_TypeDef *GPIOx,
@@ -93,6 +94,7 @@ static void reset_fake_hal(void)
     g_fakeHalLastPort = NULL;
     g_fakeHalLastPin = 0U;
     g_fakeHalLastState = GPIO_PIN_RESET;
+    g_fakeHalReadState = GPIO_PIN_RESET;
     g_fakeHalLastInit = (GPIO_InitTypeDef){0};
 }
 
@@ -254,6 +256,112 @@ static int test_configure_maps_outputs_and_writes_initial_level_first(void)
     return 0;
 }
 
+static int test_write_maps_logical_levels_and_forwards_context(void)
+{
+    platform_gpio_t gpio = PLATFORM_GPIO_INITIALIZER;
+    impl_platform_gpio_context_t context = {
+        &g_fakePort,
+        GPIO_PIN_3
+    };
+    platform_gpio_config_t config = {
+        PLATFORM_GPIO_DIRECTION_OUTPUT,
+        PLATFORM_GPIO_PULL_NONE,
+        PLATFORM_GPIO_OUTPUT_PUSH_PULL,
+        PLATFORM_GPIO_LEVEL_LOW
+    };
+
+    reset_fake_hal();
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                impl_platform_gpio_construct(&gpio, "test_gpio", &context));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_configure(&gpio, &config));
+
+    reset_fake_hal();
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_gpio_write(&gpio, PLATFORM_GPIO_LEVEL_LOW));
+    TEST_ASSERT(1U == g_fakeHalWriteCount);
+    TEST_ASSERT(&g_fakePort == g_fakeHalLastPort);
+    TEST_ASSERT(context.pin == g_fakeHalLastPin);
+    TEST_ASSERT(GPIO_PIN_RESET == g_fakeHalLastState);
+
+    reset_fake_hal();
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_gpio_write(&gpio, PLATFORM_GPIO_LEVEL_HIGH));
+    TEST_ASSERT(1U == g_fakeHalWriteCount);
+    TEST_ASSERT(&g_fakePort == g_fakeHalLastPort);
+    TEST_ASSERT(context.pin == g_fakeHalLastPin);
+    TEST_ASSERT(GPIO_PIN_SET == g_fakeHalLastState);
+
+    return 0;
+}
+
+static int test_read_maps_hal_levels_and_forwards_context(void)
+{
+    platform_gpio_t gpio = PLATFORM_GPIO_INITIALIZER;
+    impl_platform_gpio_context_t context = {
+        &g_fakePort,
+        GPIO_PIN_3
+    };
+    platform_gpio_config_t config = {
+        PLATFORM_GPIO_DIRECTION_INPUT,
+        PLATFORM_GPIO_PULL_UP,
+        PLATFORM_GPIO_OUTPUT_PUSH_PULL,
+        PLATFORM_GPIO_LEVEL_LOW
+    };
+    platform_gpio_level_t level = PLATFORM_GPIO_LEVEL_HIGH;
+
+    reset_fake_hal();
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                impl_platform_gpio_construct(&gpio, "test_gpio", &context));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_configure(&gpio, &config));
+
+    g_fakeHalReadState = GPIO_PIN_RESET;
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_read(&gpio, &level));
+    TEST_ASSERT(1U == g_fakeHalReadCount);
+    TEST_ASSERT(&g_fakePort == g_fakeHalLastPort);
+    TEST_ASSERT(context.pin == g_fakeHalLastPin);
+    TEST_ASSERT(PLATFORM_GPIO_LEVEL_LOW == level);
+
+    g_fakeHalReadState = GPIO_PIN_SET;
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_read(&gpio, &level));
+    TEST_ASSERT(2U == g_fakeHalReadCount);
+    TEST_ASSERT(PLATFORM_GPIO_LEVEL_HIGH == level);
+
+    return 0;
+}
+
+static int test_deinit_clears_platform_state_and_allows_reconfigure(void)
+{
+    platform_gpio_t gpio = PLATFORM_GPIO_INITIALIZER;
+    impl_platform_gpio_context_t context = {
+        &g_fakePort,
+        GPIO_PIN_3
+    };
+    platform_gpio_config_t config = {
+        PLATFORM_GPIO_DIRECTION_OUTPUT,
+        PLATFORM_GPIO_PULL_NONE,
+        PLATFORM_GPIO_OUTPUT_OPEN_DRAIN,
+        PLATFORM_GPIO_LEVEL_HIGH
+    };
+
+    reset_fake_hal();
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                impl_platform_gpio_construct(&gpio, "test_gpio", &context));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_configure(&gpio, &config));
+
+    reset_fake_hal();
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_deinit(&gpio));
+    TEST_ASSERT(1U == g_fakeHalDeinitCount);
+    TEST_ASSERT(&g_fakePort == g_fakeHalLastPort);
+    TEST_ASSERT(context.pin == g_fakeHalLastPin);
+    TEST_ASSERT(1U == gpio.initialized);
+    TEST_ASSERT(0U == gpio.configured);
+
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_configure(&gpio, &config));
+    TEST_ASSERT(1U == gpio.configured);
+
+    return 0;
+}
+
 int main(void)
 {
     int result = test_construct_rejects_invalid_contexts();
@@ -277,5 +385,20 @@ int main(void)
         return result;
     }
 
-    return test_configure_maps_outputs_and_writes_initial_level_first();
+    result = test_configure_maps_outputs_and_writes_initial_level_first();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_write_maps_logical_levels_and_forwards_context();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_read_maps_hal_levels_and_forwards_context();
+    if (0 != result) {
+        return result;
+    }
+
+    return test_deinit_clears_platform_state_and_allows_reconfigure();
 }

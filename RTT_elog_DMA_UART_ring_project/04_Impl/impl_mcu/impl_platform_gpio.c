@@ -38,14 +38,21 @@ static GPIO_PinState stm32_gpio_map_level(platform_gpio_level_t level);
 static platform_error_t stm32_gpio_configure(
     platform_gpio_t *gpio,
     const platform_gpio_config_t *config);
+static platform_error_t stm32_gpio_write(
+    platform_gpio_t *gpio,
+    platform_gpio_level_t level);
+static platform_error_t stm32_gpio_read(
+    platform_gpio_t *gpio,
+    platform_gpio_level_t *level);
+static platform_error_t stm32_gpio_deinit(platform_gpio_t *gpio);
 //******************************** Declaring *********************************//
 
 //******************************** Constants *********************************//
 static const platform_gpio_ops_t g_stm32GpioOps = {
     stm32_gpio_configure,
-    NULL,
-    NULL,
-    NULL
+    stm32_gpio_write,
+    stm32_gpio_read,
+    stm32_gpio_deinit
 };
 //******************************** Constants *********************************//
 
@@ -184,6 +191,64 @@ static platform_error_t stm32_gpio_configure(
     }
 
     HAL_GPIO_Init(context->port, &halConfig);
+
+    return PLATFORM_ERR_OK;
+}
+
+static platform_error_t stm32_gpio_write(
+    platform_gpio_t *gpio,
+    platform_gpio_level_t level)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+    impl_platform_gpio_context_t *context = NULL;
+
+    result = stm32_gpio_get_context(gpio, &context);
+    if (result != PLATFORM_ERR_OK) {
+        return result;
+    }
+
+    HAL_GPIO_WritePin(context->port,
+                      context->pin,
+                      stm32_gpio_map_level(level));
+
+    return PLATFORM_ERR_OK;
+}
+
+static platform_error_t stm32_gpio_read(
+    platform_gpio_t *gpio,
+    platform_gpio_level_t *level)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+    impl_platform_gpio_context_t *context = NULL;
+    GPIO_PinState halLevel;
+
+    if (level == NULL) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    result = stm32_gpio_get_context(gpio, &context);
+    if (result != PLATFORM_ERR_OK) {
+        return result;
+    }
+
+    halLevel = HAL_GPIO_ReadPin(context->port, context->pin);
+    *level = (halLevel == GPIO_PIN_SET) ?
+             PLATFORM_GPIO_LEVEL_HIGH : PLATFORM_GPIO_LEVEL_LOW;
+
+    return PLATFORM_ERR_OK;
+}
+
+static platform_error_t stm32_gpio_deinit(platform_gpio_t *gpio)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+    impl_platform_gpio_context_t *context = NULL;
+
+    result = stm32_gpio_get_context(gpio, &context);
+    if (result != PLATFORM_ERR_OK) {
+        return result;
+    }
+
+    HAL_GPIO_DeInit(context->port, context->pin);
 
     return PLATFORM_ERR_OK;
 }
