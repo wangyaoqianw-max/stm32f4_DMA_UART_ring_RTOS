@@ -3,8 +3,10 @@
 更新时间：2026-09-01
 
 > 本文件是 AI Agent 与人工开发者恢复工程上下文时的长期入口。
-> 只保存长期目标、稳定架构合同、已验证能力、当前边界、技术债和下一步候选方向。
-> 详细业务需求以 `00_Doc/00_项目需求/最终功能需求.md` 为准；专项设计和执行步骤以对应设计文档和后续确认的 `implementation_plan.md` 为准。
+> 只保存长期目标、稳定架构合同、已验证能力、当前阶段、技术债和下一步。
+> 详细业务需求以 `00_Doc/00_项目需求/最终功能需求.md` 为准。
+> 整体阶段拆分以 `00_Doc/04_Agent/development_roadmap.md` 为准。
+> 当前具体施工步骤只以用户确认后更新的 `00_Doc/04_Agent/implementation_plan.md` 为准。
 
 ---
 
@@ -39,7 +41,7 @@ UART 不定长接收 + DMA + RingBuffer + FreeRTOS
 
 当前最终目标：
 
-> 在已验证 UART 通信链路和分层架构基础上，加入 GPIO、软件 I2C、DHT20、MPU6050、按键控制、LED 状态反馈和 APP 控制状态机，形成一个可通过按键与 PC 串口命令控制的数据采集系统。
+> 在已验证 UART 通信链路和五层架构基础上，加入 GPIO、Software I2C、DHT20、MPU6050、按键控制、LED 状态反馈、UART 文本命令和 APP Control FSM，形成完整数据采集系统。
 
 项目同时用于验证：
 
@@ -56,7 +58,7 @@ Requirements
 
 ---
 
-# 2. 稳定总体依赖
+# 2. 稳定总体架构
 
 ```text
 APP
@@ -70,7 +72,7 @@ Impl
 Vendor / HAL / RTOS / Hardware
 ```
 
-固定规则：
+固定依赖：
 
 ```text
 APP -> Service       ALLOWED
@@ -81,11 +83,11 @@ APP -> Impl          FORBIDDEN
 Service -> Impl      FORBIDDEN
 ```
 
-CubeMX 生成文件只作为初始化、IRQ / HAL Callback、Scheduler 和薄胶水入口，长期业务逻辑不得堆积其中。
+CubeMX 生成文件只作为初始化、IRQ / HAL Callback、Scheduler 和薄适配入口，长期业务逻辑不得堆积其中。
 
 ---
 
-# 3. 当前已完成 / 已验证能力
+# 3. 当前已完成 / 已验证基线
 
 ```text
 Platform BSP UART Binding Phase 1   COMPLETED
@@ -103,26 +105,28 @@ GPIO Platform Dependency Boundary   PASS
 GPIO Coding Standard Review         PASS
 ```
 
-尚未完成：
+当前尚未完成：
 
 ```text
-STM32 GPIO Impl                     NOT STARTED
-Target Board GPIO Verification      NOT STARTED
-LED / KEY BSP                       NOT STARTED
-Button Event Service                NOT STARTED
-Software I2C                        NOT STARTED
-DHT20                               NOT STARTED
-MPU6050                             NOT STARTED
-Final Acquisition FSM               NOT STARTED
-UART Command Integration            NOT STARTED
-Final Integrated Board Test         NOT STARTED
+STM32 GPIO Impl
+Target Board GPIO Verification
+Board Resource / CubeMX final configuration
+Software I2C
+LED module
+Button module
+DHT20 module
+MPU6050 Motion module
+UART Application Command / Report
+Final RTOS Task / Event Design
+Final APP Control FSM
+Final Integrated Board Test
 ```
 
 ---
 
-# 4. 已验证 UART RX 垂直链路
+# 4. 已验证 UART / RingBuffer 合同
 
-当前真实 RX 链：
+当前 RX 链：
 
 ```text
 USART1
@@ -144,15 +148,9 @@ APP Communication Task
 Application-level byte-stream handling
 ```
 
-新增 `START / STOP / ONCE / STATUS / HELP` 命令必须建立在该链路上。
+新增 `START / STOP / ONCE / STATUS / HELP` 必须复用这条链路，不允许绕过 UART Service / RingBuffer 另建命令 RX。
 
-禁止另建一套绕过 UART Service / RingBuffer 的命令 RX。
-
----
-
-# 5. RingBuffer / ISR / Buffer 冻结合同
-
-RingBuffer：
+RingBuffer 冻结为：
 
 ```text
 SPSC byte stream
@@ -163,7 +161,7 @@ no UART / DMA / HAL knowledge
 no silent overwrite
 ```
 
-当前生产者 / 消费者：
+当前：
 
 ```text
 Producer = UART Service RX callback
@@ -172,7 +170,13 @@ Consumer = APP Communication Task
 
 不得给当前 SPSC 路径加入普通 Mutex。
 
-ISR / HAL Callback 只做：
+异步 UART TX Buffer 在 TX Complete / Error / Canceled 前不得被修改或失效。
+
+---
+
+# 5. ISR / Task 合同
+
+ISR / HAL Callback 只允许：
 
 ```text
 capture
@@ -195,11 +199,11 @@ LED 闪烁延时
 非 ISR-safe RTOS API
 ```
 
-异步 UART TX Buffer 在 TX Complete / Error / Canceled 前不得被修改或失效。
+后续 Button、LED、Sensor、UART Command 等业务都应在 Task / Service / APP 上下文处理。
 
 ---
 
-# 6. 日志基线
+# 6. RTT / EasyLogger 基线
 
 正式链路：
 
@@ -215,18 +219,25 @@ EasyLogger Adapter
 EasyLogger / RTT
 ```
 
-新功能日志原则：
+最终功能日志原则：
 
 ```text
-INFO  -> 初始化、START / STOP / ONCE、状态切换
-DEBUG -> 每 5 s 采集摘要、完整 UART 命令、业务 TX 状态
-WARN  -> 可恢复 I2C / Sensor / UART 异常
-ERROR -> 初始化失败、关键通信失败
+INFO  -> 初始化、START / STOP / ONCE、关键状态切换
+DEBUG -> 5 s 采集摘要、完整 UART 命令、业务 TX 状态
+WARN  -> 可恢复 GPIO / I2C / Sensor / UART 异常
+ERROR -> 初始化失败、关键操作失败
 ```
 
-禁止正常运行时逐 UART byte、逐 I2C bit/byte/ACK 或在 ISR 中高频打印。
+禁止正常运行时：
 
-初始化过程需要可观察，但不要求 Platform / Impl 每层都直接调用日志；APP / Service 可根据返回值统一记录关键状态。
+```text
+逐 UART byte 打日志
+逐 I2C bit / byte / ACK 打日志
+ISR 中大量格式化日志
+每层重复打印同一成功状态
+```
+
+初始化过程和采集 / 收发过程需要可观察，但不要求 Platform / Impl 每一层都主动打印；可以由 APP / Service 根据返回结果记录关键状态。
 
 ---
 
@@ -261,11 +272,11 @@ DHT20
 MPU6050
 ```
 
-低 / 高有效极性属于 Board / BSP。
+低 / 高有效极性属于 Board / BSP / Impl 边界。
 
 当前缺口是 STM32 GPIO Impl 和目标板验证，而不是重新设计 Platform GPIO。
 
-未经新专项设计不得为了 Soft I2C / LED / KEY 擅自扩大现有 GPIO 公共 API。
+未经新专项设计，不得为了 LED / KEY / Software I2C 擅自扩大现有 GPIO 公共 API。
 
 ---
 
@@ -275,12 +286,6 @@ MPU6050
 
 ```text
 00_Doc/00_项目需求/最终功能需求.md
-```
-
-Agent 需求摘要：
-
-```text
-00_Doc/04_Agent/requirements.md
 ```
 
 系统状态：
@@ -299,17 +304,15 @@ UART RX ACTIVE
 RTT ACTIVE
 ```
 
-## 按键
+按键：
 
 ```text
-STOPPED + single click     -> START
-STOPPED + double click     -> ONCE
-RUNNING + long >= 3 s      -> STOP
+STOPPED + SINGLE       -> START
+STOPPED + DOUBLE       -> ONCE
+RUNNING + LONG >= 3 s  -> STOP
 ```
 
-双击识别要求 single click 延迟到双击判定窗口结束后确认。
-
-## UART 命令
+UART 命令：
 
 ```text
 START
@@ -319,28 +322,24 @@ STATUS
 HELP
 ```
 
-按键和 UART 最终必须汇聚到同一个 APP Control FSM，不允许两套状态。
+按键和 UART 必须统一转换为 APP 控制事件，最终只维护一个 APP Control FSM。
 
 ---
 
-# 9. 采集与发送基线
+# 9. 采集 / LED / Software I2C 基线
 
-第一阶段不做姿态算法。
-
-RUNNING 状态：
+RUNNING：
 
 ```text
 每 5 s
-  -> DHT20 温湿度
-  -> MPU6050 Accel XYZ + Gyro XYZ
-  -> 组织文本数据
-  -> 通过现有 UART TX 发送到 PC
-  -> RTT DEBUG 记录摘要
+  -> DHT20 temperature / humidity
+  -> MPU6050 Accel XYZ / Gyro XYZ
+  -> text report
+  -> existing UART TX
+  -> PC serial assistant
 ```
 
-STOPPED 状态不周期采集、不周期上报。
-
-当前 MPU6050 不做：
+第一阶段 MPU6050 不做：
 
 ```text
 Roll
@@ -352,31 +351,17 @@ Complementary Filter
 高频姿态融合
 ```
 
-如果未来重新加入姿态算法，再拆分 MPU6050 高频采样与 5 s 上报周期。
-
----
-
-# 10. LED 产品语义
+LED 产品语义：
 
 ```text
-STOPPED               -> LED OFF
-RUNNING               -> LED ON
-RUNNING 5 s report     -> LED 保持 ON，不闪
-ONCE sample/TX success -> LED 闪 3 次，然后 OFF
-ONCE sample/TX failure -> LED 保持 OFF
+STOPPED               -> OFF
+RUNNING               -> ON
+RUNNING 5 s report     -> stays ON
+ONCE TX success        -> blink 3 times, then OFF
+ONCE failure           -> stays OFF
 ```
 
-若 UART 异步发送存在明确 TX Complete，应优先用真正 TX Complete 定义 ONCE “发送成功”。
-
-LED 有效电平由 Board / BSP 封装，APP 不知道 GPIO 电平极性。
-
-LED 三闪不得放在 ISR 中阻塞执行。
-
----
-
-# 11. Software I2C 当前架构约束
-
-当前确定：
+Software I2C 架构：
 
 ```text
 DHT20 + MPU6050
@@ -388,54 +373,107 @@ Platform GPIO
 STM32 GPIO Impl
 ```
 
-Software I2C 必须：
-
-- 不直接依赖 `HAL_GPIO_xxx`；
-- 使用微秒级 delay；
-- 不用 RTOS tick delay 直接 bit-bang；
-- 支持 START / STOP / ACK / NACK / byte / multi-byte transaction；
-- 满足 DHT20 / MPU6050 读写需求。
-
-第一阶段推荐一个采集执行上下文串行访问两个设备，从结构上避免总线并发。
-
-如果未来存在多个并发访问者，Mutex 必须覆盖完整 I2C transaction。
-
-Software I2C 的具体文件位置、对象模型和 delay-us 接口尚未专项冻结，下一阶段不得直接凭 Agent 偏好决定。
+Software I2C 不直接依赖 HAL GPIO；使用微秒级时序；第一阶段优先串行访问两个传感器，避免无必要 I2C 并发。
 
 ---
 
-# 12. 推荐最终职责边界
+# 10. 当前开发阶段路线
+
+整体路线：
 
 ```text
-APP
-- 唯一 STOPPED / RUNNING 状态
-- START / STOP / ONCE / STATUS 决策
-- 5 s 采集业务编排
-- LED 产品语义
-- UART command 业务语义
+00_Doc/04_Agent/development_roadmap.md
+```
 
-Service
-- UART Service
-- Log Service
-- Button debounce / single / double / long
-- 可复用传感器数据服务（若专项设计采用）
+当前冻结的阶段顺序：
 
-Platform
-- UART
-- GPIO
-- OS / Time
-- Log
-- Software I2C / BSP 的具体边界等待专项设计冻结
+```text
+Phase 1  GPIO STM32 Impl
+Phase 2  Board Resource + CubeMX Configuration
+Phase 3  Software I2C
+Phase 4  LED Module
+Phase 5  Button Module
+Phase 6  DHT20 Environment Module
+Phase 7  MPU6050 Motion Module
+Phase 8  UART Application Communication
+Phase 9  RTOS Task / Event Design
+Phase 10 Final APP Integration
+```
 
-Impl
-- STM32 UART / GPIO
-- RTOS / Log adapter
-- HAL / CubeMX / IRQ 适配
+RTT / EasyLogger 与 Config 属于横切要求，随各 Phase 一起完成，不单独拆成 Phase。
+
+阶段原则：
+
+```text
+Roadmap
+    = 整个最终功能的阶段顺序和边界
+
+implementation_plan.md
+    = 当前唯一已确认 Phase 的具体施工计划
+```
+
+禁止一次生成 Phase 1 ~ Phase 10 的超长施工计划并连续实现。
+
+---
+
+# 11. 当前下一阶段
+
+当前已确定下一步先讨论：
+
+```text
+Phase 1 — GPIO STM32 Impl
+```
+
+当前尚未冻结 GPIO Impl 的专项设计，也尚未生成新的 GPIO Impl 执行计划。
+
+下一步讨论应重点确认：
+
+```text
+STM32 GPIO Impl object/context binding
+Platform config -> HAL GPIO mapping
+GPIO port / pin representation
+output initial-level ordering
+read / write behavior
+deinit semantics
+Platform Error mapping
+CubeMX / Board boundary
+Keil verification
+Phase 2 board smoke-test handoff boundary
+```
+
+Phase 1 中不得提前混入：
+
+```text
+LED semantics
+KEY semantics
+Debounce
+Software I2C
+DHT20
+MPU6050
+Final APP FSM
 ```
 
 ---
 
-# 13. 当前 Config 方向
+# 12. implementation_plan 当前状态
+
+文件：
+
+```text
+00_Doc/04_Agent/implementation_plan.md
+```
+
+当前内容仍是已经完成的 GPIO Platform Phase 1 历史计划。
+
+因此：
+
+> 当前 `implementation_plan.md` 不可直接执行。
+
+用户已明确先保留该文件，等 GPIO STM32 Impl 的设计和任务边界讨论完成后，再更新为 Phase 1 的具体执行计划。
+
+---
+
+# 13. Config 方向
 
 `00_Config` 已存在：
 
@@ -444,41 +482,23 @@ project_config.h
 project_log_config.h
 ```
 
-后续专项设计至少应把以下静态参数纳入 Config：
+最终至少应逐阶段纳入：
 
 ```text
 Acquisition period = 5000 ms
-Button debounce period
+Button debounce time
 Button double-click window
 Button long-press threshold = 3000 ms
 LED ONCE blink count = 3
 LED blink interval
+UART command / report limits if needed
 ```
 
-具体宏命名等待下一阶段设计，不应现在无计划修改产品代码。
+具体宏命名由对应专项设计冻结，不提前修改。
 
 ---
 
-# 14. 当前范围冻结
-
-必须最终完成：
-
-```text
-GPIO STM32 Impl + board verification
-LED / KEY
-Button Service
-Software I2C
-DHT20
-MPU6050 basic six-axis data
-APP Control FSM
-UART command integration
-5 s acquisition/report
-ONCE LED three-blink success feedback
-RTT status/error logs
-final integrated board test
-```
-
-当前暂停 / 不做：
+# 14. 当前暂停范围
 
 ```text
 SPI / LCD / GUI
@@ -492,74 +512,9 @@ Bluetooth
 
 ---
 
-# 15. 当前 implementation_plan 状态
+# 15. 已知技术债 / 限制
 
-文件：
-
-```text
-00_Doc/04_Agent/implementation_plan.md
-```
-
-当前仍保留此前 GPIO Platform Phase 1 的计划内容。
-
-该计划对应的 Platform GPIO 实现事实上已经完成并 Host Verified，因此：
-
-> 当前 `implementation_plan.md` 不代表新的最终功能执行顺序，不得被下一位 Agent 直接当作待执行计划重新施工。
-
-用户已明确：
-
-> 先不修改 `implementation_plan.md`，等最终功能拆分任务并确认下一步执行哪个模块后，再生成 / 更新对应计划。
-
-因此下一位 Agent 必须先确认新的“下一阶段任务”，再更新 `implementation_plan.md`。
-
----
-
-# 16. execution_rules 状态
-
-```text
-00_Doc/04_Agent/execution_rules.md
-```
-
-仍是有效的通用 Agent Execution Contract，本轮最终功能需求没有改变其中：
-
-- C 代码规范优先级；
-- Preflight；
-- Coding Standard Review；
-- Vendor / CubeMX 修改边界；
-- STOP / BLOCKED 规则。
-
-本轮不需要修改该文件。
-
----
-
-# 17. 下一阶段候选任务
-
-当前还没有选定唯一下一步。
-
-合理候选包括：
-
-```text
-A. STM32 GPIO Impl + LED / KEY board binding
-B. Software I2C 专项设计
-C. DHT20 / MPU6050 驱动专项设计
-D. Button Service 专项设计
-E. Final APP Control / UART command integration 设计
-```
-
-推荐遵循底层可验证能力逐步向上组合，但具体顺序以用户下一次确认的任务为准。
-
-在任务未确认前：
-
-- 不直接开始编码；
-- 不重写 `implementation_plan.md`；
-- 不提前一次性设计全部子系统；
-- 不重新打开 SPI / LCD 范围。
-
----
-
-# 18. 已知技术债 / 限制
-
-## 18.1 Platform Types 依赖 Impl 类型
+## 15.1 Platform Types 依赖 Impl 类型
 
 当前存在：
 
@@ -568,9 +523,9 @@ platform_types.h
     -> board_types.h
 ```
 
-需要未来重新确认基础类型归属，但不作为当前最终闭环的阻塞项。
+未来重新确认基础类型归属，不作为当前最终闭环阻塞项。
 
-## 18.2 USART1 Callback 单实例
+## 15.2 USART1 Callback 单实例
 
 当前 STM32 UART Impl 使用 USART1 单实例 Context。
 
@@ -584,51 +539,54 @@ NOT CURRENT DEFECT
 
 出现第二个真实 UART 角色后再设计 registry / dispatcher。
 
-## 18.3 README 占位
-
-根目录和部分分层 README 尚未系统整理，项目最终收尾时再统一处理。
-
-## 18.4 GPIO 仅 Host Verified
+## 15.3 GPIO 仅 Host Verified
 
 Platform GPIO 已 Host Verified，但 STM32 Impl 和目标板行为尚未验证。
 
-不得把 GPIO 状态描述为 Target Board Verified。
+不得描述为 Target Board Verified。
+
+## 15.4 README
+
+根目录和部分分层 README 尚未系统整理，项目最终收尾时统一处理。
 
 ---
 
-# 19. Agent 恢复上下文时必须读取
+# 16. Agent 恢复上下文时必须读取
 
-在执行下一阶段前至少读取：
+开始新 Phase 前至少读取：
 
 ```text
 00_Doc/00_项目需求/最终功能需求.md
 00_Doc/04_Agent/requirements.md
 00_Doc/04_Agent/architecture.md
+00_Doc/04_Agent/development_roadmap.md
 00_Doc/04_Agent/handoff.md
 00_Doc/04_Agent/execution_rules.md
 00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
 ```
 
-如果下一阶段涉及已有专项模块，再读取对应专项设计和 Tests。
+涉及已有专项模块时，再读取对应专项设计、代码和 Tests。
 
-`implementation_plan.md` 仅在用户确认新的下一阶段并更新后才作为执行依据。
+`implementation_plan.md` 只有在当前 Phase 重新确认并更新后，才作为实施依据。
 
 ---
 
-# 20. 当前阶段核心结论
+# 17. 当前核心结论
 
 ```text
 UART / DMA / RingBuffer / Log 基线已稳定。
 Platform GPIO 公共层已 Host Verified。
 最终功能需求已经收束。
+最终功能已拆分为 10 个 Phase。
+下一阶段确定为 GPIO STM32 Impl 设计讨论。
+当前旧 implementation_plan 不执行。
 SPI / LCD 暂停。
-MPU6050 第一阶段不做姿态算法。
-采集与 UART 上报周期固定为 5 s。
+MPU6050 第一阶段只做六轴基础数据。
+采集与 UART 上报周期为 5 s。
 KEY 与 UART 共用一个 APP Control FSM。
 STOPPED LED 灭，RUNNING LED 亮。
 ONCE 成功发送后 LED 闪 3 次。
 RTT 用于初始化、控制、采集、收发和异常诊断。
-下一实施任务尚未确认。
 ```
 
-下一步先做专项任务选择和设计，再更新 `implementation_plan.md`，不要直接扩大实现范围。
+下一步：讨论 GPIO STM32 Impl 的专项设计和验收边界，确认后再更新 `implementation_plan.md`。
