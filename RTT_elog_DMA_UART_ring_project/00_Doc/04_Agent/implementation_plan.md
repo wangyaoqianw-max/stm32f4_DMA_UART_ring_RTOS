@@ -1,57 +1,75 @@
-# Platform GPIO Phase 1 Implementation Plan
+# GPIO STM32 Impl Phase 1 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > 当前执行计划 / Current Active Plan  
 > 状态：READY / NOT STARTED  
-> 日期：2026-08-31
+> 日期：2026-09-01
 
-**Goal:** 在不依赖 STM32 HAL、CubeMX 具体 Pin 配置和 GPIO Impl 的前提下，实现可 Host Test 的普通数字 GPIO Platform Phase 1 抽象。
+**Goal:** 为已 Host Verified 的 Platform GPIO 提供通用 STM32F411 + HAL 实现，并完成 Host Fake-HAL 验证、Platform 回归、Keil 编译和代码规范审查。
 
-**Architecture:** GPIO 在本阶段定义为轻量 MCU Resource，而不是完整 `platform_device_t`。Platform 负责公共类型、对象状态、参数校验和 Ops 转发；具体硬件访问通过 opaque `implContext` 和后续 Impl 注入的 `platform_gpio_ops_t` 完成。本阶段只到 Platform Host Verified，不进入目标板验证。
+**Architecture:** 使用 Generic STM32 GPIO Impl + caller-owned Context。每个 `platform_gpio_t` 通过 `implContext` 单向引用 `{GPIO_TypeDef *port, uint16_t pin}`；Impl 不维护 Registry / Context Pool，不知道 LED / KEY / SCL / SDA。GPIO Port RCC 由 CubeMX / Board Bootstrap 负责，本 Phase 不做具体 Board Binding 或目标板 GPIO Smoke Test。
 
-**Tech Stack:** C、现有 `platform_types.h`、`platform_error.h`、Host C tests；禁止引入 STM32 HAL、CMSIS-RTOS2、FreeRTOS 或 Vendor GPIO 类型。
+**Tech Stack:** C、STM32F411 HAL GPIO、现有 Platform GPIO、Host C test + Fake HAL、Keil MDK-ARM。
 
-**Spec:** `00_Doc/02_架构设计/Platform_GPIO_Phase1设计.md`
+**Spec:** `00_Doc/02_架构设计/GPIO_STM32_Impl_Phase1设计.md`
 
 ## Global Constraints
 
-- 固定依赖方向保持 `APP -> Service -> Platform -> Impl -> Vendor`；本计划不得制造反向依赖。
-- `platform_gpio_t` 不继承 `platform_device_t`，不使用 `platform_lifecycle_t`。
-- 本阶段只允许 GPIO INPUT / OUTPUT、PULL、OUTPUT TYPE、INITIAL LEVEL、read / write / configure / deinit。
-- 不公开 GPIO Speed。
-- 不加入 EXTI / IRQ / NVIC / callback、Toggle、AF、Analog、LED / KEY、Debounce、GPIO Group / Registry。
-- 不修改 `04_Impl/`。
-- 不修改 CubeMX 具体 GPIO Pin 配置，不新增 `HAL_GPIO_xxx`、`GPIO_TypeDef`、`GPIO_PIN_x` 依赖。
-- 不使用动态内存和 RTOS 同步原语。
-- 生产代码和测试代码都必须遵守 `00_Doc/02_架构设计/嵌入式项目C代码设计规范.md`。
-- 发现仓库现实与冻结设计存在实质冲突时：`STOP / BLOCKED`，不得静默重新设计。
+- 固定依赖方向保持 `APP -> Service -> Platform -> Impl -> Vendor`。
+- 不修改 Platform GPIO 已冻结公共 API / 类型。
+- `platform_gpio_t` 继续是轻量 MCU Resource，不继承 `platform_device_t`。
+- Context 必须 caller-owned；禁止 Context Pool、Registry、动态内存和固定 per-pin 全局实例。
+- 一个 Context 只能绑定一个物理 GPIO Pin；multi-bit Pin mask 必须拒绝。
+- GPIO Impl 不负责 RCC Enable / Disable；对应 Port Clock 是调用 `platform_gpio_configure()` 前置条件。
+- STM32 GPIO Speed 固定为 Impl-private `GPIO_SPEED_FREQ_LOW`，不得增加 Platform Speed API。
+- OUTPUT 配置必须先写 `initialLevel`，再调用 `HAL_GPIO_Init()`。
+- INPUT 配置不得因 `initialLevel` 字段而调用 `HAL_GPIO_WritePin()`。
+- 不加入 EXTI / IRQ / NVIC / callback / Toggle / AF / Analog。
+- 不加入 LED / KEY / Debounce / Software I2C / Sensor / APP FSM。
+- 不修改具体 CubeMX GPIO Pin 配置；Board Resource + CubeMX 属于 Phase 2。
+- Production 和 Test 自研代码均遵守 `00_Doc/02_架构设计/嵌入式项目C代码设计规范.md`。
+- 发现冻结设计与仓库现实存在实质冲突时：`STOP / BLOCKED`，不得静默重设计。
 
 ---
 
 # 0. Mandatory Preflight
 
-执行前必须读取：
+执行前必须完整读取：
 
 ```text
+00_Doc/00_项目需求/最终功能需求.md
+00_Doc/02_架构设计/GPIO_STM32_Impl_Phase1设计.md
 00_Doc/02_架构设计/Platform_GPIO_Phase1设计.md
 00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
-00_Doc/04_Agent/execution_rules.md
-00_Doc/04_Agent/architecture.md
 00_Doc/04_Agent/requirements.md
+00_Doc/04_Agent/architecture.md
+00_Doc/04_Agent/development_roadmap.md
 00_Doc/04_Agent/handoff.md
-03_Platform/platform_common/platform_types.h
-03_Platform/platform_common/platform_error.h
-03_Platform/platform_mcu/uart/platform_uart_types.h
-03_Platform/platform_mcu/uart/platform_uart.h
-Tests/platform_uart/test_platform_uart_types.c
-Tests/platform_uart/test_platform_uart.c
+00_Doc/04_Agent/execution_rules.md
+00_Doc/04_Agent/implementation_plan.md
+```
+
+检查参考实现：
+
+```text
+03_Platform/platform_mcu/gpio/platform_gpio_types.h
+03_Platform/platform_mcu/gpio/platform_gpio.h
+03_Platform/platform_mcu/gpio/platform_gpio.c
+04_Impl/impl_mcu/impl_platform_uart.h
+04_Impl/impl_mcu/impl_platform_uart.c
+Tests/platform_gpio/
+Tests/impl_platform_uart/
+Core/Src/gpio.c
+Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_gpio.h
 ```
 
 Preflight 固定汇报：
 
 ```text
-GPIO Platform Phase 1 Design: READ
+GPIO STM32 Impl Phase 1 Design: READ
+Platform GPIO Frozen Design: READ
+Development Roadmap: READ
 Coding Standard:
 00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
 Status: READ
@@ -63,755 +81,701 @@ Unrelated user changes: PRESERVED
 执行前确认：
 
 ```text
-03_Platform/platform_mcu/gpio/ does not already contain conflicting production code
-Tests/platform_gpio/ does not contain conflicting current tests
-No current GPIO public contract contradicts the frozen spec
+04_Impl/impl_mcu/impl_platform_gpio.* does not contain conflicting user code
+Tests/impl_platform_gpio/ does not contain conflicting current tests
+Platform GPIO public contract matches frozen design
+Core/Src/gpio.c remains CubeMX/bootstrap-owned
 ```
 
-如果发现冲突，停止并报告，不覆盖既有用户代码。
+若有冲突，停止并报告。
 
 ---
 
-# 1. Frozen Public Contract
+# 1. Frozen Interfaces
 
-公共类型冻结为：
-
-```c
-typedef struct platform_gpio platform_gpio_t;
-
-typedef enum
-{
-    PLATFORM_GPIO_LEVEL_LOW = 0,
-    PLATFORM_GPIO_LEVEL_HIGH,
-    PLATFORM_GPIO_LEVEL_MAX
-} platform_gpio_level_t;
-
-typedef enum
-{
-    PLATFORM_GPIO_DIRECTION_INPUT = 0,
-    PLATFORM_GPIO_DIRECTION_OUTPUT,
-    PLATFORM_GPIO_DIRECTION_MAX
-} platform_gpio_direction_t;
-
-typedef enum
-{
-    PLATFORM_GPIO_PULL_NONE = 0,
-    PLATFORM_GPIO_PULL_UP,
-    PLATFORM_GPIO_PULL_DOWN,
-    PLATFORM_GPIO_PULL_MAX
-} platform_gpio_pull_t;
-
-typedef enum
-{
-    PLATFORM_GPIO_OUTPUT_PUSH_PULL = 0,
-    PLATFORM_GPIO_OUTPUT_OPEN_DRAIN,
-    PLATFORM_GPIO_OUTPUT_MAX
-} platform_gpio_output_type_t;
-
-typedef struct
-{
-    platform_gpio_direction_t direction;
-    platform_gpio_pull_t pull;
-    platform_gpio_output_type_t outputType;
-    platform_gpio_level_t initialLevel;
-} platform_gpio_config_t;
-```
-
-公共对象与 Ops 冻结为：
+本 Phase 生产接口冻结为：
 
 ```c
 typedef struct
 {
-    platform_error_t (*configure)(platform_gpio_t *gpio,
-                                  const platform_gpio_config_t *config);
-    platform_error_t (*write)(platform_gpio_t *gpio,
-                              platform_gpio_level_t level);
-    platform_error_t (*read)(platform_gpio_t *gpio,
-                             platform_gpio_level_t *level);
-    platform_error_t (*deinit)(platform_gpio_t *gpio);
-} platform_gpio_ops_t;
+    GPIO_TypeDef *port;
+    uint16_t pin;
+} impl_platform_gpio_context_t;
 
-struct platform_gpio
-{
-    const char *name;
-    platform_gpio_config_t config;
-    const platform_gpio_ops_t *ops;
-    void *implContext;
-    platform_bool_t initialized;
-    platform_bool_t configured;
-};
-
-#define PLATFORM_GPIO_INITIALIZER {0}
-
-typedef struct
-{
-    const char *name;
-    const platform_gpio_ops_t *ops;
-    void *implContext;
-} platform_gpio_init_params_t;
+platform_error_t impl_platform_gpio_construct(
+    platform_gpio_t *gpio,
+    const char *name,
+    impl_platform_gpio_context_t *context);
 ```
 
-公共 API 冻结为：
+冻结的内部 Ops：
 
-```c
-platform_error_t platform_gpio_init(
-    platform_gpio_t *gpio,
-    const platform_gpio_init_params_t *params);
-
-platform_error_t platform_gpio_configure(
-    platform_gpio_t *gpio,
-    const platform_gpio_config_t *config);
-
-platform_error_t platform_gpio_write(
-    platform_gpio_t *gpio,
-    platform_gpio_level_t level);
-
-platform_error_t platform_gpio_read(
-    platform_gpio_t *gpio,
-    platform_gpio_level_t *level);
-
-platform_error_t platform_gpio_deinit(
-    platform_gpio_t *gpio);
+```text
+configure
+write
+read
+deinit
 ```
 
-不得在实施过程中擅自增加公共 API。
+`impl_platform_gpio_construct()` 只绑定对象，不调用任何 HAL GPIO API。
+
+生产文件：
+
+```text
+04_Impl/impl_mcu/impl_platform_gpio.h
+04_Impl/impl_mcu/impl_platform_gpio.c
+```
+
+测试文件：
+
+```text
+Tests/impl_platform_gpio/test_impl_platform_gpio.c
+Tests/impl_platform_gpio/stm32f4xx_hal.h   # Host Fake HAL if this matches test include strategy
+```
+
+如果现有 Host Test 基础设施要求不同的最小 Fake HAL 文件名，可沿用仓库既有测试模式，但不得修改 Production Header 来迎合测试。
 
 ---
 
-# 2. Target Files
-
-## Create
-
-```text
-03_Platform/platform_mcu/gpio/platform_gpio_types.h
-03_Platform/platform_mcu/gpio/platform_gpio.h
-03_Platform/platform_mcu/gpio/platform_gpio.c
-Tests/platform_gpio/test_platform_gpio_types.c
-Tests/platform_gpio/test_platform_gpio.c
-```
-
-## Modify
-
-```text
-00_Doc/04_Agent/handoff.md   # only at final handoff after verified implementation
-```
-
-## Forbidden in this plan
-
-```text
-04_Impl/**
-Core/** GPIO behavior changes
-Drivers/**
-Middlewares/**
-01_APP/**
-02_Service/**
-03_Platform/platform_bsp/**
-CubeMX concrete pin configuration
-```
-
----
-
-# 3. Task 1 — Public GPIO Types and Header Isolation
+### Task 1: Define STM32 GPIO Context and Construct Binding
 
 **Files:**
-- Create: `03_Platform/platform_mcu/gpio/platform_gpio_types.h`
-- Create: `Tests/platform_gpio/test_platform_gpio_types.c`
+- Create: `04_Impl/impl_mcu/impl_platform_gpio.h`
+- Create: `04_Impl/impl_mcu/impl_platform_gpio.c`
+- Create: `Tests/impl_platform_gpio/test_impl_platform_gpio.c`
+- Create as required by host build: `Tests/impl_platform_gpio/stm32f4xx_hal.h`
 
 **Interfaces:**
-- Consumes: `platform_types.h`, `platform_error.h`
-- Produces: `platform_gpio_t` forward declaration, four enum types, `platform_gpio_config_t`
+- Consumes: `platform_gpio_t`, `platform_gpio_init_params_t`, `platform_gpio_init()`.
+- Produces: `impl_platform_gpio_context_t` and `impl_platform_gpio_construct()`.
 
-- [ ] **Step 1: Write the failing public-type Host Test**
+- [ ] **Step 1: Write failing construct/context tests**
 
-`Tests/platform_gpio/test_platform_gpio_types.c` 必须验证：
+Tests must verify at least:
 
 ```c
-#include "platform_gpio_types.h"
+/* valid single-pin context */
+impl_platform_gpio_context_t context = {
+    fakePort,
+    GPIO_PIN_3
+};
+platform_gpio_t gpio = PLATFORM_GPIO_INITIALIZER;
 
-int main(void)
+/* construct succeeds */
+result = impl_platform_gpio_construct(&gpio, "test_gpio", &context);
+ASSERT_EQ(PLATFORM_ERR_OK, result);
+ASSERT_TRUE(gpio.initialized != 0U);
+ASSERT_TRUE(gpio.configured == 0U);
+ASSERT_EQ(&context, gpio.implContext);
+
+/* construct performs no HAL operation */
+ASSERT_EQ(0U, fakeHalInitCount);
+ASSERT_EQ(0U, fakeHalWriteCount);
+ASSERT_EQ(0U, fakeHalReadCount);
+ASSERT_EQ(0U, fakeHalDeinitCount);
+```
+
+Also cover:
+
+```text
+NULL gpio          -> PLATFORM_ERR_INVALID_PARAM
+NULL context       -> PLATFORM_ERR_INVALID_PARAM
+context->port NULL -> PLATFORM_ERR_INVALID_PARAM
+pin = 0            -> PLATFORM_ERR_INVALID_PARAM
+multi-bit pin      -> PLATFORM_ERR_INVALID_PARAM
+single valid pin   -> success
+```
+
+- [ ] **Step 2: Run the focused Host Test and verify RED**
+
+Use the repository's existing Host C test build pattern. Expected failure: missing `impl_platform_gpio.h` / missing construct implementation.
+
+- [ ] **Step 3: Implement the minimal private validation and construct path**
+
+Header must define exactly:
+
+```c
+typedef struct
 {
-    platform_gpio_config_t config = {
-        PLATFORM_GPIO_DIRECTION_OUTPUT,
-        PLATFORM_GPIO_PULL_NONE,
-        PLATFORM_GPIO_OUTPUT_PUSH_PULL,
-        PLATFORM_GPIO_LEVEL_LOW
-    };
+    GPIO_TypeDef *port;
+    uint16_t pin;
+} impl_platform_gpio_context_t;
 
-    return ((PLATFORM_GPIO_DIRECTION_OUTPUT == config.direction) &&
-            (PLATFORM_GPIO_LEVEL_LOW == config.initialLevel)) ? 0 : 1;
+platform_error_t impl_platform_gpio_construct(
+    platform_gpio_t *gpio,
+    const char *name,
+    impl_platform_gpio_context_t *context);
+```
+
+Production `.c` must include a private single-pin check equivalent to:
+
+```c
+static platform_bool_t stm32_gpio_is_single_pin(uint16_t pin)
+{
+    if (pin == 0U) {
+        return PLATFORM_FALSE;
+    }
+
+    return (((uint16_t)(pin & (uint16_t)(pin - 1U))) == 0U) ?
+           PLATFORM_TRUE : PLATFORM_FALSE;
 }
 ```
 
-同时添加 compile-time assertions，确认各 `*_MAX` 值位于合法枚举之后，公共头可以在没有 STM32 HAL Header 的 Host 环境独立编译。
+Construct logic:
 
-- [ ] **Step 2: Run the type test and verify RED**
+```c
+if ((gpio == NULL) || (context == NULL) ||
+    (context->port == NULL) ||
+    (stm32_gpio_is_single_pin(context->pin) != PLATFORM_TRUE)) {
+    return PLATFORM_ERR_INVALID_PARAM;
+}
 
-使用仓库现有 Host Test 编译方式；如果 Tests 没有统一脚本，则沿用 `Tests/platform_uart` 当前编译参数和 include path。
-
-预期：因 `platform_gpio_types.h` 不存在而失败。
-
-- [ ] **Step 3: Implement `platform_gpio_types.h`**
-
-要求：
-
-```text
-- 文件头 / include guard / 注释符合 C 代码规范
-- include platform_types.h
-- include platform_error.h only if needed by the public declarations in this header
-- 不 include platform_device.h
-- 不 include platform_lifecycle.h
-- 不 include stm32f4xx_hal.h
-- 不出现 GPIO_TypeDef / GPIO_PIN_x / HAL_GPIO_xxx
-- enum / struct 名称与冻结设计完全一致
+params.name = name;
+params.ops = &g_stm32GpioOps;
+params.implContext = context;
+return platform_gpio_init(gpio, &params);
 ```
 
-- [ ] **Step 4: Run type/header isolation test and verify GREEN**
+Do not mutate `context->port` or `context->pin` inside construct.
 
-预期：PASS。
+- [ ] **Step 4: Run construct/context tests and verify GREEN**
 
-- [ ] **Step 5: Perform Task 1 Coding Standard Review**
+Expected: all Task 1 tests PASS and HAL fake call counts remain zero after construct.
 
-检查命名、文件头、注释、Header isolation、无 STM32 依赖。
+- [ ] **Step 5: Coding-standard micro-review**
 
-- [ ] **Step 6: Commit Task 1**
+Check file headers, include order, naming, static/private function placement, Doxygen on public Impl API, no TAB, no unrelated code.
 
-建议提交：
+- [ ] **Step 6: Commit**
 
-```text
-feat: define Platform GPIO public types
+Suggested commit:
+
+```bash
+git add RTT_elog_DMA_UART_ring_project/04_Impl/impl_mcu/impl_platform_gpio.* \
+        RTT_elog_DMA_UART_ring_project/Tests/impl_platform_gpio/
+git commit -m "feat: add STM32 GPIO impl binding"
 ```
 
 ---
 
-# 4. Task 2 — GPIO Object, Ops and Init Contract
+### Task 2: Implement Platform Config to HAL Mapping and Configure Ordering
 
 **Files:**
-- Create: `03_Platform/platform_mcu/gpio/platform_gpio.h`
-- Create: `03_Platform/platform_mcu/gpio/platform_gpio.c`
-- Create/Modify: `Tests/platform_gpio/test_platform_gpio.c`
+- Modify: `04_Impl/impl_mcu/impl_platform_gpio.c`
+- Modify: `Tests/impl_platform_gpio/test_impl_platform_gpio.c`
+- Modify Fake HAL stub only as required for call capture.
 
 **Interfaces:**
-- Consumes: Task 1 public types, `platform_error_t`
-- Produces: `platform_gpio_ops_t`, `platform_gpio_t`, `platform_gpio_init_params_t`, `PLATFORM_GPIO_INITIALIZER`, `platform_gpio_init()`
+- Consumes: `platform_gpio_config_t`, caller-owned Context.
+- Produces: STM32 implementation of `platform_gpio_ops_t.configure`.
 
-- [ ] **Step 1: Write failing tests for object construction**
+- [ ] **Step 1: Write failing mapping tests**
 
-Fake Ops 可使用 file-local functions，不依赖 HAL。
-
-必须覆盖：
+Capture `GPIO_InitTypeDef` passed to Fake `HAL_GPIO_Init()` and verify:
 
 ```text
-PLATFORM_GPIO_INITIALIZER -> initialized=false / configured=false
-platform_gpio_init(NULL, params) -> PLATFORM_ERR_NULL_POINTER
-platform_gpio_init(gpio, NULL) -> PLATFORM_ERR_NULL_POINTER
-params->ops == NULL -> PLATFORM_ERR_INVALID_PARAM
-first init -> PLATFORM_ERR_OK
-first init binds name / ops / implContext
-first init -> initialized=true / configured=false
-second init -> PLATFORM_ERR_ALREADY_INITIALIZED
-individual ops may be NULL at construction time
+INPUT                  -> GPIO_MODE_INPUT
+OUTPUT + PUSH_PULL     -> GPIO_MODE_OUTPUT_PP
+OUTPUT + OPEN_DRAIN    -> GPIO_MODE_OUTPUT_OD
+PULL_NONE              -> GPIO_NOPULL
+PULL_UP                -> GPIO_PULLUP
+PULL_DOWN              -> GPIO_PULLDOWN
+Speed                   = GPIO_SPEED_FREQ_LOW for all supported configs
+Pin                     = context->pin
+Alternate               = deterministic safe value (0U)
 ```
 
-- [ ] **Step 2: Run tests and verify RED**
+- [ ] **Step 2: Write failing initial-level ordering tests**
 
-预期：因 `platform_gpio.h/.c` 尚未实现而失败。
+Fake HAL must record call sequence.
 
-- [ ] **Step 3: Implement public object declarations in `platform_gpio.h`**
-
-严格使用 Frozen Public Contract，不增加 Device/Lifecycle、currentLevel、mutex、registry 等字段。
-
-- [ ] **Step 4: Implement minimal `platform_gpio_init()` in `platform_gpio.c`**
-
-行为顺序：
+For OUTPUT LOW:
 
 ```text
-validate gpio
-validate params
-reject gpio->initialized
-validate params->ops
-bind fields
-initialized = true
-configured = false
-return OK
+call[0] = WRITE(port, pin, GPIO_PIN_RESET)
+call[1] = INIT(port, mapped GPIO_InitTypeDef)
 ```
 
-`name == NULL` 和 `implContext == NULL` 均允许；它们不参与当前硬件语义。
-
-- [ ] **Step 5: Run tests and verify GREEN**
-
-预期：Task 2 construction tests PASS。
-
-- [ ] **Step 6: Coding Standard Review**
-
-特别确认：
+For OUTPUT HIGH:
 
 ```text
-No platform_device_t inheritance
-No platform_lifecycle_t
-No HAL / STM32 symbols
-No hidden hardware initialization in init()
+call[0] = WRITE(port, pin, GPIO_PIN_SET)
+call[1] = INIT(...)
 ```
 
-- [ ] **Step 7: Commit Task 2**
-
-建议提交：
+For INPUT:
 
 ```text
-feat: add Platform GPIO object construction
+INIT only
+WRITE count = 0
+```
+
+- [ ] **Step 3: Run focused tests and verify RED**
+
+Expected: configure Ops absent or mapping/order assertions fail.
+
+- [ ] **Step 4: Implement context retrieval and mapping helpers**
+
+Use focused private helpers such as:
+
+```c
+static platform_error_t stm32_gpio_get_context(
+    platform_gpio_t *gpio,
+    impl_platform_gpio_context_t **context);
+
+static platform_error_t stm32_gpio_map_mode(
+    const platform_gpio_config_t *config,
+    uint32_t *mode);
+
+static platform_error_t stm32_gpio_map_pull(
+    platform_gpio_pull_t pull,
+    uint32_t *halPull);
+
+static GPIO_PinState stm32_gpio_map_level(platform_gpio_level_t level);
+```
+
+`stm32_gpio_get_context()` minimum behavior:
+
+```text
+gpio == NULL or out-context == NULL -> PLATFORM_ERR_INVALID_PARAM
+implContext == NULL                 -> PLATFORM_ERR_NOT_INITIALIZED
+context->port == NULL               -> PLATFORM_ERR_NOT_INITIALIZED
+context->pin not single-bit         -> PLATFORM_ERR_INVALID_PARAM
+```
+
+Do not copy Platform lifecycle/state checks already owned by `platform_gpio.c`.
+
+- [ ] **Step 5: Implement configure Ops**
+
+Use deterministic zero initialization:
+
+```c
+GPIO_InitTypeDef halConfig = {0};
+```
+
+Then:
+
+```text
+Pin       = context->pin
+Mode      = mapped mode
+Pull      = mapped pull
+Speed     = GPIO_SPEED_FREQ_LOW
+Alternate = 0U
+```
+
+OUTPUT sequence must be exactly:
+
+```c
+HAL_GPIO_WritePin(context->port,
+                  context->pin,
+                  stm32_gpio_map_level(config->initialLevel));
+HAL_GPIO_Init(context->port, &halConfig);
+```
+
+INPUT must call only `HAL_GPIO_Init()`.
+
+HAL API returns `void`; successful call path returns `PLATFORM_ERR_OK`.
+
+- [ ] **Step 6: Run Task 2 tests and verify GREEN**
+
+Expected: all config mappings and call-order assertions PASS.
+
+- [ ] **Step 7: Run existing Platform GPIO Host Regression**
+
+Run the existing `Tests/platform_gpio/` suite with no changes to frozen Platform behavior. Expected: PASS.
+
+- [ ] **Step 8: Commit**
+
+Suggested commit:
+
+```bash
+git add RTT_elog_DMA_UART_ring_project/04_Impl/impl_mcu/impl_platform_gpio.c \
+        RTT_elog_DMA_UART_ring_project/Tests/impl_platform_gpio/
+git commit -m "feat: map Platform GPIO config to STM32 HAL"
 ```
 
 ---
 
-# 5. Task 3 — Configure Contract and State Preservation
+### Task 3: Implement GPIO Write, Read, and Deinit Ops
 
 **Files:**
-- Modify: `03_Platform/platform_mcu/gpio/platform_gpio.c`
-- Modify: `03_Platform/platform_mcu/gpio/platform_gpio.h`
-- Modify: `Tests/platform_gpio/test_platform_gpio.c`
+- Modify: `04_Impl/impl_mcu/impl_platform_gpio.c`
+- Modify: `Tests/impl_platform_gpio/test_impl_platform_gpio.c`
+- Modify Fake HAL stub as required.
 
 **Interfaces:**
-- Consumes: `platform_gpio_ops_t.configure`
-- Produces: `platform_gpio_configure()`
+- Consumes: validated Platform calls and STM32 Context.
+- Produces: STM32 implementation of `write`, `read`, `deinit` Ops.
 
-- [ ] **Step 1: Add failing configure tests**
+- [ ] **Step 1: Write failing write tests**
 
-覆盖：
+Verify:
 
 ```text
-not initialized -> PLATFORM_ERR_NOT_INITIALIZED
-config == NULL -> PLATFORM_ERR_NULL_POINTER
-direction >= MAX -> PLATFORM_ERR_INVALID_PARAM
-pull >= MAX -> PLATFORM_ERR_INVALID_PARAM
-outputType >= MAX -> PLATFORM_ERR_INVALID_PARAM
-initialLevel >= MAX -> PLATFORM_ERR_INVALID_PARAM
-configure op == NULL -> PLATFORM_ERR_NOT_SUPPORTED
-first configure success -> forwards exact config
-first configure success -> configured=true + config copied
-first configure Impl failure -> configured=false
-Impl error -> returned unchanged
-successful reconfigure -> new config replaces old config
-failed reconfigure after previous success -> configured stays true
-failed reconfigure after previous success -> previous successful config preserved
+PLATFORM_GPIO_LEVEL_LOW
+    -> HAL_GPIO_WritePin(port, pin, GPIO_PIN_RESET)
+
+PLATFORM_GPIO_LEVEL_HIGH
+    -> HAL_GPIO_WritePin(port, pin, GPIO_PIN_SET)
 ```
 
-Fake configure op 必须记录调用次数、对象指针和收到的 config，并可配置返回值。
+Also verify correct `port` and `pin` forwarding.
 
-- [ ] **Step 2: Run tests and verify RED**
+- [ ] **Step 2: Write failing read tests**
 
-预期：新 configure tests FAIL。
-
-- [ ] **Step 3: Implement file-local config validation helper**
-
-建议使用单一 file-local helper 校验四个枚举，避免公共 API 重复判断。
-
-合法条件：
+Configure Fake HAL return values and verify:
 
 ```text
-direction < PLATFORM_GPIO_DIRECTION_MAX
-pull < PLATFORM_GPIO_PULL_MAX
-outputType < PLATFORM_GPIO_OUTPUT_MAX
-initialLevel < PLATFORM_GPIO_LEVEL_MAX
+GPIO_PIN_RESET -> PLATFORM_GPIO_LEVEL_LOW
+GPIO_PIN_SET   -> PLATFORM_GPIO_LEVEL_HIGH
 ```
 
-不得因为 INPUT 模式而允许非法 `outputType` 或 `initialLevel`。
+Verify correct `port / pin` passed to `HAL_GPIO_ReadPin()`.
 
-- [ ] **Step 4: Implement `platform_gpio_configure()`**
+- [ ] **Step 3: Write failing deinit tests**
 
-关键顺序：
+Verify:
 
 ```text
-validate
-snapshot is implicit in existing object state
-call ops->configure
-if failure: return without changing cached successful config/state
-if success: gpio->config = *config; gpio->configured = true
+HAL_GPIO_DeInit(context->port, context->pin)
 ```
 
-重新配置失败时不得先清空 `configured`。
-
-- [ ] **Step 5: Run tests and verify GREEN**
-
-预期：所有 configure tests PASS。
-
-- [ ] **Step 6: Coding Standard Review**
-
-重点检查失败路径不会破坏旧成功配置。
-
-- [ ] **Step 7: Commit Task 3**
-
-建议提交：
+and through public Platform API:
 
 ```text
-feat: implement Platform GPIO configuration
+platform_gpio_deinit() success
+    -> gpio.configured == 0U
+    -> gpio.initialized remains true
+```
+
+No RCC Fake API must be invoked.
+
+- [ ] **Step 4: Run focused tests and verify RED**
+
+Expected: missing Ops implementations or forwarding assertions fail.
+
+- [ ] **Step 5: Implement minimal write/read/deinit Ops**
+
+Write:
+
+```c
+HAL_GPIO_WritePin(context->port,
+                  context->pin,
+                  stm32_gpio_map_level(level));
+return PLATFORM_ERR_OK;
+```
+
+Read:
+
+```c
+halLevel = HAL_GPIO_ReadPin(context->port, context->pin);
+*level = (halLevel == GPIO_PIN_SET) ?
+         PLATFORM_GPIO_LEVEL_HIGH : PLATFORM_GPIO_LEVEL_LOW;
+return PLATFORM_ERR_OK;
+```
+
+Deinit:
+
+```c
+HAL_GPIO_DeInit(context->port, context->pin);
+return PLATFORM_ERR_OK;
+```
+
+Do not modify `gpio->configured` inside Impl; Platform owns that state transition.
+
+- [ ] **Step 6: Run all Impl GPIO Host Tests and verify GREEN**
+
+Expected: construct/configure/write/read/deinit tests PASS.
+
+- [ ] **Step 7: Run Platform GPIO Regression again**
+
+Expected: PASS.
+
+- [ ] **Step 8: Commit**
+
+Suggested commit:
+
+```bash
+git add RTT_elog_DMA_UART_ring_project/04_Impl/impl_mcu/impl_platform_gpio.c \
+        RTT_elog_DMA_UART_ring_project/Tests/impl_platform_gpio/
+git commit -m "feat: implement STM32 GPIO data operations"
 ```
 
 ---
 
-# 6. Task 4 — Write and Read Contracts
+### Task 4: Dependency Boundary, RCC Guard, and Host Test Completeness
 
 **Files:**
-- Modify: `03_Platform/platform_mcu/gpio/platform_gpio.c`
-- Modify: `03_Platform/platform_mcu/gpio/platform_gpio.h`
-- Modify: `Tests/platform_gpio/test_platform_gpio.c`
+- Modify tests only if gaps are found.
+- Do not modify unrelated production modules.
 
 **Interfaces:**
-- Consumes: `platform_gpio_ops_t.write`, `platform_gpio_ops_t.read`
-- Produces: `platform_gpio_write()`, `platform_gpio_read()`
+- Consumes: completed GPIO STM32 Impl.
+- Produces: verified Phase 1 architecture boundary.
 
-- [ ] **Step 1: Add failing write tests**
+- [ ] **Step 1: Run a source scan for forbidden board semantics**
 
-覆盖：
+Production GPIO Impl must not contain identifiers / semantics for:
 
 ```text
-not initialized -> NOT_INITIALIZED
-initialized but not configured -> INVALID_STATE
-configured INPUT -> INVALID_STATE
-invalid level -> INVALID_PARAM
-write op NULL -> NOT_SUPPORTED
-configured OUTPUT + valid level -> exact Ops forwarding
-Impl write error -> unchanged propagation
-successful write does not mutate gpio->config.initialLevel
+PC13
+PA0
+LED
+KEY
+SCL
+SDA
+DHT20
+MPU6050
+ACTIVE_LOW
 ```
 
-最后一项用于确认 `initialLevel` 是配置时初值，不是 runtime currentLevel cache。
+- [ ] **Step 2: Run a source scan for forbidden RCC ownership**
 
-- [ ] **Step 2: Add failing read tests**
-
-覆盖：
+`impl_platform_gpio.*` must not contain:
 
 ```text
-not initialized -> NOT_INITIALIZED
-not configured -> INVALID_STATE
-level == NULL -> NULL_POINTER
-read op NULL -> NOT_SUPPORTED
-configured INPUT -> read allowed
-configured OUTPUT -> read allowed
-Fake read LOW/HIGH -> exact value returned
-Impl read error -> unchanged propagation
+__HAL_RCC_GPIO
+CLK_ENABLE
+CLK_DISABLE
 ```
 
-- [ ] **Step 3: Run tests and verify RED**
+except comments that explain the explicit non-ownership contract if such comments are useful.
 
-预期：write/read tests FAIL。
+- [ ] **Step 3: Verify no Platform public HAL leakage**
 
-- [ ] **Step 4: Implement `platform_gpio_write()`**
-
-校验顺序应保证未构造对象不会解引用 Ops；只有 OUTPUT 才允许 write。
-
-- [ ] **Step 5: Implement `platform_gpio_read()`**
-
-INPUT / OUTPUT 均允许，不增加方向限制。
-
-- [ ] **Step 6: Run tests and verify GREEN**
-
-预期：write/read tests 全部 PASS。
-
-- [ ] **Step 7: Coding Standard Review**
-
-重点确认：
+`03_Platform/platform_mcu/gpio/*.h` must remain free of:
 
 ```text
-No currentLevel state added
-No hardware-specific level mapping in Platform
-No input/output polarity semantics beyond logical HIGH/LOW
-```
-
-- [ ] **Step 8: Commit Task 4**
-
-建议提交：
-
-```text
-feat: add Platform GPIO read and write
-```
-
----
-
-# 7. Task 5 — Deinit and Reconfigure Lifecycle
-
-**Files:**
-- Modify: `03_Platform/platform_mcu/gpio/platform_gpio.c`
-- Modify: `03_Platform/platform_mcu/gpio/platform_gpio.h`
-- Modify: `Tests/platform_gpio/test_platform_gpio.c`
-
-**Interfaces:**
-- Consumes: `platform_gpio_ops_t.deinit`
-- Produces: `platform_gpio_deinit()` and complete lightweight state cycle
-
-- [ ] **Step 1: Add failing deinit tests**
-
-覆盖：
-
-```text
-not initialized -> NOT_INITIALIZED
-initialized but not configured -> INVALID_STATE
-deinit op NULL -> NOT_SUPPORTED
-deinit Impl failure -> error unchanged
-deinit Impl failure -> configured remains true
-deinit success -> configured=false
-deinit success -> initialized remains true
-deinit success -> ops / implContext binding remains intact
-after successful deinit -> configure again succeeds
-```
-
-- [ ] **Step 2: Run tests and verify RED**
-
-预期：deinit tests FAIL。
-
-- [ ] **Step 3: Implement `platform_gpio_deinit()`**
-
-成功时只修改：
-
-```text
-configured = false
-```
-
-不得：
-
-```text
-clear initialized
-clear ops
-clear implContext
-clear name
-free memory
-```
-
-- [ ] **Step 4: Run full Platform GPIO test suite and verify GREEN**
-
-预期：`test_platform_gpio_types` 与 `test_platform_gpio` 全部 PASS。
-
-- [ ] **Step 5: Coding Standard Review**
-
-确认 `deinit()` 语义是 hardware deconfiguration，不是 object destruction。
-
-- [ ] **Step 6: Commit Task 5**
-
-建议提交：
-
-```text
-feat: complete Platform GPIO lifecycle
-```
-
----
-
-# 8. Task 6 — Boundary, Regression and Frozen-Design Review
-
-**Files:**
-- Inspect only production files created by Tasks 1-5
-- Modify only if a defect is found inside current scope
-
-**Interfaces:**
-- Produces: verified Phase 1 Platform-only implementation
-
-- [ ] **Step 1: Run complete GPIO Host Tests**
-
-Expected: PASS。
-
-- [ ] **Step 2: Header Isolation Scan**
-
-确认以下生产文件和 Tests 不包含：
-
-```text
-stm32f4xx_hal.h
+stm32f4xx_hal
 GPIO_TypeDef
 GPIO_InitTypeDef
 GPIO_PIN_
 HAL_GPIO_
-FreeRTOS
-cmsis_os
 ```
 
-- [ ] **Step 3: Dependency Boundary Scan**
+- [ ] **Step 4: Verify no reverse dependency**
 
-确认 `03_Platform/platform_mcu/gpio/` 不依赖：
+No APP / Service source should newly include `impl_platform_gpio.h`.
+
+- [ ] **Step 5: Run all GPIO Host Tests**
+
+Run:
 
 ```text
-04_Impl
-01_APP
-02_Service
-platform_bsp concrete device semantics
+Tests/impl_platform_gpio/
+Tests/platform_gpio/
 ```
 
-允许依赖：
+Expected: PASS.
 
-```text
-platform_types.h
-platform_error.h
+- [ ] **Step 6: Run relevant existing regressions if current Host harness makes them inexpensive**
+
+At minimum ensure the new include/header structure does not break existing Platform/Impl compilation boundaries. Do not broaden into unrelated refactoring if failures are pre-existing and unrelated.
+
+- [ ] **Step 7: Commit any test-only fixes required by this gate**
+
+Suggested commit if needed:
+
+```bash
+git commit -m "test: verify STM32 GPIO impl boundaries"
 ```
-
-- [ ] **Step 4: Public Contract Diff Review**
-
-逐项对照 `Platform_GPIO_Phase1设计.md`：
-
-```text
-exact enums
-exact config fields
-exact object fields
-exact Ops
-exact public APIs
-state semantics
-error semantics
-reconfigure failure preservation
-deinit semantics
-```
-
-任何公共合同偏差都必须先修复或 STOP，不得自行合理化。
-
-- [ ] **Step 5: Explicit Non-Goal Scan**
-
-确认没有新增：
-
-```text
-GPIO speed
-Toggle
-IRQ / EXTI / callback
-AF / Analog
-LED / KEY
-RTOS lock
-Registry
-Dynamic memory
-STM32 Impl
-```
-
-- [ ] **Step 6: Run existing nearby regression tests**
-
-至少重新运行：
-
-```text
-Tests/platform_uart
-```
-
-如果仓库已有统一 Platform Host Test 脚本，则运行全部 Platform Host Tests。
-
-新增 GPIO 模块不应改变现有 UART / Common 行为。
-
-- [ ] **Step 7: Final Coding Standard Review**
-
-依据 `execution_rules.md` 回答：
-
-```text
-1. 命名 / 文件组织 / 注释是否符合规范？
-2. NULL / enum / state / return path 是否完整？
-3. 是否存在生命周期、所有权或并发问题？
-4. 是否修改生成代码 / Vendor / 无关模块？
-5. 是否存在冻结设计偏离？
-```
-
-结果必须为：
-
-```text
-Coding Standard Review: PASS
-```
-
-否则不得标记阶段完成。
-
-- [ ] **Step 8: Commit verification fixes if any**
-
-如果 Task 6 发现并修复当前范围缺陷，单独提交：
-
-```text
-fix: harden Platform GPIO Phase1 contract
-```
-
-若无修改，不制造空提交。
 
 ---
 
-# 9. Task 7 — Handoff Update and Phase Closure
+### Task 5: Keil Integration and Real Build Verification
 
 **Files:**
-- Modify: `00_Doc/04_Agent/handoff.md`
+- Modify the existing Keil project file only as necessary to add `04_Impl/impl_mcu/impl_platform_gpio.c` and required include path already consistent with project organization.
+- Do not modify CubeMX concrete GPIO Pin configuration.
 
 **Interfaces:**
-- Produces: current repository truth for the next Agent
+- Consumes: completed Production GPIO Impl.
+- Produces: STM32 target compile/link evidence.
 
-- [ ] **Step 1: Update GPIO status only after evidence exists**
+- [ ] **Step 1: Inspect current Keil source groups and include paths**
 
-只有 Host Test / boundary / coding-standard Gate 都 PASS 后，才允许将：
+Follow existing placement used by `impl_platform_uart.c`; do not reorganize unrelated groups.
+
+- [ ] **Step 2: Add only the new production GPIO Impl source to the Keil project**
+
+Do not add Host Fake HAL test files to target project.
+
+- [ ] **Step 3: Perform an actual Keil Full Rebuild**
+
+Required evidence:
 
 ```text
-GPIO Platform Phase 1 Implementation NOT STARTED
+Keil Full Rebuild: PASS / FAIL
+Error count
+Warning count
 ```
 
-更新为：
+Do not report static inspection as Keil verification.
+
+- [ ] **Step 4: If build fails, fix only Phase 1 integration defects**
+
+Allowed examples:
 
 ```text
-GPIO Platform Phase 1                COMPLETED / HOST VERIFIED
-GPIO Platform Host Tests             PASS
-Header Isolation                     PASS
-Platform Dependency Boundary         PASS
-Coding Standard Review               PASS
-STM32 Impl                            NOT STARTED
-Target Board GPIO                    NOT YET VERIFIED
+missing production include path
+incorrect HAL include
+signature/type mismatch
+new source not added to project
 ```
 
-- [ ] **Step 2: Preserve verification boundaries**
-
-不得写：
+Forbidden shortcuts:
 
 ```text
-Keil Build Verified
-Target Board Verified
-LED Verified
+changing Platform API to make Impl compile
+adding board pin bindings
+adding CubeMX pin config
+adding RCC ownership to Impl
 ```
 
-除非用户后续真实提供对应证据；这些不属于当前 Platform-only Phase。
+- [ ] **Step 5: Re-run Host GPIO Tests after any Keil-driven code change**
 
-- [ ] **Step 3: Set next phase**
+Expected: PASS.
 
-下一阶段入口写为：
+- [ ] **Step 6: Commit Keil integration**
 
-```text
-GPIO STM32 Impl Phase 1 Design
+Suggested commit:
+
+```bash
+git add <existing-keil-project-file>
+git commit -m "build: integrate STM32 GPIO impl"
 ```
 
-强调必须重新设计和重新生成新的 `implementation_plan.md`，不得直接延长当前计划。
+If the environment cannot execute Keil, report `KEIL NOT VERIFIED` rather than fabricating a result; do not mark Phase 1 complete until user supplies actual Build evidence.
 
-- [ ] **Step 4: Commit handoff**
+---
 
-建议提交：
+### Task 6: Formal Coding Standard Review and Phase Closure
+
+**Files:**
+- Review: all files created/modified in Tasks 1-5.
+- Modify: `00_Doc/04_Agent/handoff.md` only after all attainable verification gates are known.
+- Modify: `00_Doc/04_Agent/implementation_plan.md` task checkboxes/status as execution record if current workflow requires it.
+
+**Interfaces:**
+- Consumes: tested and target-integrated GPIO Impl.
+- Produces: closure status and next Phase handoff.
+
+- [ ] **Step 1: Perform mandatory Coding Standard Review**
+
+Answer explicitly:
 
 ```text
-docs: close Platform GPIO Phase1
+1. Naming / file organization compliant?
+2. File headers / Doxygen / comments compliant?
+3. NULL / pin / context validation complete?
+4. Caller-owned Context lifetime clear?
+5. Platform state ownership preserved?
+6. Initial-level ordering correct?
+7. RCC ownership kept outside Impl?
+8. Any HAL type leaked into Platform public headers?
+9. Any unrelated files changed?
+```
+
+`[必须]` violations must be fixed and tests re-run before closure.
+
+- [ ] **Step 2: Re-run final Host gates**
+
+Required final evidence:
+
+```text
+GPIO STM32 Impl Host Tests       PASS
+Platform GPIO Regression         PASS
+Dependency Boundary              PASS
+RCC Ownership Scan               PASS
+Coding Standard Review           PASS
+```
+
+- [ ] **Step 3: Record Keil status accurately**
+
+Only one of:
+
+```text
+Keil Build                       PASS (actual build evidence)
+Keil Build                       NOT YET VERIFIED
+```
+
+- [ ] **Step 4: Update handoff status**
+
+If Host + Coding Review pass but Keil cannot be run:
+
+```text
+GPIO STM32 Impl Implementation   COMPLETED / HOST VERIFIED
+Keil Build                       NOT YET VERIFIED
+Phase 1 Closure                  BLOCKED ON KEIL GATE
+Target Board GPIO                NOT YET VERIFIED
+```
+
+If actual Keil Build passes:
+
+```text
+GPIO STM32 Impl Phase 1          COMPLETED / HOST + KEIL VERIFIED
+Target Board GPIO                NOT YET VERIFIED
+Next Phase                       Board Resource + CubeMX Configuration
+```
+
+- [ ] **Step 5: Do not enter Phase 2 automatically**
+
+Phase 2 requires a new design discussion and a new `implementation_plan.md`.
+
+- [ ] **Step 6: Commit closure documentation**
+
+Suggested commit:
+
+```bash
+git add RTT_elog_DMA_UART_ring_project/00_Doc/04_Agent/handoff.md \
+        RTT_elog_DMA_UART_ring_project/00_Doc/04_Agent/implementation_plan.md
+git commit -m "docs: close GPIO STM32 Impl Phase1"
 ```
 
 ---
 
-# 10. Final Acceptance Gate
+# Final Acceptance Checklist
 
-只有以下全部满足，GPIO Platform Phase 1 才算完成：
+Phase 1 cannot be declared complete until all required items below are satisfied:
 
 ```text
-[ ] Frozen spec unchanged or explicitly re-approved
-[ ] platform_gpio_types.h implemented
-[ ] platform_gpio.h implemented
-[ ] platform_gpio.c implemented
-[ ] Host type test PASS
-[ ] Host behavior test PASS
-[ ] configure failure preserves prior successful state
-[ ] deinit failure preserves configured state
-[ ] Header Isolation PASS
-[ ] No STM32 HAL dependency PASS
-[ ] Platform dependency boundary PASS
-[ ] Existing Platform UART regression PASS
+[ ] impl_platform_gpio.h created
+[ ] impl_platform_gpio.c created
+[ ] caller-owned Context implemented
+[ ] no Context Pool / Registry / dynamic allocation
+[ ] one-object-one-pin validation implemented
+[ ] construct performs no HAL hardware operation
+[ ] INPUT mapping verified
+[ ] OUTPUT Push-Pull mapping verified
+[ ] OUTPUT Open-Drain mapping verified
+[ ] Pull mapping verified
+[ ] GPIO Speed fixed privately to LOW
+[ ] OUTPUT initial level written before HAL_GPIO_Init
+[ ] INPUT configure performs no initial-level write
+[ ] write LOW/HIGH mapping verified
+[ ] read RESET/SET mapping verified
+[ ] deinit mapping verified
+[ ] Impl does not modify Platform configured state directly
+[ ] no RCC ownership in Impl
+[ ] no LED / KEY / Soft-I2C board semantics in Impl
+[ ] GPIO STM32 Impl Host Tests PASS
+[ ] Platform GPIO Regression PASS
+[ ] Dependency Boundary PASS
 [ ] Coding Standard Review PASS
-[ ] No 04_Impl changes
-[ ] No CubeMX concrete GPIO pin configuration changes
-[ ] handoff.md updated with evidence-backed status
+[ ] actual Keil Build PASS
 ```
 
-阶段允许的最终标签：
+Phase 1 completion state:
 
 ```text
-GPIO Platform Phase 1
-COMPLETED / HOST VERIFIED
+GPIO STM32 Impl Phase 1 = IMPLEMENTED / HOST + KEIL VERIFIED
+Target Board GPIO        = NOT YET VERIFIED
 ```
 
-后续真实硬件链路必须通过独立阶段完成：
+Next Phase only after Phase 1 closure:
 
 ```text
-GPIO STM32 Impl Phase 1 Design
-    -> Impl plan
-    -> STM32 GPIO mapping
-    -> Board / BSP binding
-    -> target-board GPIO verification
+Phase 2 — Board Resource + CubeMX Configuration
 ```
+
+Phase 2 may then bind actual resources such as PC13 LED and PA0 KEY and perform target-board GPIO input/output Smoke Tests.
