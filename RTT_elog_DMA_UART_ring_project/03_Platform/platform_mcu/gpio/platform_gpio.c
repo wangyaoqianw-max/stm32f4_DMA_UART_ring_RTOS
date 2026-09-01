@@ -174,4 +174,34 @@ platform_error_t platform_gpio_read(
 
     return gpio->ops->read(gpio, level);
 }
+
+platform_error_t platform_gpio_deinit(platform_gpio_t *gpio)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    if (gpio == NULL) {
+        return PLATFORM_ERR_NULL_POINTER;
+    }
+
+    if (gpio->initialized == 0U) {
+        return PLATFORM_ERR_NOT_INITIALIZED;
+    }
+
+    if (gpio->configured == 0U) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    if ((gpio->ops == NULL) || (gpio->ops->deinit == NULL)) {
+        return PLATFORM_ERR_NOT_SUPPORTED;
+    }
+
+    result = gpio->ops->deinit(gpio);
+    if (result != PLATFORM_ERR_OK) {
+        return result;
+    }
+
+    gpio->configured = 0U;
+
+    return PLATFORM_ERR_OK;
+}
 //******************************** Functions *********************************//

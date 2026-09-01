@@ -39,8 +39,10 @@ typedef struct
     platform_gpio_level_t readLevel;
     platform_error_t writeResult;
     platform_error_t readResult;
+    platform_error_t deinitResult;
     uint32_t writeCallCount;
     uint32_t readCallCount;
+    uint32_t deinitCallCount;
 } fake_gpio_context_t;
 
 /**
@@ -100,6 +102,21 @@ static platform_error_t fake_read(
     return context->readResult;
 }
 
+/**
+ * @brief 记录一次 GPIO 反配置请求
+ * @param[in] gpio : GPIO 对象
+ * @return 预设的假实现结果
+ */
+static platform_error_t fake_deinit(platform_gpio_t *gpio)
+{
+    fake_gpio_context_t *context = (fake_gpio_context_t *)gpio->implContext;
+
+    context->gpio = gpio;
+    context->deinitCallCount++;
+
+    return context->deinitResult;
+}
+
 static const platform_gpio_ops_t g_configureOps = {
     fake_configure,
     NULL,
@@ -119,6 +136,13 @@ static const platform_gpio_ops_t g_readOps = {
     NULL,
     fake_read,
     NULL
+};
+
+static const platform_gpio_ops_t g_deinitOps = {
+    fake_configure,
+    NULL,
+    NULL,
+    fake_deinit
 };
 
 /**
@@ -677,6 +701,151 @@ static int test_read_validates_and_propagates_error(void)
 }
 
 /**
+ * @brief 验证 deinit 的对象状态和缺失 Ops 校验
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_deinit_validates_state_and_missing_op(void)
+{
+    platform_gpio_t uninitializedGpio = PLATFORM_GPIO_INITIALIZER;
+    platform_gpio_t notConfiguredGpio = PLATFORM_GPIO_INITIALIZER;
+    platform_gpio_t missingDeinitGpio = PLATFORM_GPIO_INITIALIZER;
+    fake_gpio_context_t notConfiguredContext = {0};
+    fake_gpio_context_t missingDeinitContext = {0};
+    platform_gpio_init_params_t notConfiguredParams = {
+        "not-configured-gpio",
+        &g_deinitOps,
+        &notConfiguredContext
+    };
+    platform_gpio_init_params_t missingDeinitParams = {
+        "missing-deinit-gpio",
+        &g_configureOps,
+        &missingDeinitContext
+    };
+    platform_gpio_config_t config = {
+        PLATFORM_GPIO_DIRECTION_OUTPUT,
+        PLATFORM_GPIO_PULL_NONE,
+        PLATFORM_GPIO_OUTPUT_PUSH_PULL,
+        PLATFORM_GPIO_LEVEL_LOW
+    };
+
+    TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED ==
+                platform_gpio_deinit(&uninitializedGpio));
+    TEST_ASSERT(PLATFORM_ERR_NULL_POINTER == platform_gpio_deinit(NULL));
+
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_gpio_init(&notConfiguredGpio, &notConfiguredParams));
+    TEST_ASSERT(PLATFORM_ERR_INVALID_STATE ==
+                platform_gpio_deinit(&notConfiguredGpio));
+
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_gpio_init(&missingDeinitGpio, &missingDeinitParams));
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_gpio_configure(&missingDeinitGpio, &config));
+    TEST_ASSERT(PLATFORM_ERR_NOT_SUPPORTED ==
+                platform_gpio_deinit(&missingDeinitGpio));
+    TEST_ASSERT(1U == missingDeinitGpio.configured);
+
+    return 0;
+}
+
+/**
+ * @brief 验证 deinit Impl 失败时保持既有配置状态
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_deinit_failure_preserves_state(void)
+{
+    platform_gpio_t gpio = PLATFORM_GPIO_INITIALIZER;
+    fake_gpio_context_t context = {0};
+    platform_gpio_init_params_t params = {
+        "gpio-test",
+        &g_deinitOps,
+        &context
+    };
+    platform_gpio_config_t config = {
+        PLATFORM_GPIO_DIRECTION_OUTPUT,
+        PLATFORM_GPIO_PULL_DOWN,
+        PLATFORM_GPIO_OUTPUT_OPEN_DRAIN,
+        PLATFORM_GPIO_LEVEL_HIGH
+    };
+
+    context.deinitResult = PLATFORM_ERR_IO;
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_init(&gpio, &params));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_configure(&gpio, &config));
+    TEST_ASSERT(PLATFORM_ERR_IO == platform_gpio_deinit(&gpio));
+    TEST_ASSERT(1U == context.deinitCallCount);
+    TEST_ASSERT(&gpio == context.gpio);
+    TEST_ASSERT(1U == gpio.initialized);
+    TEST_ASSERT(1U == gpio.configured);
+    TEST_ASSERT(params.name == gpio.name);
+    TEST_ASSERT(params.ops == gpio.ops);
+    TEST_ASSERT(params.implContext == gpio.implContext);
+    TEST_ASSERT(config.direction == gpio.config.direction);
+    TEST_ASSERT(config.pull == gpio.config.pull);
+    TEST_ASSERT(config.outputType == gpio.config.outputType);
+    TEST_ASSERT(config.initialLevel == gpio.config.initialLevel);
+
+    return 0;
+}
+
+/**
+ * @brief 验证 deinit 成功状态和之后重新 configure
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_deinit_success_allows_reconfigure(void)
+{
+    platform_gpio_t gpio = PLATFORM_GPIO_INITIALIZER;
+    fake_gpio_context_t context = {0};
+    platform_gpio_init_params_t params = {
+        "gpio-test",
+        &g_deinitOps,
+        &context
+    };
+    platform_gpio_config_t oldConfig = {
+        PLATFORM_GPIO_DIRECTION_OUTPUT,
+        PLATFORM_GPIO_PULL_NONE,
+        PLATFORM_GPIO_OUTPUT_PUSH_PULL,
+        PLATFORM_GPIO_LEVEL_LOW
+    };
+    platform_gpio_config_t newConfig = {
+        PLATFORM_GPIO_DIRECTION_INPUT,
+        PLATFORM_GPIO_PULL_UP,
+        PLATFORM_GPIO_OUTPUT_PUSH_PULL,
+        PLATFORM_GPIO_LEVEL_HIGH
+    };
+
+    context.deinitResult = PLATFORM_ERR_OK;
+    context.result = PLATFORM_ERR_OK;
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_init(&gpio, &params));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_configure(&gpio, &oldConfig));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_deinit(&gpio));
+    TEST_ASSERT(1U == gpio.initialized);
+    TEST_ASSERT(0U == gpio.configured);
+    TEST_ASSERT(params.name == gpio.name);
+    TEST_ASSERT(params.ops == gpio.ops);
+    TEST_ASSERT(params.implContext == gpio.implContext);
+    TEST_ASSERT(oldConfig.direction == gpio.config.direction);
+    TEST_ASSERT(oldConfig.pull == gpio.config.pull);
+    TEST_ASSERT(oldConfig.outputType == gpio.config.outputType);
+    TEST_ASSERT(oldConfig.initialLevel == gpio.config.initialLevel);
+
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_configure(&gpio, &newConfig));
+    TEST_ASSERT(2U == context.callCount);
+    TEST_ASSERT(1U == gpio.configured);
+    TEST_ASSERT(newConfig.direction == gpio.config.direction);
+    TEST_ASSERT(newConfig.pull == gpio.config.pull);
+    TEST_ASSERT(newConfig.outputType == gpio.config.outputType);
+    TEST_ASSERT(newConfig.initialLevel == gpio.config.initialLevel);
+
+    return 0;
+}
+
+/**
  * @brief 运行 Platform GPIO 对象构造测试
  * @param[in] 无
  * @param[out] 无
@@ -747,6 +916,21 @@ int main(void)
     }
 
     result = test_read_validates_and_propagates_error();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_deinit_validates_state_and_missing_op();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_deinit_failure_preserves_state();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_deinit_success_allows_reconfigure();
     if (0 != result) {
         return result;
     }
