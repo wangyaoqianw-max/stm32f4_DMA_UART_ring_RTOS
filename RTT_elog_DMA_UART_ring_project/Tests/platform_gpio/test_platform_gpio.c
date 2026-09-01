@@ -35,6 +35,12 @@ typedef struct
     platform_gpio_config_t config;
     platform_error_t result;
     uint32_t callCount;
+    platform_gpio_level_t writtenLevel;
+    platform_gpio_level_t readLevel;
+    platform_error_t writeResult;
+    platform_error_t readResult;
+    uint32_t writeCallCount;
+    uint32_t readCallCount;
 } fake_gpio_context_t;
 
 /**
@@ -56,10 +62,62 @@ static platform_error_t fake_configure(
     return context->result;
 }
 
+/**
+ * @brief 记录一次 GPIO 写请求
+ * @param[in] gpio  : GPIO 对象
+ * @param[in] level : 待写入的逻辑电平
+ * @return 预设的假实现结果
+ */
+static platform_error_t fake_write(
+    platform_gpio_t *gpio,
+    platform_gpio_level_t level)
+{
+    fake_gpio_context_t *context = (fake_gpio_context_t *)gpio->implContext;
+
+    context->gpio = gpio;
+    context->writtenLevel = level;
+    context->writeCallCount++;
+
+    return context->writeResult;
+}
+
+/**
+ * @brief 记录一次 GPIO 读请求并返回预设电平
+ * @param[in] gpio  : GPIO 对象
+ * @param[out] level : 读取到的逻辑电平
+ * @return 预设的假实现结果
+ */
+static platform_error_t fake_read(
+    platform_gpio_t *gpio,
+    platform_gpio_level_t *level)
+{
+    fake_gpio_context_t *context = (fake_gpio_context_t *)gpio->implContext;
+
+    context->gpio = gpio;
+    context->readCallCount++;
+    *level = context->readLevel;
+
+    return context->readResult;
+}
+
 static const platform_gpio_ops_t g_configureOps = {
     fake_configure,
     NULL,
     NULL,
+    NULL
+};
+
+static const platform_gpio_ops_t g_writeOps = {
+    fake_configure,
+    fake_write,
+    NULL,
+    NULL
+};
+
+static const platform_gpio_ops_t g_readOps = {
+    fake_configure,
+    NULL,
+    fake_read,
     NULL
 };
 
@@ -388,6 +446,237 @@ static int test_configure_failure_preserves_state(void)
 }
 
 /**
+ * @brief 验证 write 的状态、方向和电平校验
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_write_validates_state_and_parameters(void)
+{
+    platform_gpio_t uninitializedGpio = PLATFORM_GPIO_INITIALIZER;
+    platform_gpio_t inputGpio = PLATFORM_GPIO_INITIALIZER;
+    platform_gpio_t outputGpio = PLATFORM_GPIO_INITIALIZER;
+    platform_gpio_t missingWriteGpio = PLATFORM_GPIO_INITIALIZER;
+    fake_gpio_context_t inputContext = {0};
+    fake_gpio_context_t outputContext = {0};
+    fake_gpio_context_t missingWriteContext = {0};
+    platform_gpio_init_params_t inputParams = {
+        "input-gpio",
+        &g_writeOps,
+        &inputContext
+    };
+    platform_gpio_init_params_t outputParams = {
+        "output-gpio",
+        &g_writeOps,
+        &outputContext
+    };
+    platform_gpio_init_params_t missingWriteParams = {
+        "missing-write-gpio",
+        &g_readOps,
+        &missingWriteContext
+    };
+    platform_gpio_config_t inputConfig = {
+        PLATFORM_GPIO_DIRECTION_INPUT,
+        PLATFORM_GPIO_PULL_NONE,
+        PLATFORM_GPIO_OUTPUT_PUSH_PULL,
+        PLATFORM_GPIO_LEVEL_LOW
+    };
+    platform_gpio_config_t outputConfig = {
+        PLATFORM_GPIO_DIRECTION_OUTPUT,
+        PLATFORM_GPIO_PULL_NONE,
+        PLATFORM_GPIO_OUTPUT_PUSH_PULL,
+        PLATFORM_GPIO_LEVEL_LOW
+    };
+
+    TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED ==
+                platform_gpio_write(&uninitializedGpio,
+                                    PLATFORM_GPIO_LEVEL_LOW));
+    TEST_ASSERT(PLATFORM_ERR_NULL_POINTER ==
+                platform_gpio_write(NULL, PLATFORM_GPIO_LEVEL_LOW));
+
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_gpio_init(&inputGpio, &inputParams));
+    TEST_ASSERT(PLATFORM_ERR_INVALID_STATE ==
+                platform_gpio_write(&inputGpio, PLATFORM_GPIO_LEVEL_LOW));
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_gpio_configure(&inputGpio, &inputConfig));
+    TEST_ASSERT(PLATFORM_ERR_INVALID_STATE ==
+                platform_gpio_write(&inputGpio, PLATFORM_GPIO_LEVEL_LOW));
+
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_gpio_init(&outputGpio, &outputParams));
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_gpio_configure(&outputGpio, &outputConfig));
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM ==
+                platform_gpio_write(
+                    &outputGpio,
+                    (platform_gpio_level_t)PLATFORM_GPIO_LEVEL_MAX));
+    TEST_ASSERT(0U == outputContext.writeCallCount);
+
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_gpio_init(&missingWriteGpio, &missingWriteParams));
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_gpio_configure(&missingWriteGpio, &outputConfig));
+    TEST_ASSERT(PLATFORM_ERR_NOT_SUPPORTED ==
+                platform_gpio_write(&missingWriteGpio,
+                                    PLATFORM_GPIO_LEVEL_HIGH));
+
+    return 0;
+}
+
+/**
+ * @brief 验证 write 精确转发且原样传播 Impl 错误
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_write_forwards_and_propagates_error(void)
+{
+    platform_gpio_t gpio = PLATFORM_GPIO_INITIALIZER;
+    fake_gpio_context_t context = {0};
+    platform_gpio_init_params_t params = {
+        "gpio-test",
+        &g_writeOps,
+        &context
+    };
+    platform_gpio_config_t config = {
+        PLATFORM_GPIO_DIRECTION_OUTPUT,
+        PLATFORM_GPIO_PULL_NONE,
+        PLATFORM_GPIO_OUTPUT_PUSH_PULL,
+        PLATFORM_GPIO_LEVEL_LOW
+    };
+
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_init(&gpio, &params));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_configure(&gpio, &config));
+    context.writeResult = PLATFORM_ERR_OK;
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_gpio_write(&gpio, PLATFORM_GPIO_LEVEL_HIGH));
+    TEST_ASSERT(1U == context.writeCallCount);
+    TEST_ASSERT(&gpio == context.gpio);
+    TEST_ASSERT(PLATFORM_GPIO_LEVEL_HIGH == context.writtenLevel);
+    TEST_ASSERT(PLATFORM_GPIO_LEVEL_LOW == gpio.config.initialLevel);
+
+    context.writeResult = PLATFORM_ERR_IO;
+    TEST_ASSERT(PLATFORM_ERR_IO ==
+                platform_gpio_write(&gpio, PLATFORM_GPIO_LEVEL_LOW));
+    TEST_ASSERT(2U == context.writeCallCount);
+
+    return 0;
+}
+
+/**
+ * @brief 验证 read 在输入和输出模式均可用
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_read_allows_input_and_output(void)
+{
+    platform_gpio_t inputGpio = PLATFORM_GPIO_INITIALIZER;
+    platform_gpio_t outputGpio = PLATFORM_GPIO_INITIALIZER;
+    fake_gpio_context_t inputContext = {0};
+    fake_gpio_context_t outputContext = {0};
+    platform_gpio_init_params_t inputParams = {
+        "input-gpio",
+        &g_readOps,
+        &inputContext
+    };
+    platform_gpio_init_params_t outputParams = {
+        "output-gpio",
+        &g_readOps,
+        &outputContext
+    };
+    platform_gpio_config_t inputConfig = {
+        PLATFORM_GPIO_DIRECTION_INPUT,
+        PLATFORM_GPIO_PULL_UP,
+        PLATFORM_GPIO_OUTPUT_PUSH_PULL,
+        PLATFORM_GPIO_LEVEL_LOW
+    };
+    platform_gpio_config_t outputConfig = {
+        PLATFORM_GPIO_DIRECTION_OUTPUT,
+        PLATFORM_GPIO_PULL_NONE,
+        PLATFORM_GPIO_OUTPUT_PUSH_PULL,
+        PLATFORM_GPIO_LEVEL_HIGH
+    };
+    platform_gpio_level_t level = PLATFORM_GPIO_LEVEL_LOW;
+
+    inputContext.readLevel = PLATFORM_GPIO_LEVEL_HIGH;
+    outputContext.readLevel = PLATFORM_GPIO_LEVEL_LOW;
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_gpio_init(&inputGpio, &inputParams));
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_gpio_configure(&inputGpio, &inputConfig));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_read(&inputGpio, &level));
+    TEST_ASSERT(PLATFORM_GPIO_LEVEL_HIGH == level);
+    TEST_ASSERT(1U == inputContext.readCallCount);
+
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_gpio_init(&outputGpio, &outputParams));
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_gpio_configure(&outputGpio, &outputConfig));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_read(&outputGpio, &level));
+    TEST_ASSERT(PLATFORM_GPIO_LEVEL_LOW == level);
+    TEST_ASSERT(1U == outputContext.readCallCount);
+
+    return 0;
+}
+
+/**
+ * @brief 验证 read 的状态、输出指针、Ops 和错误传播
+ * @param[in] 无
+ * @param[out] 无
+ * @return 成功返回 0，失败返回断言行号
+ */
+static int test_read_validates_and_propagates_error(void)
+{
+    platform_gpio_t uninitializedGpio = PLATFORM_GPIO_INITIALIZER;
+    platform_gpio_t gpio = PLATFORM_GPIO_INITIALIZER;
+    platform_gpio_t missingReadGpio = PLATFORM_GPIO_INITIALIZER;
+    fake_gpio_context_t context = {0};
+    fake_gpio_context_t missingReadContext = {0};
+    platform_gpio_init_params_t params = {
+        "gpio-test",
+        &g_readOps,
+        &context
+    };
+    platform_gpio_init_params_t missingReadParams = {
+        "missing-read-gpio",
+        &g_writeOps,
+        &missingReadContext
+    };
+    platform_gpio_config_t config = {
+        PLATFORM_GPIO_DIRECTION_INPUT,
+        PLATFORM_GPIO_PULL_NONE,
+        PLATFORM_GPIO_OUTPUT_PUSH_PULL,
+        PLATFORM_GPIO_LEVEL_LOW
+    };
+    platform_gpio_level_t level = PLATFORM_GPIO_LEVEL_LOW;
+
+    TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED ==
+                platform_gpio_read(&uninitializedGpio, &level));
+    TEST_ASSERT(PLATFORM_ERR_NULL_POINTER ==
+                platform_gpio_read(NULL, &level));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_init(&gpio, &params));
+    TEST_ASSERT(PLATFORM_ERR_INVALID_STATE ==
+                platform_gpio_read(&gpio, &level));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_gpio_configure(&gpio, &config));
+    TEST_ASSERT(PLATFORM_ERR_NULL_POINTER == platform_gpio_read(&gpio, NULL));
+
+    context.readResult = PLATFORM_ERR_IO;
+    TEST_ASSERT(PLATFORM_ERR_IO == platform_gpio_read(&gpio, &level));
+    TEST_ASSERT(1U == context.readCallCount);
+
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_gpio_init(&missingReadGpio, &missingReadParams));
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_gpio_configure(&missingReadGpio, &config));
+    TEST_ASSERT(PLATFORM_ERR_NOT_SUPPORTED ==
+                platform_gpio_read(&missingReadGpio, &level));
+
+    return 0;
+}
+
+/**
  * @brief 运行 Platform GPIO 对象构造测试
  * @param[in] 无
  * @param[out] 无
@@ -438,6 +727,26 @@ int main(void)
     }
 
     result = test_configure_failure_preserves_state();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_write_validates_state_and_parameters();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_write_forwards_and_propagates_error();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_read_allows_input_and_output();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_read_validates_and_propagates_error();
     if (0 != result) {
         return result;
     }

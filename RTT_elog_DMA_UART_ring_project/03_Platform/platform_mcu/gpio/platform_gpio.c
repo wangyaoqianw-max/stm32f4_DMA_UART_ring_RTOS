@@ -115,4 +115,63 @@ platform_error_t platform_gpio_configure(
 
     return PLATFORM_ERR_OK;
 }
+
+platform_error_t platform_gpio_write(
+    platform_gpio_t *gpio,
+    platform_gpio_level_t level)
+{
+    if (gpio == NULL) {
+        return PLATFORM_ERR_NULL_POINTER;
+    }
+
+    if (gpio->initialized == 0U) {
+        return PLATFORM_ERR_NOT_INITIALIZED;
+    }
+
+    if (gpio->configured == 0U) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    if (gpio->config.direction != PLATFORM_GPIO_DIRECTION_OUTPUT) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    if ((level < PLATFORM_GPIO_LEVEL_LOW) ||
+        (level >= PLATFORM_GPIO_LEVEL_MAX)) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    if ((gpio->ops == NULL) || (gpio->ops->write == NULL)) {
+        return PLATFORM_ERR_NOT_SUPPORTED;
+    }
+
+    return gpio->ops->write(gpio, level);
+}
+
+platform_error_t platform_gpio_read(
+    platform_gpio_t *gpio,
+    platform_gpio_level_t *level)
+{
+    if (gpio == NULL) {
+        return PLATFORM_ERR_NULL_POINTER;
+    }
+
+    if (gpio->initialized == 0U) {
+        return PLATFORM_ERR_NOT_INITIALIZED;
+    }
+
+    if (gpio->configured == 0U) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    if (level == NULL) {
+        return PLATFORM_ERR_NULL_POINTER;
+    }
+
+    if ((gpio->ops == NULL) || (gpio->ops->read == NULL)) {
+        return PLATFORM_ERR_NOT_SUPPORTED;
+    }
+
+    return gpio->ops->read(gpio, level);
+}
 //******************************** Functions *********************************//
