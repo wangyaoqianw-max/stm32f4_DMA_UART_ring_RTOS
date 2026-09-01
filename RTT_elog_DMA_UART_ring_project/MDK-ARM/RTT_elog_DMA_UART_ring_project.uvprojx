@@ -718,6 +718,11 @@
               <FileType>1</FileType>
               <FilePath>..\04_Impl\impl_mcu\impl_platform_uart.c</FilePath>
             </File>
+            <File>
+              <FileName>impl_platform_gpio.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\04_Impl\impl_mcu\impl_platform_gpio.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
