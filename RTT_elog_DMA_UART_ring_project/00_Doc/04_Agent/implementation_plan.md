@@ -3,10 +3,10 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > 当前执行计划 / Current Active Plan  
-> 状态：HOST VERIFIED / BLOCKED ON KEIL
+> 状态：COMPLETED / HOST + KEIL VERIFIED
 > 日期：2026-09-01
 
-> 实际执行记录：Task 1-4 已完成并通过 Host / 边界验证；Task 5 已完成 Keil 工程集成，环境未发现 `UV4.exe`，真实 Keil Full Rebuild 未执行；Task 6 记录为 Host Verified，Phase 1 Closure BLOCKED ON KEIL GATE。
+> 实际执行记录：Task 1-4 已完成并通过 Host / 边界验证；Task 5 的 Keil 工程集成错误已修复，真实 Keil Full Rebuild 结果为 0 errors / 15 warnings；按用户要求暂不处理 Warning；Task 6 完成 Phase 1 收口。
 
 **Goal:** 为已 Host Verified 的 Platform GPIO 提供通用 STM32F411 + HAL 实现，并完成 Host Fake-HAL 验证、Platform 回归、Keil 编译和代码规范审查。
 
@@ -602,21 +602,21 @@ Follow existing placement used by `impl_platform_uart.c`; do not reorganize unre
 
 Do not add Host Fake HAL test files to target project.
 
-- [ ] **Step 3: Perform an actual Keil Full Rebuild (NOT EXECUTED: UV4.exe unavailable)**
+- [x] **Step 3: Perform an actual Keil Full Rebuild**
 
 Required evidence:
 
 ```text
-Keil Full Rebuild: PASS / FAIL
-Error count
-Warning count
+Keil Full Rebuild: PASS
+Error count: 0
+Warning count: 15
 ```
 
-Do not report static inspection as Keil verification.
+Warning 暂按用户要求不处理；本结果来自真实 Keil Full Rebuild。
 
 - [x] **Step 4: If build fails, fix only Phase 1 integration defects**
 
-未执行构建失败修复路径；当前没有 Keil 编译错误证据。
+前置构建错误已通过补齐 Platform GPIO include path 和 `platform_gpio.c` 工程源文件条目修复；最终构建无 Error。
 
 Allowed examples:
 
@@ -649,7 +649,7 @@ git add <existing-keil-project-file>
 git commit -m "build: integrate STM32 GPIO impl"
 ```
 
-If the environment cannot execute Keil, report `KEIL NOT VERIFIED` rather than fabricating a result; do not mark Phase 1 complete until user supplies actual Build evidence.
+真实 Keil Build 已由用户提供结果确认；不得将 15 个 Warning 误写为 Error。
 
 ---
 
@@ -699,7 +699,7 @@ Coding Standard Review           PASS
 Only one of:
 
 ```text
-Keil Build                       PASS (actual build evidence)
+Keil Build                       PASS (actual build evidence: 0 errors, 15 warnings)
 Keil Build                       NOT YET VERIFIED
 ```
 
@@ -766,15 +766,15 @@ Phase 1 cannot be declared complete until all required items below are satisfied
 [x] Platform GPIO Regression PASS
 [x] Dependency Boundary PASS
 [x] Coding Standard Review PASS
-[ ] actual Keil Build PASS
+[x] actual Keil Build PASS (0 errors, 15 warnings)
 ```
 
 Phase 1 completion state:
 
 ```text
-GPIO STM32 Impl Phase 1 = IMPLEMENTED / HOST VERIFIED
-Phase 1 Closure          = BLOCKED ON KEIL GATE
-Keil Build               = NOT YET VERIFIED
+GPIO STM32 Impl Phase 1 = IMPLEMENTED / HOST + KEIL VERIFIED
+Phase 1 Closure          = COMPLETED
+Keil Build               = PASS (0 errors, 15 warnings)
 Target Board GPIO        = NOT YET VERIFIED
 ```
 

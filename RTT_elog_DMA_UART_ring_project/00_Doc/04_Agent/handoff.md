@@ -111,11 +111,11 @@ GPIO Coding Standard Review         PASS
 
 ```text
 GPIO STM32 Impl Phase 1 Design      FROZEN
-GPIO STM32 Impl Phase 1 Plan        HOST VERIFIED / BLOCKED ON KEIL
-GPIO STM32 Impl Implementation      COMPLETED / HOST VERIFIED
+GPIO STM32 Impl Phase 1 Plan        COMPLETED / HOST + KEIL VERIFIED
+GPIO STM32 Impl Implementation      COMPLETED / HOST + KEIL VERIFIED
 GPIO STM32 Impl Host Verification   PASS
-GPIO STM32 Impl Keil Verification   NOT YET VERIFIED
-Phase 1 Closure                     BLOCKED ON KEIL GATE
+GPIO STM32 Impl Keil Verification   PASS (0 errors, 15 warnings)
+Phase 1 Closure                     COMPLETED
 Target Board GPIO Verification      NOT YET VERIFIED
 ```
 
@@ -134,8 +134,6 @@ Target Board GPIO Verification      NOT YET VERIFIED
 当前尚未完成：
 
 ```text
-GPIO STM32 Impl Keil Verification
-GPIO STM32 Impl Phase 1 Closure (blocked on Keil gate)
 Target Board GPIO Verification
 Board Resource / CubeMX final configuration
 Software I2C
@@ -535,8 +533,8 @@ Phase 1 — GPIO STM32 Impl
 
 ```text
 Design          FROZEN
-Plan            HOST VERIFIED / BLOCKED ON KEIL
-Implementation  COMPLETED / HOST VERIFIED
+Plan            COMPLETED / HOST + KEIL VERIFIED
+Implementation  COMPLETED / HOST + KEIL VERIFIED
 ```
 
 专项设计：
@@ -600,7 +598,7 @@ Final APP FSM
 
 ```text
 GPIO STM32 Impl Phase 1 Implementation Plan
-Status: READY / NOT STARTED
+Status: COMPLETED / HOST + KEIL VERIFIED
 ```
 
 当前计划是唯一可执行施工计划。
@@ -627,9 +625,11 @@ Dependency Boundary              PASS
 RCC Ownership Scan               PASS
 Coding Standard Review           PASS
 Keil Project XML                 PASS
-Keil Build                       NOT YET VERIFIED (UV4.exe unavailable)
-Phase 1 Closure                  BLOCKED ON KEIL GATE
+Keil Full Rebuild                PASS (0 errors, 15 warnings)
+Phase 1 Closure                  COMPLETED
 ```
+
+Warning 按用户要求暂不处理。
 
 本轮已完成的提交：
 
@@ -720,9 +720,9 @@ NOT CURRENT DEFECT
 ```text
 Platform GPIO                  HOST VERIFIED
 GPIO STM32 Impl Design         FROZEN
-GPIO STM32 Impl Implementation COMPLETED / HOST VERIFIED
-GPIO STM32 Impl Keil Build     NOT YET VERIFIED
-Phase 1 Closure                BLOCKED ON KEIL GATE
+GPIO STM32 Impl Implementation COMPLETED / HOST + KEIL VERIFIED
+GPIO STM32 Impl Keil Build     PASS (0 errors, 15 warnings)
+Phase 1 Closure                COMPLETED
 Target Board GPIO              NOT YET VERIFIED
 ```
 
@@ -783,4 +783,4 @@ Phase 1 做 Host Fake-HAL + Platform regression + Keil Build，不做目标板 G
 SPI / LCD 暂停。
 ```
 
-下一步：补充 Keil MDK-ARM / `UV4.exe` 后重新执行当前计划的真实 Full Rebuild；在 Keil Gate 通过前不进入 Phase 2 — Board Resource + CubeMX Configuration。
+下一步：如继续开发，需先单独设计 Phase 2 — Board Resource + CubeMX Configuration；本轮不进入 Phase 2。
