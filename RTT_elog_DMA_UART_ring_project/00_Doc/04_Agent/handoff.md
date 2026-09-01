@@ -87,7 +87,9 @@ CubeMX 生成文件只作为初始化、IRQ / HAL Callback、Scheduler 和薄适
 
 ---
 
-# 3. 当前已完成 / 已验证基线
+# 3. 当前已完成 / 当前阶段
+
+已完成 / 已验证基线：
 
 ```text
 Platform BSP UART Binding Phase 1   COMPLETED
@@ -105,10 +107,33 @@ GPIO Platform Dependency Boundary   PASS
 GPIO Coding Standard Review         PASS
 ```
 
+当前 Active Phase：
+
+```text
+GPIO STM32 Impl Phase 1 Design      FROZEN
+GPIO STM32 Impl Phase 1 Plan        READY / NOT STARTED
+GPIO STM32 Impl Implementation      NOT STARTED
+Target Board GPIO Verification      NOT YET VERIFIED
+```
+
+当前专项设计：
+
+```text
+00_Doc/02_架构设计/GPIO_STM32_Impl_Phase1设计.md
+```
+
+当前唯一执行计划：
+
+```text
+00_Doc/04_Agent/implementation_plan.md
+```
+
 当前尚未完成：
 
 ```text
-STM32 GPIO Impl
+GPIO STM32 Impl implementation
+GPIO STM32 Impl Host Verification
+GPIO STM32 Impl Keil Verification
 Target Board GPIO Verification
 Board Resource / CubeMX final configuration
 Software I2C
@@ -233,23 +258,30 @@ ERROR -> 初始化失败、关键操作失败
 ```text
 逐 UART byte 打日志
 逐 I2C bit / byte / ACK 打日志
+逐 GPIO read/write 打日志
 ISR 中大量格式化日志
 每层重复打印同一成功状态
 ```
 
-初始化过程和采集 / 收发过程需要可观察，但不要求 Platform / Impl 每一层都主动打印；可以由 APP / Service 根据返回结果记录关键状态。
+初始化过程和采集 / 收发过程需要可观察，但不要求 Platform / Impl 每一层都主动打印；APP / Service 根据返回结果记录关键状态即可。
 
 ---
 
-# 7. Platform GPIO 当前合同
+# 7. Platform GPIO 与 STM32 GPIO Impl 合同
 
-专项设计：
+Platform GPIO 专项设计：
 
 ```text
 00_Doc/02_架构设计/Platform_GPIO_Phase1设计.md
 ```
 
-当前公共 API 已完成并 Host Verified：
+GPIO STM32 Impl 专项设计：
+
+```text
+00_Doc/02_架构设计/GPIO_STM32_Impl_Phase1设计.md
+```
+
+Platform 公共 API 已完成并 Host Verified：
 
 ```text
 platform_gpio_init
@@ -264,6 +296,8 @@ platform_gpio_deinit
 Platform GPIO 不知道：
 
 ```text
+GPIO_TypeDef
+GPIO_PIN_x
 LED
 KEY
 SCL
@@ -272,11 +306,82 @@ DHT20
 MPU6050
 ```
 
-低 / 高有效极性属于 Board / BSP / Impl 边界。
+当前 GPIO STM32 Impl 冻结为：
 
-当前缺口是 STM32 GPIO Impl 和目标板验证，而不是重新设计 Platform GPIO。
+```text
+Generic MCU implementation
+Caller-owned Context
+Context = GPIO_TypeDef *port + uint16_t pin
+One Platform GPIO = one physical pin
+No Context Pool
+No Registry
+No dynamic allocation
+No reverse Platform pointer
+```
 
-未经新专项设计，不得为了 LED / KEY / Software I2C 擅自扩大现有 GPIO 公共 API。
+Context 只描述 STM32 Port / Pin；具体设备语义和有效电平不进入 Generic Impl。
+
+## 7.1 Config -> HAL
+
+冻结映射：
+
+```text
+INPUT                  -> GPIO_MODE_INPUT
+OUTPUT + PUSH_PULL     -> GPIO_MODE_OUTPUT_PP
+OUTPUT + OPEN_DRAIN    -> GPIO_MODE_OUTPUT_OD
+PULL_NONE              -> GPIO_NOPULL
+PULL_UP                -> GPIO_PULLUP
+PULL_DOWN              -> GPIO_PULLDOWN
+GPIO Speed             -> GPIO_SPEED_FREQ_LOW (Impl private policy)
+```
+
+Platform 不新增 GPIO Speed API。
+
+## 7.2 Initial Level
+
+OUTPUT 配置顺序冻结：
+
+```text
+HAL_GPIO_WritePin(initialLevel)
+    -> HAL_GPIO_Init(output mode)
+```
+
+用于减少切换输出模式时的错误瞬态。
+
+INPUT 配置不执行 initial-level write。
+
+## 7.3 RCC / CubeMX
+
+GPIO STM32 Impl 不负责 GPIO Port RCC Enable / Disable。
+
+冻结所有权：
+
+```text
+CubeMX / Board Bootstrap
+    -> GPIO Port RCC
+
+STM32 GPIO Impl
+    -> Pin mode / pull / output type / level
+
+Board / BSP
+    -> concrete Port + Pin / device polarity
+```
+
+调用 `platform_gpio_configure()` 前，对应 GPIO Port Clock 必须已经启用。
+
+## 7.4 Phase 1 Board 边界
+
+当前 Phase 1 不绑定：
+
+```text
+PC13 LED
+PA0 KEY
+Software I2C SCL / SDA
+```
+
+上述具体资源进入 Phase 2。
+
+未经新专项设计，不得为了 LED / KEY / Software I2C 修改现有 Platform GPIO 公共 API。
 
 ---
 
@@ -416,42 +521,68 @@ implementation_plan.md
 
 ---
 
-# 11. 当前下一阶段
+# 11. 当前 Active Phase
 
-当前已确定下一步先讨论：
+当前阶段：
 
 ```text
 Phase 1 — GPIO STM32 Impl
 ```
 
-当前尚未冻结 GPIO Impl 的专项设计，也尚未生成新的 GPIO Impl 执行计划。
-
-下一步讨论应重点确认：
+状态：
 
 ```text
-STM32 GPIO Impl object/context binding
-Platform config -> HAL GPIO mapping
-GPIO port / pin representation
-output initial-level ordering
-read / write behavior
-deinit semantics
-Platform Error mapping
-CubeMX / Board boundary
-Keil verification
-Phase 2 board smoke-test handoff boundary
+Design          FROZEN
+Plan            READY / NOT STARTED
+Implementation  NOT STARTED
+```
+
+专项设计：
+
+```text
+00_Doc/02_架构设计/GPIO_STM32_Impl_Phase1设计.md
+```
+
+实现目标：
+
+```text
+04_Impl/impl_mcu/impl_platform_gpio.h
+04_Impl/impl_mcu/impl_platform_gpio.c
+Tests/impl_platform_gpio/
+```
+
+本 Phase 重点验证：
+
+```text
+Generic caller-owned Context
+single physical pin validation
+Platform Config -> HAL mapping
+GPIO_SPEED_FREQ_LOW private policy
+initial-level-before-init ordering
+read / write / deinit mapping
+no RCC ownership in Impl
+Host Fake-HAL tests
+Platform GPIO regression
+Dependency boundary
+Coding Standard Review
+Keil Build
 ```
 
 Phase 1 中不得提前混入：
 
 ```text
-LED semantics
-KEY semantics
+LED / KEY board binding
+PC13 / PA0 concrete mapping
+CubeMX final Pin config
+Target Board GPIO Smoke Test
 Debounce
 Software I2C
 DHT20
 MPU6050
 Final APP FSM
 ```
+
+如果实现必须突破上述边界，STOP / BLOCKED 并返回设计阶段。
 
 ---
 
@@ -463,13 +594,29 @@ Final APP FSM
 00_Doc/04_Agent/implementation_plan.md
 ```
 
-当前内容仍是已经完成的 GPIO Platform Phase 1 历史计划。
+当前内容已经更新为：
 
-因此：
+```text
+GPIO STM32 Impl Phase 1 Implementation Plan
+Status: READY / NOT STARTED
+```
 
-> 当前 `implementation_plan.md` 不可直接执行。
+当前计划是唯一可执行施工计划。
 
-用户已明确先保留该文件，等 GPIO STM32 Impl 的设计和任务边界讨论完成后，再更新为 Phase 1 的具体执行计划。
+执行时必须按 Task 顺序和 TDD Gate 施工，不得继续执行已完成的 GPIO Platform 历史计划。
+
+Phase 1 完成门槛：
+
+```text
+GPIO STM32 Impl Host Tests       PASS
+Platform GPIO Regression         PASS
+Dependency Boundary              PASS
+RCC Ownership Scan               PASS
+Coding Standard Review           PASS
+Keil Build                       PASS
+```
+
+目标板 GPIO 行为不是 Phase 1 完成门槛，而是 Phase 2 的板级 Gate。
 
 ---
 
@@ -494,7 +641,9 @@ LED blink interval
 UART command / report limits if needed
 ```
 
-具体宏命名由对应专项设计冻结，不提前修改。
+GPIO STM32 Impl Phase 1 不新增产品 Config；GPIO Speed 当前为 Impl private policy。
+
+具体产品宏命名由对应专项设计冻结，不提前修改。
 
 ---
 
@@ -539,11 +688,18 @@ NOT CURRENT DEFECT
 
 出现第二个真实 UART 角色后再设计 registry / dispatcher。
 
-## 15.3 GPIO 仅 Host Verified
+## 15.3 GPIO 验证边界
 
-Platform GPIO 已 Host Verified，但 STM32 Impl 和目标板行为尚未验证。
+当前：
 
-不得描述为 Target Board Verified。
+```text
+Platform GPIO                  HOST VERIFIED
+GPIO STM32 Impl Design         FROZEN
+GPIO STM32 Impl Implementation NOT STARTED
+Target Board GPIO              NOT YET VERIFIED
+```
+
+不得在 Phase 1 实施前或仅凭 Host Fake-HAL 测试描述为 Target Board Verified。
 
 ## 15.4 README
 
@@ -553,7 +709,7 @@ Platform GPIO 已 Host Verified，但 STM32 Impl 和目标板行为尚未验证�
 
 # 16. Agent 恢复上下文时必须读取
 
-开始新 Phase 前至少读取：
+开始当前 Phase 前至少读取：
 
 ```text
 00_Doc/00_项目需求/最终功能需求.md
@@ -562,12 +718,22 @@ Platform GPIO 已 Host Verified，但 STM32 Impl 和目标板行为尚未验证�
 00_Doc/04_Agent/development_roadmap.md
 00_Doc/04_Agent/handoff.md
 00_Doc/04_Agent/execution_rules.md
+00_Doc/04_Agent/implementation_plan.md
+00_Doc/02_架构设计/GPIO_STM32_Impl_Phase1设计.md
+00_Doc/02_架构设计/Platform_GPIO_Phase1设计.md
 00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
 ```
 
-涉及已有专项模块时，再读取对应专项设计、代码和 Tests。
+并检查现有：
 
-`implementation_plan.md` 只有在当前 Phase 重新确认并更新后，才作为实施依据。
+```text
+03_Platform/platform_mcu/gpio/
+04_Impl/impl_mcu/impl_platform_uart.*
+Tests/platform_gpio/
+Tests/impl_platform_uart/
+Core/Src/gpio.c
+STM32 HAL GPIO headers
+```
 
 ---
 
@@ -576,17 +742,18 @@ Platform GPIO 已 Host Verified，但 STM32 Impl 和目标板行为尚未验证�
 ```text
 UART / DMA / RingBuffer / Log 基线已稳定。
 Platform GPIO 公共层已 Host Verified。
-最终功能需求已经收束。
-最终功能已拆分为 10 个 Phase。
-下一阶段确定为 GPIO STM32 Impl 设计讨论。
-当前旧 implementation_plan 不执行。
+GPIO STM32 Impl Phase 1 设计已冻结。
+GPIO STM32 Impl Phase 1 施工计划已生成并可执行。
+GPIO Impl 使用 Generic + caller-owned Context 方案。
+Context = GPIO_TypeDef *port + one physical pin。
+不使用 Context Pool / Registry / dynamic allocation。
+GPIO Port RCC 由 CubeMX / Board Bootstrap 负责。
+GPIO Speed Phase 1 固定为 Impl-private LOW。
+OUTPUT 必须先准备 initialLevel 再 HAL_GPIO_Init。
+PC13 LED / PA0 KEY 等具体 Board Binding 进入 Phase 2。
+Phase 1 做 Host Fake-HAL + Platform regression + Keil Build，不做目标板 GPIO Smoke Test。
+最终功能仍按 development_roadmap 的 Phase 1 -> Phase 10 顺序推进。
 SPI / LCD 暂停。
-MPU6050 第一阶段只做六轴基础数据。
-采集与 UART 上报周期为 5 s。
-KEY 与 UART 共用一个 APP Control FSM。
-STOPPED LED 灭，RUNNING LED 亮。
-ONCE 成功发送后 LED 闪 3 次。
-RTT 用于初始化、控制、采集、收发和异常诊断。
 ```
 
-下一步：讨论 GPIO STM32 Impl 的专项设计和验收边界，确认后再更新 `implementation_plan.md`。
+下一步：由 Codex 严格执行当前 `00_Doc/04_Agent/implementation_plan.md`，完成 GPIO STM32 Impl Phase 1；阶段收口后再单独设计 Phase 2 — Board Resource + CubeMX Configuration。
