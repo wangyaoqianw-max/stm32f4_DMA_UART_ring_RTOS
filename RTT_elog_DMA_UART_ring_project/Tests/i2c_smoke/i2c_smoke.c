@@ -17,6 +17,7 @@
 #include "main.h"
 #include "platform_bsp_gpio.h"
 #include "platform_i2c.h"
+#include "platform_time.h"
 #include "service_log.h"
 
 #include <stdio.h>
@@ -83,7 +84,11 @@ void i2c_smoke_run(void)
         return;
     }
 
-    HAL_Delay(DHT20_MEASURE_DELAY_MS);
+    result = platform_time_delay_ms(DHT20_MEASURE_DELAY_MS);
+    if (result != PLATFORM_ERR_OK) {
+        i2c_smoke_report_failure("measure_delay", result);
+        return;
+    }
 
     result = platform_i2c_read(&i2c,
                                DHT20_I2C_ADDRESS,
