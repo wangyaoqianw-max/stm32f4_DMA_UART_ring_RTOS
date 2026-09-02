@@ -1,6 +1,6 @@
 # 工程长期记忆与交接说明
 
-更新时间：2026-09-01
+更新时间：2026-09-02
 
 > 本文件是 AI Agent 与人工开发者恢复工程上下文时的长期入口。
 > 只保存长期目标、稳定架构合同、已验证能力、当前阶段、技术债和下一步。
@@ -87,7 +87,7 @@ CubeMX 生成文件只作为初始化、IRQ / HAL Callback、Scheduler 和薄适
 
 ---
 
-# 3. 当前已完成 / 当前阶段
+# 3. 已完成基线与当前阶段
 
 已完成 / 已验证基线：
 
@@ -105,24 +105,24 @@ Platform GPIO Phase 1               COMPLETED / HOST VERIFIED
 GPIO Header Isolation               PASS
 GPIO Platform Dependency Boundary   PASS
 GPIO Coding Standard Review         PASS
+GPIO STM32 Impl Phase 1             COMPLETED / HOST + KEIL VERIFIED
+GPIO STM32 Impl Host Verification   PASS
+GPIO STM32 Impl Keil Verification   PASS (0 errors, 15 warnings)
 ```
 
 当前 Active Phase：
 
 ```text
-GPIO STM32 Impl Phase 1 Design      FROZEN
-GPIO STM32 Impl Phase 1 Plan        COMPLETED / HOST + KEIL VERIFIED
-GPIO STM32 Impl Implementation      COMPLETED / HOST + KEIL VERIFIED
-GPIO STM32 Impl Host Verification   PASS
-GPIO STM32 Impl Keil Verification   PASS (0 errors, 15 warnings)
-Phase 1 Closure                     COMPLETED
-Target Board GPIO Verification      NOT YET VERIFIED
+Phase 2 — Board Resource + CubeMX Configuration
 ```
 
-当前专项设计：
+当前 Phase 2 状态：
 
 ```text
-00_Doc/02_架构设计/GPIO_STM32_Impl_Phase1设计.md
+Board Resource Freeze               PASS
+CubeMX GPIO Configuration           PASS
+Board / GPIO Context Binding        NOT YET IMPLEMENTED
+Target Board GPIO Verification      NOT YET VERIFIED
 ```
 
 当前唯一执行计划：
@@ -131,11 +131,17 @@ Target Board GPIO Verification      NOT YET VERIFIED
 00_Doc/04_Agent/implementation_plan.md
 ```
 
+当前计划标题：
+
+```text
+Board GPIO Binding + Target Smoke Test Phase 2 Implementation Plan
+```
+
 当前尚未完成：
 
 ```text
-Target Board GPIO Verification
-Board Resource / CubeMX final configuration
+Board / GPIO Context Binding
+Target Board GPIO Smoke Test
 Software I2C
 LED module
 Button module
@@ -369,23 +375,231 @@ Board / BSP
 
 调用 `platform_gpio_configure()` 前，对应 GPIO Port Clock 必须已经启用。
 
-## 7.4 Phase 1 Board 边界
+---
 
-当前 Phase 1 不绑定：
+# 8. Phase 2 Board Resource / CubeMX 基线
+
+当前冻结资源：
 
 ```text
-PC13 LED
-PA0 KEY
-Software I2C SCL / SDA
+PC13 -> Status LED
+PA0  -> User Key
+PB6  -> Software I2C SCL
+PB7  -> Software I2C SDA
+PA9  -> USART1_TX
+PA10 -> USART1_RX
 ```
 
-上述具体资源进入 Phase 2。
+当前 CubeMX 标签：
 
-未经新专项设计，不得为了 LED / KEY / Software I2C 修改现有 Platform GPIO 公共 API。
+```text
+PC13 -> LED_OUT
+PA0  -> KEY_IN
+PB6  -> I2C_SCL
+PB7  -> I2C_SDA
+```
+
+当前 CubeMX GPIO 配置：
+
+```text
+PC13 : GPIO Output Push-Pull / No Pull / initial HIGH
+PA0  : GPIO Input / Pull-Up
+PB6  : GPIO Output Open-Drain / No Pull / initial HIGH
+PB7  : GPIO Output Open-Drain / No Pull / initial HIGH
+```
+
+当前 MCU / CubeMX 侧状态：
+
+```text
+GPIOB RCC enabled
+Hardware I2C peripheral disabled
+PA0 EXTI disabled
+USART1 + DMA configuration preserved
+```
+
+## 8.1 LED 极性
+
+板级原理图 / 资源表已确认：
+
+```text
+PC13 LOW  -> LED ON
+PC13 HIGH -> LED OFF
+```
+
+系统启动要求：
+
+```text
+STOPPED
+LED OFF
+```
+
+因此 CubeMX 初始电平和后续 Platform LED 初始配置均应使用 HIGH。
+
+## 8.2 KEY 极性与输入策略
+
+按键冻结为：
+
+```text
+PA0 LOW  -> pressed
+PA0 HIGH -> released
+```
+
+当前 Phase 2 保持：
+
+```text
+GPIO Input
+Pull-Up
+No EXTI
+```
+
+Button Phase 第一版优先使用约 `10~20 ms` 周期扫描 + 软件消抖 / single / double / long-press 状态机。EXTI 不是当前需求的必需能力，不在 Phase 2 提前引入。
+
+## 8.3 Software I2C GPIO 电气策略
+
+PB6 / PB7 冻结为：
+
+```text
+GPIO Output Open-Drain
+GPIO_NOPULL
+initial HIGH
+```
+
+逻辑语义：
+
+```text
+write LOW  -> MCU actively pulls line low
+write HIGH -> open-drain release, external pull-up raises line high
+```
+
+DHT20 和 MPU6050 模块原理图已确认 SDA / SCL 总线上存在外部上拉，因此 MCU 内部 Pull-Up 不启用。
+
+Software I2C Phase 应优先采用：
+
+```text
+SDA_LOW()      -> write LOW
+SDA_RELEASE()  -> write HIGH / release
+SDA_READ()     -> read physical pin level
+
+SCL_LOW()
+SCL_RELEASE()
+SCL_READ()     -> if later needed by clock-stretch policy
+```
+
+第一版不需要为了读取 ACK 而强制在 Input / Output 间来回切换 SDA；STM32 开漏输出状态下仍可读取引脚实际输入电平。最终策略在 Phase 3 专项设计中冻结。
 
 ---
 
-# 8. 最终功能基线
+# 9. Phase 2 Board / BSP Binding 合同
+
+Phase 2C 采用现有 UART BSP 相同的绑定模式：
+
+```text
+Platform BSP public contract
+        ↓
+Impl BSP concrete board mapping
+        ↓
+Generic STM32 GPIO Impl
+```
+
+计划新增：
+
+```text
+03_Platform/platform_bsp/platform_bsp_gpio.h
+04_Impl/impl_bsp/impl_platform_bsp_gpio.c
+Tests/platform_bsp_gpio/
+```
+
+Platform BSP 计划暴露：
+
+```text
+platform_bsp_gpio_construct_status_led()
+platform_bsp_gpio_construct_user_key()
+platform_bsp_gpio_construct_soft_i2c_scl()
+platform_bsp_gpio_construct_soft_i2c_sda()
+```
+
+具体绑定只存在于 Impl BSP：
+
+```text
+status_led     -> PC13
+user_key       -> PA0
+soft_i2c_scl   -> PB6
+soft_i2c_sda   -> PB7
+```
+
+Impl BSP 必须使用 CubeMX `main.h` 生成的 `*_GPIO_Port` / `*_Pin` 宏构造 caller-owned static Context，避免在自研代码中维护第二套重复 Pin 常量。
+
+冻结边界：
+
+```text
+BSP constructor
+    -> construct / bind only
+
+BSP constructor
+    != platform_gpio_configure
+    != platform_gpio_write
+    != HAL GPIO lifecycle
+```
+
+设备极性和产品行为不进入 Generic Platform GPIO / STM32 GPIO Impl。
+
+---
+
+# 10. Phase 2 Target Board Smoke Test 基线
+
+Phase 2 完成前必须使用真实开发板验证完整 GPIO vertical slice：
+
+```text
+Board BSP
+    ↓
+Platform GPIO
+    ↓
+STM32 GPIO Impl
+    ↓
+HAL
+    ↓
+PCB / external modules
+```
+
+至少验证：
+
+```text
+PC13:
+    write LOW  -> LED ON
+    write HIGH -> LED OFF
+
+PA0:
+    released -> HIGH
+    pressed  -> LOW
+
+PB6:
+    write LOW  -> line LOW
+    write HIGH -> release -> external pull-up HIGH
+
+PB7:
+    write LOW  -> read LOW
+    write HIGH -> release -> read HIGH
+```
+
+PB6 / PB7 板测时必须存在有效外部上拉并与 MCU 共地。
+
+本 Smoke Test 明确不实现：
+
+```text
+I2C START / STOP
+Address
+ACK / NACK
+DHT20 command
+MPU6050 register access
+```
+
+这些属于 Phase 3。
+
+只有真实人工观察完成后，才允许把 `Target Board GPIO Smoke Test` 标记为 PASS。
+
+---
+
+# 11. 最终功能基线
 
 权威需求：
 
@@ -431,7 +645,7 @@ HELP
 
 ---
 
-# 9. 采集 / LED / Software I2C 基线
+# 12. 采集 / LED / Software I2C 基线
 
 RUNNING：
 
@@ -482,7 +696,7 @@ Software I2C 不直接依赖 HAL GPIO；使用微秒级时序；第一阶段优�
 
 ---
 
-# 10. 当前开发阶段路线
+# 13. 当前开发阶段路线
 
 整体路线：
 
@@ -521,266 +735,156 @@ implementation_plan.md
 
 ---
 
-# 11. 当前 Active Phase
+# 14. 当前 Active Phase
 
 当前阶段：
 
 ```text
-Phase 1 — GPIO STM32 Impl
+Phase 2 — Board Resource + CubeMX Configuration
 ```
 
 状态：
 
 ```text
-Design          FROZEN
-Plan            COMPLETED / HOST + KEIL VERIFIED
-Implementation  COMPLETED / HOST + KEIL VERIFIED
+Resource Table        FROZEN
+CubeMX Configuration  COMPLETED / INSPECTED
+Board Binding         READY FOR EXECUTION
+Target Board Smoke    PENDING
 ```
 
-专项设计：
-
-```text
-00_Doc/02_架构设计/GPIO_STM32_Impl_Phase1设计.md
-```
-
-实现目标：
-
-```text
-04_Impl/impl_mcu/impl_platform_gpio.h
-04_Impl/impl_mcu/impl_platform_gpio.c
-Tests/impl_platform_gpio/
-```
-
-本 Phase 重点验证：
-
-```text
-Generic caller-owned Context
-single physical pin validation
-Platform Config -> HAL mapping
-GPIO_SPEED_FREQ_LOW private policy
-initial-level-before-init ordering
-read / write / deinit mapping
-no RCC ownership in Impl
-Host Fake-HAL tests
-Platform GPIO regression
-Dependency boundary
-Coding Standard Review
-Keil Build
-```
-
-Phase 1 中不得提前混入：
-
-```text
-LED / KEY board binding
-PC13 / PA0 concrete mapping
-CubeMX final Pin config
-Target Board GPIO Smoke Test
-Debounce
-Software I2C
-DHT20
-MPU6050
-Final APP FSM
-```
-
-如果实现必须突破上述边界，STOP / BLOCKED 并返回设计阶段。
-
----
-
-# 12. implementation_plan 当前状态
-
-文件：
+当前唯一执行计划：
 
 ```text
 00_Doc/04_Agent/implementation_plan.md
 ```
 
-当前内容已经更新为：
+执行计划只覆盖 Phase 2 剩余范围：
 
 ```text
-GPIO STM32 Impl Phase 1 Implementation Plan
-Status: COMPLETED / HOST + KEIL VERIFIED
+Phase 2C Board / GPIO Context Binding
+Phase 2D Target Board GPIO Smoke Test
+Phase 2 Closure / Handoff
 ```
 
-当前计划是唯一可执行施工计划。
-
-执行时必须按 Task 顺序和 TDD Gate 施工，不得继续执行已完成的 GPIO Platform 历史计划。
-
-Phase 1 完成门槛：
+不得重新设计或重复执行：
 
 ```text
-GPIO STM32 Impl Host Tests       PASS
-Platform GPIO Regression         PASS
-Dependency Boundary              PASS
-RCC Ownership Scan               PASS
-Coding Standard Review           PASS
-Keil Build                       PASS
+Platform GPIO Phase 1
+GPIO STM32 Impl Phase 1
+Board Resource Freeze
+CubeMX Pin Configuration
 ```
 
-本轮实际执行结果：
-
-```text
-GPIO STM32 Impl Host Tests       PASS
-Platform GPIO Regression         PASS
-Dependency Boundary              PASS
-RCC Ownership Scan               PASS
-Coding Standard Review           PASS
-Keil Project XML                 PASS
-Keil Full Rebuild                PASS (0 errors, 15 warnings)
-Phase 1 Closure                  COMPLETED
-```
-
-Warning 按用户要求暂不处理。
-
-本轮已完成的提交：
-
-```text
-1e2fcbd feat: add STM32 GPIO impl binding
-d4b72a7 feat: map Platform GPIO config to STM32 HAL
-e697da4 feat: implement STM32 GPIO data operations
-6e6e5dd build: integrate STM32 GPIO impl
-4bc0f19 test: verify STM32 GPIO impl boundaries
-```
-
-目标板 GPIO 行为不是 Phase 1 完成门槛，而是 Phase 2 的板级 Gate。
+除非 Preflight 发现仓库现实与冻结合同发生冲突。
 
 ---
 
-# 13. Config 方向
+# 15. Phase 2 完成门槛
 
-`00_Config` 已存在：
-
-```text
-project_config.h
-project_log_config.h
-```
-
-最终至少应逐阶段纳入：
+Phase 2 关闭前必须满足：
 
 ```text
-Acquisition period = 5000 ms
-Button debounce time
-Button double-click window
-Button long-press threshold = 3000 ms
-LED ONCE blink count = 3
-LED blink interval
-UART command / report limits if needed
+Platform BSP GPIO contract          PASS
+Board / GPIO Context Binding        PASS
+GPIO BSP Host Test                  PASS
+Platform GPIO Regression            PASS
+STM32 GPIO Impl Regression          PASS
+Coding Standard Review              PASS
+Keil Full Rebuild                   PASS
+PC13 LED board smoke                PASS
+PA0 KEY board smoke                 PASS
+PB6 OD pull-low / release smoke     PASS
+PB7 OD pull-low / release / read    PASS
+No Hardware I2C introduced          PASS
+No EXTI introduced                  PASS
+No Software I2C protocol leakage    PASS
 ```
 
-GPIO STM32 Impl Phase 1 不新增产品 Config；GPIO Speed 当前为 Impl private policy。
+若 Host / Keil 已通过但真实板测尚未完成：
 
-具体产品宏命名由对应专项设计冻结，不提前修改。
+```text
+Phase 2 — IMPLEMENTED / TARGET BOARD VERIFICATION PENDING
+```
+
+只有真实板测全部通过后才能记录：
+
+```text
+Phase 2 — COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
+```
 
 ---
 
-# 14. 当前暂停范围
+# 16. Phase 2 完成后的下一步
+
+Phase 2 完成后停止实现，进入 Phase 3 设计讨论：
+
+```text
+Phase 3 — Software I2C
+```
+
+Phase 3 开码前至少冻结：
+
+```text
+Software I2C object/interface model
+SCL/SDA release/read strategy
+microsecond timing source
+clock-stretch policy if supported
+ACK/NACK behavior
+transaction timeout
+bus recovery policy
+DHT20 / MPU6050 required transaction subset
+Host / logic-analyzer verification strategy
+```
+
+然后再用新的 Phase 3 内容覆盖：
+
+```text
+00_Doc/04_Agent/implementation_plan.md
+```
+
+禁止直接从当前 Phase 2 执行计划继续编写 Software I2C。
+
+---
+
+# 17. 当前暂缓范围
+
+当前明确暂缓：
 
 ```text
 SPI / LCD / GUI
-Roll / Pitch / Yaw
-DMP / Kalman / complementary filter
-W25Q64 / AT24C02
+W25Q64
+AT24C02
 Bluetooth
-复杂 UART binary protocol
-与最终验收无关的框架扩张
+Roll / Pitch / Yaw
+DMP
+Kalman / Complementary Filter
+复杂二进制 UART Protocol
+无需求驱动的框架扩展
 ```
+
+除非最终功能需求重新变更，否则不得主动把这些内容加入当前开发主线。
 
 ---
 
-# 15. 已知技术债 / 限制
+# 18. Coding Standard 状态
 
-## 15.1 Platform Types 依赖 Impl 类型
-
-当前存在：
+当前已完成阶段：
 
 ```text
-platform_types.h
-    -> board_types.h
+Platform GPIO Phase 1 Coding Standard Review  PASS
+GPIO STM32 Impl Phase 1 Coding Standard Review PASS
 ```
 
-未来重新确认基础类型归属，不作为当前最终闭环阻塞项。
-
-## 15.2 USART1 Callback 单实例
-
-当前 STM32 UART Impl 使用 USART1 单实例 Context。
-
-状态：
+当前 Phase 2 新增 / 修改的所有自研 C 代码在提交前必须再次执行：
 
 ```text
-KNOWN LIMITATION
-DEFERRED
-NOT CURRENT DEFECT
+Coding Standard Review: PASS / NEEDS_FIX / EXCEPTION
 ```
 
-出现第二个真实 UART 角色后再设计 registry / dispatcher。
+如为 EXCEPTION，必须记录文件、规则、原因与后续整改状态。
 
-## 15.3 GPIO 验证边界
-
-当前：
+当前 Phase 2 尚未执行生产代码，因此：
 
 ```text
-Platform GPIO                  HOST VERIFIED
-GPIO STM32 Impl Design         FROZEN
-GPIO STM32 Impl Implementation COMPLETED / HOST + KEIL VERIFIED
-GPIO STM32 Impl Keil Build     PASS (0 errors, 15 warnings)
-Phase 1 Closure                COMPLETED
-Target Board GPIO              NOT YET VERIFIED
+Phase 2 Coding Standard Review: PENDING
 ```
-
-不得在 Phase 1 实施前或仅凭 Host Fake-HAL 测试描述为 Target Board Verified。
-
-## 15.4 README
-
-根目录和部分分层 README 尚未系统整理，项目最终收尾时统一处理。
-
----
-
-# 16. Agent 恢复上下文时必须读取
-
-开始当前 Phase 前至少读取：
-
-```text
-00_Doc/00_项目需求/最终功能需求.md
-00_Doc/04_Agent/requirements.md
-00_Doc/04_Agent/architecture.md
-00_Doc/04_Agent/development_roadmap.md
-00_Doc/04_Agent/handoff.md
-00_Doc/04_Agent/execution_rules.md
-00_Doc/04_Agent/implementation_plan.md
-00_Doc/02_架构设计/GPIO_STM32_Impl_Phase1设计.md
-00_Doc/02_架构设计/Platform_GPIO_Phase1设计.md
-00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
-```
-
-并检查现有：
-
-```text
-03_Platform/platform_mcu/gpio/
-04_Impl/impl_mcu/impl_platform_uart.*
-Tests/platform_gpio/
-Tests/impl_platform_uart/
-Core/Src/gpio.c
-STM32 HAL GPIO headers
-```
-
----
-
-# 17. 当前核心结论
-
-```text
-UART / DMA / RingBuffer / Log 基线已稳定。
-Platform GPIO 公共层已 Host Verified。
-GPIO STM32 Impl Phase 1 设计已冻结。
-GPIO STM32 Impl Phase 1 施工计划已生成并可执行。
-GPIO Impl 使用 Generic + caller-owned Context 方案。
-Context = GPIO_TypeDef *port + one physical pin。
-不使用 Context Pool / Registry / dynamic allocation。
-GPIO Port RCC 由 CubeMX / Board Bootstrap 负责。
-GPIO Speed Phase 1 固定为 Impl-private LOW。
-OUTPUT 必须先准备 initialLevel 再 HAL_GPIO_Init。
-PC13 LED / PA0 KEY 等具体 Board Binding 进入 Phase 2。
-Phase 1 做 Host Fake-HAL + Platform regression + Keil Build，不做目标板 GPIO Smoke Test。
-最终功能仍按 development_roadmap 的 Phase 1 -> Phase 10 顺序推进。
-SPI / LCD 暂停。
-```
-
-下一步：如继续开发，需先单独设计 Phase 2 — Board Resource + CubeMX Configuration；本轮不进入 Phase 2。
