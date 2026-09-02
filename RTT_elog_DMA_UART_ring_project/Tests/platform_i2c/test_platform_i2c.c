@@ -16,6 +16,7 @@
 #include <string.h>
 
 #include "platform_i2c.h"
+#include "project_config.h"
 //******************************** Includes *********************************//
 
 //******************************** Defines *********************************//
@@ -917,7 +918,42 @@ static int test_gpio_failure_is_preserved_after_best_effort_stop(void)
     TEST_ASSERT(PLATFORM_ERR_CHECKSUM ==
                 platform_i2c_write(&fixture.i2c, 0x38U, &data, 1U));
     TEST_ASSERT(fixture.sclContext.writeCallCount > 6U);
+    TEST_ASSERT(fixture.sclContext.readCallCount > 3U);
     TEST_ASSERT(fixture.sdaContext.writeCallCount > 5U);
+    TEST_ASSERT(PLATFORM_GPIO_LEVEL_HIGH == fixture.recorder.sclOutputLevel);
+    TEST_ASSERT(PLATFORM_GPIO_LEVEL_HIGH == fixture.recorder.sdaOutputLevel);
+
+    return 0;
+}
+
+static int test_initial_start_failure_preserves_error_and_releases_bus(void)
+{
+    const platform_gpio_level_t sdaReads[] = {
+        PLATFORM_GPIO_LEVEL_HIGH
+    };
+    test_fixture_t fixture;
+    uint8_t data = 0x55U;
+    int result = initialize_fixture(&fixture);
+
+    if (result != 0) {
+        return result;
+    }
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_i2c_init(&fixture.i2c,
+                                  "test_i2c",
+                                  &fixture.scl,
+                                  &fixture.sda));
+    script_read_values(&fixture.sdaContext,
+                       sdaReads,
+                       sizeof(sdaReads) / sizeof(sdaReads[0]));
+    fixture.sclContext.failWriteCall = 4U;
+    fixture.sclContext.writeError = PLATFORM_ERR_CHECKSUM;
+    fixture.recorder.stopConditionCount = 0U;
+
+    TEST_ASSERT(PLATFORM_ERR_CHECKSUM ==
+                platform_i2c_write(&fixture.i2c, 0x38U, &data, 1U));
+    TEST_ASSERT(fixture.sclContext.writeCallCount > 4U);
+    TEST_ASSERT(1U == fixture.recorder.stopConditionCount);
     TEST_ASSERT(PLATFORM_GPIO_LEVEL_HIGH == fixture.recorder.sclOutputLevel);
     TEST_ASSERT(PLATFORM_GPIO_LEVEL_HIGH == fixture.recorder.sdaOutputLevel);
 
@@ -999,24 +1035,60 @@ static int test_deinit_releases_lines_and_deconfigures_sda_then_scl(void)
     fixture.recorder.eventCount = 0U;
 
     TEST_ASSERT(PLATFORM_ERR_OK == platform_i2c_deinit(&fixture.i2c));
-    TEST_ASSERT(4U == fixture.recorder.eventCount);
+    TEST_ASSERT(5U == fixture.recorder.eventCount);
     event = &fixture.recorder.events[0U];
-    TEST_ASSERT((event->type == TEST_EVENT_WRITE) &&
-                (event->line == TEST_LINE_SDA) &&
-                (event->value == PLATFORM_GPIO_LEVEL_HIGH));
-    event = &fixture.recorder.events[1U];
     TEST_ASSERT((event->type == TEST_EVENT_WRITE) &&
                 (event->line == TEST_LINE_SCL) &&
                 (event->value == PLATFORM_GPIO_LEVEL_HIGH));
+    event = &fixture.recorder.events[1U];
+    TEST_ASSERT((event->type == TEST_EVENT_READ) &&
+                (event->line == TEST_LINE_SCL) &&
+                (event->value == PLATFORM_GPIO_LEVEL_HIGH));
     event = &fixture.recorder.events[2U];
+    TEST_ASSERT((event->type == TEST_EVENT_WRITE) &&
+                (event->line == TEST_LINE_SDA) &&
+                (event->value == PLATFORM_GPIO_LEVEL_HIGH));
+    event = &fixture.recorder.events[3U];
     TEST_ASSERT((event->type == TEST_EVENT_DEINIT) &&
                 (event->line == TEST_LINE_SDA));
-    event = &fixture.recorder.events[3U];
+    event = &fixture.recorder.events[4U];
     TEST_ASSERT((event->type == TEST_EVENT_DEINIT) &&
                 (event->line == TEST_LINE_SCL));
     TEST_ASSERT(0U == fixture.i2c.initialized);
     TEST_ASSERT(0U == fixture.scl.configured);
     TEST_ASSERT(0U == fixture.sda.configured);
+
+    return 0;
+}
+
+static int test_deinit_waits_for_scl_and_continues_cleanup_after_timeout(void)
+{
+    test_fixture_t fixture;
+    uint32_t sdaWriteCountBeforeDeinit = 0U;
+    int result = initialize_fixture(&fixture);
+
+    if (result != 0) {
+        return result;
+    }
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_i2c_init(&fixture.i2c,
+                                  "test_i2c",
+                                  &fixture.scl,
+                                  &fixture.sda));
+    fixture.sclContext.defaultReadLevel = PLATFORM_GPIO_LEVEL_LOW;
+    sdaWriteCountBeforeDeinit = fixture.sdaContext.writeCallCount;
+    fixture.recorder.eventCount = 0U;
+
+    TEST_ASSERT(PLATFORM_ERR_TIMEOUT == platform_i2c_deinit(&fixture.i2c));
+    TEST_ASSERT(PROJECT_SOFT_I2C_SCL_TIMEOUT_US ==
+                count_events(&fixture.recorder,
+                             TEST_EVENT_DELAY,
+                             TEST_LINE_NONE,
+                             1U));
+    TEST_ASSERT(fixture.sdaContext.writeCallCount > sdaWriteCountBeforeDeinit);
+    TEST_ASSERT(1U == fixture.sdaContext.deinitCallCount);
+    TEST_ASSERT(1U == fixture.sclContext.deinitCallCount);
+    TEST_ASSERT(0U == fixture.i2c.initialized);
 
     return 0;
 }
@@ -1145,7 +1217,15 @@ int main(void)
     if (result != 0) {
         return result;
     }
+    result = test_deinit_waits_for_scl_and_continues_cleanup_after_timeout();
+    if (result != 0) {
+        return result;
+    }
     result = test_gpio_failure_is_preserved_after_best_effort_stop();
+    if (result != 0) {
+        return result;
+    }
+    result = test_initial_start_failure_preserves_error_and_releases_bus();
     if (result != 0) {
         return result;
     }

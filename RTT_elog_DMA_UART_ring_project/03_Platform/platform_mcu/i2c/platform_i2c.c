@@ -26,6 +26,10 @@
 //******************************** Defines *********************************//
 
 //******************************** Functions *********************************//
+static platform_error_t platform_i2c_fail_transaction(
+    platform_i2c_t *i2c,
+    platform_error_t originalError);
+
 static platform_error_t platform_i2c_sda_low(platform_i2c_t *i2c)
 {
     return platform_gpio_write(i2c->sda, PLATFORM_GPIO_LEVEL_LOW);
@@ -410,7 +414,24 @@ static platform_error_t platform_i2c_begin_transaction(platform_i2c_t *i2c)
         return result;
     }
 
-    return platform_i2c_start(i2c);
+    result = platform_i2c_start(i2c);
+    if (result != PLATFORM_ERR_OK) {
+        return platform_i2c_fail_transaction(i2c, result);
+    }
+
+    return PLATFORM_ERR_OK;
+}
+
+static platform_error_t platform_i2c_release_bus(platform_i2c_t *i2c)
+{
+    platform_error_t firstError = platform_i2c_wait_scl_high(i2c);
+    platform_error_t result = platform_i2c_sda_release(i2c);
+
+    if ((firstError == PLATFORM_ERR_OK) && (result != PLATFORM_ERR_OK)) {
+        firstError = result;
+    }
+
+    return firstError;
 }
 
 static platform_error_t platform_i2c_end_transaction(platform_i2c_t *i2c)
@@ -418,8 +439,7 @@ static platform_error_t platform_i2c_end_transaction(platform_i2c_t *i2c)
     platform_error_t cleanupResult = platform_i2c_stop(i2c);
 
     if (cleanupResult != PLATFORM_ERR_OK) {
-        (void)platform_i2c_sda_release(i2c);
-        (void)platform_i2c_scl_release(i2c);
+        (void)platform_i2c_release_bus(i2c);
     }
 
     return cleanupResult;
@@ -729,15 +749,7 @@ platform_error_t platform_i2c_deinit(platform_i2c_t *i2c)
         return result;
     }
 
-    result = platform_i2c_sda_release(i2c);
-    if (result != PLATFORM_ERR_OK) {
-        firstError = result;
-    }
-
-    result = platform_i2c_scl_release(i2c);
-    if ((result != PLATFORM_ERR_OK) && (firstError == PLATFORM_ERR_OK)) {
-        firstError = result;
-    }
+    firstError = platform_i2c_release_bus(i2c);
 
     result = platform_gpio_deinit(i2c->sda);
     if ((result != PLATFORM_ERR_OK) && (firstError == PLATFORM_ERR_OK)) {
