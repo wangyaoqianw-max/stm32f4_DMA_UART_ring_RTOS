@@ -127,7 +127,7 @@ void platform_delay_us(uint32_t us);
 
 - Produces the same symbol using Cortex-M4 DWT CYCCNT.
 
-- [ ] **Step 1: Add the focused build/test scaffold before implementation**
+- [x] **Step 1: Add the focused build/test scaffold before implementation**
 
 Create the minimum test/build slice that proves the symbol is currently missing or not linked, without adding a second public delay API.
 
@@ -137,7 +137,7 @@ Expected RED condition:
 platform_delay_us implementation missing
 ```
 
-- [ ] **Step 2: Implement lazy DWT initialization**
+- [x] **Step 2: Implement lazy DWT initialization**
 
 Implementation rules:
 
@@ -151,7 +151,7 @@ No dependency from Platform I2C on DWT registers
 
 Delay calculation must use current core clock (`SystemCoreClock`) rather than a duplicated fixed-frequency literal.
 
-- [ ] **Step 3: Implement wrap-safe short busy-wait**
+- [x] **Step 3: Implement wrap-safe short busy-wait**
 
 Conceptual rule:
 
@@ -177,7 +177,7 @@ DWT / CMSIS references compile on STM32F411 target
 no new warnings from impl_platform_delay.c
 ```
 
-- [ ] **Step 5: Coding Standard Review and commit**
+- [x] **Step 5: Coding Standard Review and commit**
 
 Review: naming, comments, integer arithmetic, zero-delay path, no duplicate public API, no HAL GPIO dependency.
 
@@ -237,7 +237,7 @@ platform_error_t platform_i2c_write_read(
 platform_error_t platform_i2c_deinit(platform_i2c_t *i2c);
 ```
 
-- [ ] **Step 1: Write failing public-contract Host tests**
+- [x] **Step 1: Write failing public-contract Host tests**
 
 Tests must initially fail because Platform I2C files/APIs do not exist.
 
@@ -253,7 +253,7 @@ operation before init
 repeat init
 ```
 
-- [ ] **Step 2: Add static project config**
+- [x] **Step 2: Add static project config**
 
 Append to `project_config.h`:
 
@@ -264,7 +264,7 @@ Append to `project_config.h`:
 
 Do not introduce a misleading `PROJECT_SOFT_I2C_FREQ_HZ` constant.
 
-- [ ] **Step 3: Implement the lightweight object and public validation skeleton**
+- [x] **Step 3: Implement the lightweight object and public validation skeleton**
 
 Frozen runtime object fields:
 
@@ -277,7 +277,7 @@ initialized
 
 No timing field, mutex, busy state, ops table, dynamic memory or device registry.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Expected:
 
@@ -287,7 +287,7 @@ parameter/state tests PASS
 protocol-behavior tests remain RED until Task 3
 ```
 
-- [ ] **Step 5: Coding Standard Review and commit**
+- [x] **Step 5: Coding Standard Review and commit**
 
 Suggested commit:
 

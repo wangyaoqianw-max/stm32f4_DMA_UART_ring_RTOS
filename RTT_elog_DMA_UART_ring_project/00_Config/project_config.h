@@ -36,6 +36,9 @@
 
 #define PROJECT_COMM_WAIT_TIMEOUT_MS                 (1000U)
 #define PROJECT_COMM_ERROR_IDLE_DELAY_MS             (1000U)
+
+#define PROJECT_SOFT_I2C_HALF_PERIOD_US              (5U)
+#define PROJECT_SOFT_I2C_SCL_TIMEOUT_US              (100U)
 //******************************** Defines *********************************//
 
 #endif
