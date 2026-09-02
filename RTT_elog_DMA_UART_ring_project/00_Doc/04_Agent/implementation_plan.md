@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > 当前执行计划 / Current Active Plan  
-> 状态：IMPLEMENTED / TARGET SMOKE VERIFIED / NORMAL-PATH REBUILD PENDING
+> 状态：COMPLETED / HOST + KEIL + DHT20 TARGET SMOKE VERIFIED
 > 日期：2026-09-02
 
 **Goal:** 在已验证的 Platform GPIO + STM32 GPIO Impl + Board GPIO Binding 基线上，实现轻量、同步、Master-only 的 Software I2C 基础能力，并通过 Host Test、Keil Full Rebuild、串口助手、RTT 日志和逻辑分析仪完成目标板验收。
@@ -660,7 +660,7 @@ normal firmware path restored
 no new Phase 3 warnings
 ```
 
-临时 `i2c_smoke` 源文件、Keil group/include path 和 RTOS 入口已移除；此清理后的最终 Keil Full Rebuild 由本机人工环境执行。
+临时 `i2c_smoke` 源文件、Keil group/include path 和 RTOS 入口已移除；清理后的人工 Keil Full Rebuild 已通过，0 errors。
 
 - [x] **Step 6: Final Coding Standard / Architecture Review**
 
@@ -675,17 +675,17 @@ No Hardware I2C enabled
 No generated-code pollution
 ```
 
-- [x] **Step 7: Update docs and record Phase 3 progress**
+- [x] **Step 7: Update docs and close Phase 3**
 
 Only after real target verification:
 
 ```text
-Phase 3 — IMPLEMENTED / TARGET SMOKE VERIFIED / NORMAL-PATH REBUILD PENDING
+Phase 3 — COMPLETED / HOST + KEIL + DHT20 TARGET SMOKE VERIFIED
 ```
 
 Update `handoff.md` with measured observations, final warning count, actual target transaction, and any remaining technical debt.
 
-- [ ] **Step 8: Commit progress update**
+- [x] **Step 8: Commit closure**
 
 Suggested commit:
 
