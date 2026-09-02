@@ -721,6 +721,21 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>platform/platform_mcu/i2c</GroupName>
+          <Files>
+            <File>
+              <FileName>platform_i2c.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\03_Platform\platform_mcu\i2c\platform_i2c.c</FilePath>
+            </File>
+            <File>
+              <FileName>platform_i2c.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\03_Platform\platform_mcu\i2c\platform_i2c.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>impl/impl_mcu</GroupName>
           <Files>
             <File>

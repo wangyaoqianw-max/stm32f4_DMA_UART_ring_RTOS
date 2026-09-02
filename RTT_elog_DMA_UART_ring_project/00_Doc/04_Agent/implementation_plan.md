@@ -490,7 +490,7 @@ platform_bsp_gpio_construct_soft_i2c_sda()
 platform_i2c_init/write/read/write_read/deinit()
 ```
 
-- [ ] **Step 1: Integrate new production sources into Keil**
+- [x] **Step 1: Integrate new production sources into Keil**
 
 Add only required files/include paths. Preserve current USART1/DMA/RTOS configuration.
 
