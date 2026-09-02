@@ -732,6 +732,11 @@
               <FileType>1</FileType>
               <FilePath>..\04_Impl\impl_bsp\impl_platform_bsp_uart.c</FilePath>
             </File>
+            <File>
+              <FileName>impl_platform_bsp_gpio.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\04_Impl\impl_bsp\impl_platform_bsp_gpio.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
