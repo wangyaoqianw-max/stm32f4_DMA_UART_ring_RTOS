@@ -733,6 +733,11 @@
               <FileType>1</FileType>
               <FilePath>..\04_Impl\impl_mcu\impl_platform_gpio.c</FilePath>
             </File>
+            <File>
+              <FileName>impl_platform_delay.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\04_Impl\impl_mcu\impl_platform_delay.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
