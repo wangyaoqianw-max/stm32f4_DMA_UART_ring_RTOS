@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > 当前执行计划 / Current Active Plan  
-> 状态：IMPLEMENTED / TARGET BOARD VERIFICATION PENDING
+> 状态：COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 > 日期：2026-09-02
 
 **Goal:** 完成 LED、KEY、Software I2C SCL/SDA 四个板级 GPIO 资源到现有 Platform GPIO + STM32 GPIO Impl 的正式 Board/BSP 绑定，并完成 Host Test、Keil Build 和目标板 GPIO Smoke Test，从而关闭 Phase 2。
@@ -658,7 +658,7 @@ const platform_gpio_config_t softI2cConfig =
 
 所有返回值必须检查；失败立即记录并停止后续相关 GPIO 操作。
 
-- [ ] **Step 4: Verify PC13 Status LED**
+- [x] **Step 4: Verify PC13 Status LED**
 
 通过 `platform_gpio_write()` 验证：
 
@@ -675,7 +675,7 @@ Expected:
 PASS
 ```
 
-- [ ] **Step 5: Verify PA0 User Key**
+- [x] **Step 5: Verify PA0 User Key**
 
 通过 `platform_gpio_read()` 验证：
 
@@ -692,7 +692,7 @@ Expected:
 PASS
 ```
 
-- [ ] **Step 6: Verify PB6 SCL open-drain behavior**
+- [x] **Step 6: Verify PB6 SCL open-drain behavior**
 
 使用逻辑分析仪或万用表：
 
@@ -707,7 +707,7 @@ platform_gpio_write(HIGH)
 
 不得把 `HIGH` 描述为 MCU push-pull drive high。
 
-- [ ] **Step 7: Verify PB7 SDA write/read behavior**
+- [x] **Step 7: Verify PB7 SDA write/read behavior**
 
 验证：
 
@@ -757,7 +757,7 @@ Expected:
 normal firmware startup path restored
 ```
 
-- [ ] **Step 11: Record manual board result**
+- [x] **Step 11: Record manual board result**
 
 只有人工真实观察完成后才允许记录：
 
@@ -807,7 +807,7 @@ Target Board GPIO Smoke Test     PASS only after real observation
 Coding Standard Review           PASS
 ```
 
-- [ ] **Step 3: Run Phase 2 completion gate**
+- [x] **Step 3: Run Phase 2 completion gate**
 
 必须同时满足：
 
@@ -827,7 +827,7 @@ No EXTI introduced
 No Software I2C protocol code introduced
 ```
 
-- [ ] **Step 4: Mark Phase 2 completed only when all gates pass**
+- [x] **Step 4: Mark Phase 2 completed only when all gates pass**
 
 最终状态：
 
@@ -878,10 +878,10 @@ Phase 2 关闭前最终检查：
 [x] Platform GPIO regression PASS
 [x] STM32 GPIO Impl regression PASS
 [x] Keil Full Rebuild PASS
-[ ] LED board smoke PASS
-[ ] KEY board smoke PASS
-[ ] SCL open-drain smoke PASS
-[ ] SDA open-drain/read smoke PASS
+[x] LED board smoke PASS
+[x] KEY board smoke PASS
+[x] SCL open-drain smoke PASS
+[x] SDA open-drain/read smoke PASS
 [x] No EXTI introduced
 [x] No Hardware I2C introduced
 [x] No Software I2C protocol implementation leaked into Phase 2
@@ -906,3 +906,7 @@ Phase 2 完成后停止执行，等待 Phase 3 Software I2C 专项设计。
 2026-09-02: Independent review found that Smoke Test cleanup would deinitialize GPIOs before `osKernelStart()`, and that level mismatches were not emitted as structured failures. Removed the deinitialization path, added serial/RTT `FAIL` reporting for key and SDA level mismatches, and recompiled the temporary Smoke source with 0 errors and no Smoke source warning.
 
 2026-09-02: Phase 2 remains `IMPLEMENTED / TARGET BOARD VERIFICATION PENDING`. PC13, PA0, PB6 and PB7 board smoke gates remain unchecked. Stop before Phase 3 Software I2C.
+
+2026-09-02: User confirmed the target-board GPIO smoke test passed using the serial assistant + RTT logs together with physical observation / logic-analyzer verification: PC13 LED on/off, PA0 key release/press levels, PB6 open-drain pull-low/release, and PB7 open-drain pull-low/release/readback. All Phase 2 target-board gates are now PASS.
+
+2026-09-02: Phase 2 closed as `COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED`. The next step is Phase 3 Software I2C dedicated design; do not implement the protocol until the Phase 3 interface, timing, release/read, ACK/NACK, timeout and recovery decisions are frozen.

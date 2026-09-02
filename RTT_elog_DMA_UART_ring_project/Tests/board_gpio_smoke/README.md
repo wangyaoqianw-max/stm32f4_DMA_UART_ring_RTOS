@@ -15,7 +15,7 @@ Board BSP -> Platform GPIO -> STM32 GPIO Impl -> HAL -> 目标板引脚
 ```text
 Host Test                         PASS
 Keil Full Rebuild                PASS (0 errors)
-Target Board GPIO Smoke Test     IMPLEMENTED / VERIFICATION PENDING
+Target Board GPIO Smoke Test     PASS (serial assistant + RTT + logic analyzer verified)
 ```
 
 ## 观察工具

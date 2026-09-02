@@ -122,7 +122,7 @@ Phase 2 — Board Resource + CubeMX Configuration
 Board Resource Freeze               PASS
 CubeMX GPIO Configuration           PASS
 Board / GPIO Context Binding        COMPLETED / HOST VERIFIED
-Target Board GPIO Verification      NOT YET VERIFIED
+Target Board GPIO Verification      PASS
 ```
 
 当前唯一执行计划：
@@ -140,7 +140,6 @@ Board GPIO Binding + Target Smoke Test Phase 2 Implementation Plan
 当前尚未完成：
 
 ```text
-Target Board GPIO Smoke Test
 Software I2C
 LED module
 Button module
@@ -748,7 +747,7 @@ Phase 2 — Board Resource + CubeMX Configuration
 Resource Table        FROZEN
 CubeMX Configuration  COMPLETED / INSPECTED
 Board Binding         IMPLEMENTED / HOST + KEIL VERIFIED
-Target Board Smoke    PENDING
+Target Board Smoke    PASS
 ```
 
 当前唯一执行计划：
@@ -882,12 +881,12 @@ Coding Standard Review: PASS / NEEDS_FIX / EXCEPTION
 
 如为 EXCEPTION，必须记录文件、规则、原因与后续整改状态。
 
-当前 Phase 2 已完成生产代码、Host Test 和 Keil 编译验证；真实目标板尚未连接观察，因此：
+当前 Phase 2 已完成生产代码、Host Test、Keil 编译和真实目标板观察验证：
 
 ```text
 Phase 2 Coding Standard Review: PASS
-Target Board GPIO Smoke Test: PENDING
-Phase 2 status: IMPLEMENTED / TARGET BOARD VERIFICATION PENDING
+Target Board GPIO Smoke Test: PASS
+Phase 2 status: COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
 ---
@@ -922,11 +921,11 @@ Keil Full Rebuild                 PASS (0 errors, 20 existing warnings)
 当前真实硬件状态：
 
 ```text
-PC13 Status LED                       PENDING
-PA0 User Key                          PENDING
-PB6 Open-Drain Pull-Low / Release     PENDING
-PB7 Open-Drain Pull-Low / Release     PENDING
-PB7 Physical Readback                 PENDING
+PC13 Status LED                       PASS
+PA0 User Key                          PASS
+PB6 Open-Drain Pull-Low / Release     PASS
+PB7 Open-Drain Pull-Low / Release     PASS
+PB7 Physical Readback                 PASS
 ```
 
-在人工目标板验证完成前，Phase 2 不关闭；下一步只进行真实 GPIO Smoke Test，不开始 Phase 3 Software I2C 实现。
+用户已确认上述三组硬件现象均通过，并使用串口助手 + RTT 日志配合逻辑分析仪完成观察。Phase 2 现已关闭；下一步进入 Phase 3 Software I2C 专项设计，先冻结接口、时序、释放/读回、ACK/NACK、超时和总线恢复策略，再开始协议实现。
