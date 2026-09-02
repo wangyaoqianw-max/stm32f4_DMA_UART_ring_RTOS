@@ -901,6 +901,8 @@ Phase 2 完成后停止执行，等待 Phase 3 Software I2C 专项设计。
 
 2026-09-02: Task 3 completed. Added `impl_platform_bsp_gpio.c` to the existing `impl/impl_bsp` Keil group without changing include paths or CubeMX-generated files. Full Rebuild linked with 0 errors; the new production BSP source introduced no warning. Commit: `b3b91c7`.
 
-2026-09-02: Task 4 prepared `Tests/board_gpio_smoke/board_gpio_smoke.c/.h/.md`. Temporary Keil compilation passed with 0 errors and no Smoke source warning; the temporary group was removed and a final normal Full Rebuild passed with 0 errors. Real target observation was not available. The manual procedure requires serial assistant + RTT logs together with meter/logic-analyzer readings.
+2026-09-02: Task 4 prepared `Tests/board_gpio_smoke/board_gpio_smoke.c/.h/README.md`. Temporary Keil compilation passed with 0 errors and no Smoke source warning; the temporary group was removed and a final normal Full Rebuild passed with 0 errors. Real target observation was not available. The manual procedure requires serial assistant + RTT logs together with meter/logic-analyzer readings.
+
+2026-09-02: Independent review found that Smoke Test cleanup would deinitialize GPIOs before `osKernelStart()`, and that level mismatches were not emitted as structured failures. Removed the deinitialization path, added serial/RTT `FAIL` reporting for key and SDA level mismatches, and recompiled the temporary Smoke source with 0 errors and no Smoke source warning.
 
 2026-09-02: Phase 2 remains `IMPLEMENTED / TARGET BOARD VERIFICATION PENDING`. PC13, PA0, PB6 and PB7 board smoke gates remain unchecked. Stop before Phase 3 Software I2C.

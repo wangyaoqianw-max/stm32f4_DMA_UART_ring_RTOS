@@ -140,7 +140,6 @@ Board GPIO Binding + Target Smoke Test Phase 2 Implementation Plan
 当前尚未完成：
 
 ```text
-Board / GPIO Context Binding
 Target Board GPIO Smoke Test
 Software I2C
 LED module
@@ -915,6 +914,8 @@ Keil Full Rebuild                 PASS (0 errors, 20 existing warnings)
 ```
 
 本次新增的 `impl_platform_bsp_gpio.c` 和临时 `board_gpio_smoke.c` 均未产生 warning。临时 Smoke 分组已经从 Keil 工程移除，`Core/Src/main.c` 未加入临时入口，正常固件启动路径保持不变。
+
+独立审查发现 Smoke Harness 若在 `osKernelStart()` 前调用 `platform_gpio_deinit()` 会破坏后续 GPIO 配置；现已移除该清理路径。PA0 / PB7 电平读值不符预期时，现会同时输出串口 `GPIO_SMOKE,FAIL,...` 和 RTT ERROR，并停止后续步骤。
 
 目标板验证方案必须同时使用 USART1 串口助手和 RTT 日志：串口助手观察 `GPIO_SMOKE,...` 阶段标记，RTT 观察对应 `gpio smoke ...` 日志；两条记录与万用表 / 逻辑分析仪结果一致后，才可将 PC13、PA0、PB6、PB7 各项标为 PASS。
 

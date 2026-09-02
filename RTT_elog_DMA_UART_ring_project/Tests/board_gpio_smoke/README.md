@@ -26,7 +26,7 @@ Target Board GPIO Smoke Test     IMPLEMENTED / VERIFICATION PENDING
 2. 调试器连接 RTT Viewer / RTT 日志窗口。
 
 串口助手观察结构化阶段标记，例如 `GPIO_SMOKE,LED,level=LOW,expected=ON`；
-RTT 观察同一阶段的 `gpio smoke ...` 日志、初始化错误和清理错误。两边应按相同测试顺序记录，任一通道缺失或结果矛盾时不得判 PASS。
+RTT 观察同一阶段的 `gpio smoke ...` 日志、初始化错误和 `FAIL` 日志。两边应按相同测试顺序记录，任一通道缺失或结果矛盾时不得判 PASS。
 
 ## 接线与前置条件
 
@@ -86,7 +86,7 @@ platform_bsp_gpio_construct_soft_i2c_sda(&softI2cSdaGpio);
 | 7 | PB6 写 HIGH/RELEASE | `expected=EXTERNAL_PULLUP_HIGH` | SCL release | 外部上拉为高 |
 | 8 | PB7 写 LOW 后读取 | `expected=LOW` 且 `read=LOW` | SDA low read LOW | 拉低与回读正确 |
 | 9 | PB7 写 HIGH/RELEASE 后读取 | `expected=HIGH` 且 `read=HIGH` | SDA release read HIGH | 释放与回读正确 |
-| 10 | 清理四个对象并结束 | `GPIO_SMOKE,END,...` | `gpio smoke end...` | 记录结果 |
+| 10 | 保持 GPIO 配置并结束 | `GPIO_SMOKE,END,...` | `gpio smoke end...` | 记录结果 |
 
 Harness 中 PA0 会先提示 `action=RELEASE`，再提示 `action=PRESS`；操作者应在对应等待窗口内操作按键。PB6/PB7 的电压必须以仪表或逻辑分析仪为准，不能只依据软件日志判定开漏物理行为。
 
@@ -112,6 +112,8 @@ PB7 Physical Readback                 PENDING
 2. 从 Keil 工程移除临时 Smoke Test 源文件和 include path；
 3. 重新执行正常固件 Full Rebuild；
 4. 确认正常启动路径没有开机自动翻转 LED、SCL 或 SDA。
+
+Smoke Harness 不调用 `platform_gpio_deinit()`：测试入口位于 `osKernelStart()` 前，结束时必须保持四个 GPIO 的有效配置，避免破坏后续正常启动路径。
 
 在目标板真实验证完成前，Phase 2 状态只能是：
 

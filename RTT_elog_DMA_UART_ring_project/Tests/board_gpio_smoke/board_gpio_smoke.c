@@ -36,27 +36,6 @@ static platform_error_t board_gpio_smoke_report_failure(
     return result;
 }
 
-static void board_gpio_smoke_deinit(
-    platform_gpio_t *gpio,
-    const char *name)
-{
-    platform_error_t result = PLATFORM_ERR_OK;
-
-    if ((gpio == NULL) || (gpio->configured == 0U)) {
-        return;
-    }
-
-    result = platform_gpio_deinit(gpio);
-    if (result != PLATFORM_ERR_OK) {
-        printf("GPIO_SMOKE,DEINIT_FAIL,name=%s,result=%d\n",
-               name,
-               (int)result);
-        SERVICE_LOG_E("gpio smoke deinit failed: %s, result=%d",
-                      name,
-                      (int)result);
-    }
-}
-
 static void board_gpio_smoke_wait(const char *stage)
 {
     printf("GPIO_SMOKE,WAIT,stage=%s\n", stage);
@@ -123,25 +102,25 @@ void board_gpio_smoke_run(void)
     result = platform_gpio_configure(&statusLedGpio, &ledConfig);
     if (result != PLATFORM_ERR_OK) {
         (void)board_gpio_smoke_report_failure("configure_status_led", result);
-        goto cleanup;
+        return;
     }
 
     result = platform_gpio_configure(&userKeyGpio, &keyConfig);
     if (result != PLATFORM_ERR_OK) {
         (void)board_gpio_smoke_report_failure("configure_user_key", result);
-        goto cleanup;
+        return;
     }
 
     result = platform_gpio_configure(&softI2cSclGpio, &softI2cConfig);
     if (result != PLATFORM_ERR_OK) {
         (void)board_gpio_smoke_report_failure("configure_soft_i2c_scl", result);
-        goto cleanup;
+        return;
     }
 
     result = platform_gpio_configure(&softI2cSdaGpio, &softI2cConfig);
     if (result != PLATFORM_ERR_OK) {
         (void)board_gpio_smoke_report_failure("configure_soft_i2c_sda", result);
-        goto cleanup;
+        return;
     }
 
     printf("GPIO_SMOKE,CONFIGURED\n");
@@ -150,7 +129,7 @@ void board_gpio_smoke_run(void)
     result = platform_gpio_write(&statusLedGpio, PLATFORM_GPIO_LEVEL_LOW);
     if (result != PLATFORM_ERR_OK) {
         (void)board_gpio_smoke_report_failure("status_led_low", result);
-        goto cleanup;
+        return;
     }
 
     printf("GPIO_SMOKE,LED,level=LOW,expected=ON\n");
@@ -160,7 +139,7 @@ void board_gpio_smoke_run(void)
     result = platform_gpio_write(&statusLedGpio, PLATFORM_GPIO_LEVEL_HIGH);
     if (result != PLATFORM_ERR_OK) {
         (void)board_gpio_smoke_report_failure("status_led_high", result);
-        goto cleanup;
+        return;
     }
 
     printf("GPIO_SMOKE,LED,level=HIGH,expected=OFF\n");
@@ -173,13 +152,19 @@ void board_gpio_smoke_run(void)
     result = platform_gpio_read(&userKeyGpio, &level);
     if (result != PLATFORM_ERR_OK) {
         (void)board_gpio_smoke_report_failure("user_key_release_read", result);
-        goto cleanup;
+        return;
     }
 
     printf("GPIO_SMOKE,KEY,action=RELEASE,read=%s,expected=HIGH\n",
            (level == PLATFORM_GPIO_LEVEL_HIGH) ? "HIGH" : "LOW");
     SERVICE_LOG_I("gpio smoke key release read=%s",
                   (level == PLATFORM_GPIO_LEVEL_HIGH) ? "HIGH" : "LOW");
+    if (level != PLATFORM_GPIO_LEVEL_HIGH) {
+        (void)board_gpio_smoke_report_failure(
+            "user_key_release_level",
+            PLATFORM_ERR_IO);
+        return;
+    }
 
     printf("GPIO_SMOKE,KEY,action=PRESS,expected=LOW\n");
     SERVICE_LOG_I("gpio smoke key press now, expected low");
@@ -187,18 +172,24 @@ void board_gpio_smoke_run(void)
     result = platform_gpio_read(&userKeyGpio, &level);
     if (result != PLATFORM_ERR_OK) {
         (void)board_gpio_smoke_report_failure("user_key_press_read", result);
-        goto cleanup;
+        return;
     }
 
     printf("GPIO_SMOKE,KEY,action=PRESS,read=%s,expected=LOW\n",
            (level == PLATFORM_GPIO_LEVEL_HIGH) ? "HIGH" : "LOW");
     SERVICE_LOG_I("gpio smoke key press read=%s",
                   (level == PLATFORM_GPIO_LEVEL_HIGH) ? "HIGH" : "LOW");
+    if (level != PLATFORM_GPIO_LEVEL_LOW) {
+        (void)board_gpio_smoke_report_failure(
+            "user_key_press_level",
+            PLATFORM_ERR_IO);
+        return;
+    }
 
     result = platform_gpio_write(&softI2cSclGpio, PLATFORM_GPIO_LEVEL_LOW);
     if (result != PLATFORM_ERR_OK) {
         (void)board_gpio_smoke_report_failure("soft_i2c_scl_low", result);
-        goto cleanup;
+        return;
     }
 
     printf("GPIO_SMOKE,SCL,drive=LOW,expected=BUS_LOW\n");
@@ -208,7 +199,7 @@ void board_gpio_smoke_run(void)
     result = platform_gpio_write(&softI2cSclGpio, PLATFORM_GPIO_LEVEL_HIGH);
     if (result != PLATFORM_ERR_OK) {
         (void)board_gpio_smoke_report_failure("soft_i2c_scl_release", result);
-        goto cleanup;
+        return;
     }
 
     printf("GPIO_SMOKE,SCL,drive=RELEASE,expected=EXTERNAL_PULLUP_HIGH\n");
@@ -218,46 +209,53 @@ void board_gpio_smoke_run(void)
     result = platform_gpio_write(&softI2cSdaGpio, PLATFORM_GPIO_LEVEL_LOW);
     if (result != PLATFORM_ERR_OK) {
         (void)board_gpio_smoke_report_failure("soft_i2c_sda_low", result);
-        goto cleanup;
+        return;
     }
 
     result = platform_gpio_read(&softI2cSdaGpio, &level);
     if (result != PLATFORM_ERR_OK) {
         (void)board_gpio_smoke_report_failure("soft_i2c_sda_low_read", result);
-        goto cleanup;
+        return;
     }
 
     printf("GPIO_SMOKE,SDA,drive=LOW,read=%s,expected=LOW\n",
            (level == PLATFORM_GPIO_LEVEL_HIGH) ? "HIGH" : "LOW");
     SERVICE_LOG_I("gpio smoke SDA low read=%s",
                   (level == PLATFORM_GPIO_LEVEL_HIGH) ? "HIGH" : "LOW");
+    if (level != PLATFORM_GPIO_LEVEL_LOW) {
+        (void)board_gpio_smoke_report_failure(
+            "soft_i2c_sda_low_level",
+            PLATFORM_ERR_IO);
+        return;
+    }
     board_gpio_smoke_wait("soft_i2c_sda_low");
 
     result = platform_gpio_write(&softI2cSdaGpio, PLATFORM_GPIO_LEVEL_HIGH);
     if (result != PLATFORM_ERR_OK) {
         (void)board_gpio_smoke_report_failure("soft_i2c_sda_release", result);
-        goto cleanup;
+        return;
     }
 
     result = platform_gpio_read(&softI2cSdaGpio, &level);
     if (result != PLATFORM_ERR_OK) {
         (void)board_gpio_smoke_report_failure("soft_i2c_sda_release_read", result);
-        goto cleanup;
+        return;
     }
 
     printf("GPIO_SMOKE,SDA,drive=RELEASE,read=%s,expected=HIGH\n",
            (level == PLATFORM_GPIO_LEVEL_HIGH) ? "HIGH" : "LOW");
     SERVICE_LOG_I("gpio smoke SDA release read=%s",
                   (level == PLATFORM_GPIO_LEVEL_HIGH) ? "HIGH" : "LOW");
+    if (level != PLATFORM_GPIO_LEVEL_HIGH) {
+        (void)board_gpio_smoke_report_failure(
+            "soft_i2c_sda_release_level",
+            PLATFORM_ERR_IO);
+        return;
+    }
     board_gpio_smoke_wait("soft_i2c_sda_release");
 
     printf("GPIO_SMOKE,END,MANUAL_VERIFICATION_PENDING\n");
     SERVICE_LOG_I("gpio smoke end, manual verification pending");
 
-cleanup:
-    board_gpio_smoke_deinit(&softI2cSdaGpio, "soft_i2c_sda");
-    board_gpio_smoke_deinit(&softI2cSclGpio, "soft_i2c_scl");
-    board_gpio_smoke_deinit(&userKeyGpio, "user_key");
-    board_gpio_smoke_deinit(&statusLedGpio, "status_led");
 }
 //******************************** Functions *********************************//
