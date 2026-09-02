@@ -97,6 +97,7 @@ Board Resource Freeze               PASS
 CubeMX GPIO Configuration           PASS
 Board / GPIO Context Binding        COMPLETED / HOST VERIFIED
 Target Board GPIO Verification      PASS
+Software I2C Phase 3                IMPLEMENTED / DHT20 TARGET SMOKE VERIFIED
 ```
 
 Phase 2 最终状态：
@@ -294,15 +295,16 @@ BSP constructor 只 construct / bind，不执行 `platform_gpio_configure()`。
 当前阶段：
 
 ```text
-Phase 3 — Software I2C
+Phase 4 — LED Module (planning)
 ```
 
 状态：
 
 ```text
-DESIGN FROZEN
-IMPLEMENTATION PLAN READY
-CODE NOT STARTED
+Phase 3 implementation completed
+Host + Keil + DHT20 target smoke verified
+Temporary smoke harness removed
+Final normal-path Keil rebuild pending
 ```
 
 专项设计：
@@ -320,8 +322,21 @@ CODE NOT STARTED
 当前计划标题：
 
 ```text
-Software I2C Phase 3 Implementation Plan
+Software I2C Phase 3 Completion Record
 ```
+
+Phase 3 目标板证据（2026-09-02）：
+
+```text
+Keil Full Rebuild                     0 errors（临时 smoke 在工程时）
+Serial Assistant                      I2C_SMOKE,TXRX,PASS,status=0x18
+RTT / EasyLogger                      i2c smoke txrx pass, status=0x18
+Logic Analyzer                         START -> 0x38(W) -> 0xAC 0x33 0x00 -> STOP
+Decoder ACK                            address and all three command bytes ACK
+Temporary verification path            removed from source and Keil project
+```
+
+烟测使用 DHT20 的安全原始事务：写触发命令 `0xAC, 0x33, 0x00`，通过 `platform_time_delay_ms(80)` 等待后读取 7 字节。`status=0x18` 表示设备未忙且校准位有效。当前尚未采集 `write_read()` 的目标板 Repeated START / final-NACK 专项波形，Host Test 已覆盖该协议分支；清理 smoke 后需在 Keil 执行一次最终 Full Rebuild。
 
 ---
 
@@ -762,8 +777,8 @@ Phase 3 — COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 冻结顺序：
 
 ```text
-Phase 3  Software I2C          <- CURRENT
-Phase 4  LED Module
+Phase 3  Software I2C          <- IMPLEMENTED / TARGET SMOKE VERIFIED
+Phase 4  LED Module             <- NEXT (planning)
 Phase 5  Button Module
 Phase 6  DHT20 Environment Module
 Phase 7  MPU6050 Motion Module
@@ -773,7 +788,7 @@ Phase 10 Final APP Integration
 Final Integrated Board Test
 ```
 
-Phase 3 完成后停止继续扩展 I2C，先回到 Roadmap / Handoff 评审，再进入 Phase 4。
+在清理 smoke 后完成一次 Keil Full Rebuild；随后停止继续扩展 I2C，进入 Phase 4 的 LED 专项设计与计划评审。
 
 ---
 

@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > 当前执行计划 / Current Active Plan  
-> 状态：READY FOR EXECUTION  
+> 状态：IMPLEMENTED / TARGET SMOKE VERIFIED / NORMAL-PATH REBUILD PENDING
 > 日期：2026-09-02
 
 **Goal:** 在已验证的 Platform GPIO + STM32 GPIO Impl + Board GPIO Binding 基线上，实现轻量、同步、Master-only 的 Software I2C 基础能力，并通过 Host Test、Keil Full Rebuild、串口助手、RTT 日志和逻辑分析仪完成目标板验收。
@@ -494,7 +494,7 @@ platform_i2c_init/write/read/write_read/deinit()
 
 Add only required files/include paths. Preserve current USART1/DMA/RTOS configuration.
 
-- [ ] **Step 2: Full Rebuild**
+- [x] **Step 2: Full Rebuild**
 
 Expected:
 
@@ -505,7 +505,7 @@ no new Phase 3 warnings
 
 Record existing unrelated warning count separately; do not silently “clean up” unrelated warnings in this Phase.
 
-- [ ] **Step 3: Add temporary low-frequency smoke harness**
+- [x] **Step 3: Add temporary low-frequency smoke harness**
 
 Smoke harness must:
 
@@ -521,7 +521,7 @@ Do not build a formal DHT20 / MPU6050 driver here.
 
 Use only a raw transaction that is known not to perform destructive device reconfiguration. If a safe read transaction cannot be justified from the already reviewed sensor datasheets, limit target proof to address/ACK behavior and protocol waveform rather than guessing device commands.
 
-- [ ] **Step 4: Add serial-assistant stage output**
+- [x] **Step 4: Add serial-assistant stage output**
 
 Low-frequency result format:
 
@@ -540,7 +540,7 @@ I2C_SMOKE,FAIL,<stage>,<platform_error>
 
 Do not print every bit/byte/ACK.
 
-- [ ] **Step 5: Add RTT smoke logging**
+- [x] **Step 5: Add RTT smoke logging**
 
 RTT only logs:
 
@@ -553,11 +553,11 @@ smoke final result
 
 Serial and RTT results must describe the same final outcome.
 
-- [ ] **Step 6: Coding Standard / generated-code boundary review**
+- [x] **Step 6: Coding Standard / generated-code boundary review**
 
 Temporary harness must be removable. No permanent business logic may remain in generated `main.c` regions.
 
-- [ ] **Step 7: Commit target integration**
+- [x] **Step 7: Commit target integration**
 
 Suggested commit:
 
@@ -578,7 +578,7 @@ git commit -m "test: prepare software I2C target verification"
 **Interfaces:**
 - Human observation uses USART1 serial assistant + SEGGER RTT + logic analyzer on PB6/PB7.
 
-- [ ] **Step 1: Verify with serial assistant**
+- [x] **Step 1: Verify with serial assistant**
 
 Required observations:
 
@@ -589,7 +589,7 @@ transaction succeeds or emits explicit failure
 firmware does not hang
 ```
 
-- [ ] **Step 2: Verify with RTT / EasyLogger**
+- [x] **Step 2: Verify with RTT / EasyLogger**
 
 Required observations:
 
@@ -600,7 +600,7 @@ timeout/NACK errors identifiable if injected or encountered
 no high-frequency bit logging
 ```
 
-- [ ] **Step 3: Verify with logic analyzer**
+- [x] **Step 3: Verify with logic analyzer**
 
 Connect:
 
@@ -628,7 +628,9 @@ actual clock remains in acceptable Standard-mode range
 
 Exact 100 kHz is not required.
 
-- [ ] **Step 4: Cross-check the three observation channels**
+已观察 DHT20 原始写命令 `0xAC, 0x33, 0x00` 的 START、地址/数据 ACK 与 STOP；本次 smoke 使用独立 `write()` 与 `read()`，因此未在目标板采集 `write_read()` 的 Repeated START 波形，相关协议行为由 Host Test 覆盖。
+
+- [x] **Step 4: Cross-check the three observation channels**
 
 Closure requires:
 
@@ -646,7 +648,7 @@ If Host + Keil pass but target observation is incomplete, record:
 Phase 3 — IMPLEMENTED / TARGET BOARD VERIFICATION PENDING
 ```
 
-- [ ] **Step 5: Restore normal firmware path**
+- [x] **Step 5: Restore normal firmware path**
 
 Remove temporary startup calls/groups that alter normal product behavior. Rebuild again.
 
@@ -658,7 +660,9 @@ normal firmware path restored
 no new Phase 3 warnings
 ```
 
-- [ ] **Step 6: Final Coding Standard / Architecture Review**
+临时 `i2c_smoke` 源文件、Keil group/include path 和 RTOS 入口已移除；此清理后的最终 Keil Full Rebuild 由本机人工环境执行。
+
+- [x] **Step 6: Final Coding Standard / Architecture Review**
 
 Confirm:
 
@@ -671,17 +675,17 @@ No Hardware I2C enabled
 No generated-code pollution
 ```
 
-- [ ] **Step 7: Update docs and close Phase 3**
+- [x] **Step 7: Update docs and record Phase 3 progress**
 
 Only after real target verification:
 
 ```text
-Phase 3 — COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
+Phase 3 — IMPLEMENTED / TARGET SMOKE VERIFIED / NORMAL-PATH REBUILD PENDING
 ```
 
 Update `handoff.md` with measured observations, final warning count, actual target transaction, and any remaining technical debt.
 
-- [ ] **Step 8: Commit closure**
+- [ ] **Step 8: Commit progress update**
 
 Suggested commit:
 

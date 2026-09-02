@@ -28,7 +28,6 @@
 #include "usart.h"
 #include "service_log.h"
 #include "app_system.h"
-#include "i2c_smoke.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -129,8 +128,6 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
-  i2c_smoke_run();
-
   /* Infinite loop */
   for(;;)
   {

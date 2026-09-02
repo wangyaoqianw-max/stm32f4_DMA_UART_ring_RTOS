@@ -61,14 +61,13 @@ APP Communication Phase 1
 Platform OS
 Service Log + EasyLogger + RTT
 Platform GPIO Phase 1 / Host Verified
+GPIO STM32 Impl / Board Resource / CubeMX Configuration
+Software I2C / Host + Keil + DHT20 Target Smoke Verified
 ```
 
 当前最终闭环尚缺：
 
 ```text
-GPIO STM32 Impl
-Board resource / CubeMX configuration
-Software I2C
 LED
 Button
 DHT20
@@ -691,19 +690,19 @@ Enter next Phase
 
 # 17. 当前下一阶段
 
-当前路线已确认首先讨论：
+当前应讨论：
 
 ```text
-Phase 1 — GPIO STM32 Impl
+Phase 4 — LED Module
 ```
 
-当前尚未生成新的 GPIO Impl 详细执行计划。
+Phase 3 的临时 smoke 已移除；清理后的最终 Keil Full Rebuild 待执行。当前尚未生成 LED Module 的专项设计和详细执行计划。
 
-在 GPIO Impl 专项设计和执行边界确认之前：
+在 LED Module 专项设计和执行边界确认之前：
 
 - 不直接开始编码；
-- 不把 Phase 2 的具体资源配置混入 GPIO Impl；
-- 不把 LED / KEY / Soft I2C 业务混入 GPIO Impl；
-- 不执行旧的 GPIO Platform Phase 1 `implementation_plan.md`。
+- 不把 LED 高低有效极性泄漏到 APP；
+- 不把 LED 闪烁放进 ISR 或阻塞延时路径；
+- 不开始 Phase 5 Button 或传感器业务。
 
-下一步应围绕 GPIO STM32 Impl 的对象绑定、HAL 映射、输出初始值、deinit 语义、错误转换、Keil / Board 验证方式讨论具体设计，然后再更新 `implementation_plan.md`。
+下一步应围绕 LED 的板级极性封装、Platform / BSP / Service 职责划分、ONCE 三闪的非阻塞执行方式以及 Host / Keil / Board 验证方式讨论具体设计，然后再更新 `implementation_plan.md`。
