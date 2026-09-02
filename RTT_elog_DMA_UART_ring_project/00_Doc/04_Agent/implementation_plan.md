@@ -311,7 +311,7 @@ git commit -m "test: define platform I2C contract"
 - Consumes: `platform_gpio_configure/write/read/deinit`, `platform_delay_us`, project Software I2C config.
 - Produces working synchronous transaction APIs from Task 2.
 
-- [ ] **Step 1: Extend Fake GPIO / delay interaction recorder**
+- [x] **Step 1: Extend Fake GPIO / delay interaction recorder**
 
 Host Fake must record:
 
@@ -336,7 +336,7 @@ arbitrary RX bit sequence
 SDA stuck LOW during init
 ```
 
-- [ ] **Step 2: Write RED tests for init / electrical model / recovery**
+- [x] **Step 2: Write RED tests for init / electrical model / recovery**
 
 Verify:
 
@@ -350,7 +350,7 @@ SCL cannot become HIGH -> PLATFORM_ERR_TIMEOUT
 normal transaction non-idle -> BUSY/TIMEOUT without repeated auto-recovery
 ```
 
-- [ ] **Step 3: Implement private line primitives and SCL-high wait**
+- [x] **Step 3: Implement private line primitives and SCL-high wait**
 
 Private behavior only; do not expose public START/STOP/ACK APIs.
 
@@ -364,7 +364,7 @@ wait_scl_high
 
 Every SCL release that requires HIGH must validate the physical SCL level with timeout.
 
-- [ ] **Step 4: Write RED tests for START / STOP / byte / ACK behavior**
+- [x] **Step 4: Write RED tests for START / STOP / byte / ACK behavior**
 
 Verify GPIO sequence for:
 
@@ -379,7 +379,7 @@ intermediate read byte -> ACK
 last read byte -> NACK
 ```
 
-- [ ] **Step 5: Implement private protocol primitives**
+- [x] **Step 5: Implement private protocol primitives**
 
 Implement private/static logic for:
 
@@ -398,7 +398,7 @@ bus recovery
 
 Do not log normal per-bit / per-byte operations.
 
-- [ ] **Step 6: Write RED transaction tests**
+- [x] **Step 6: Write RED transaction tests**
 
 Verify exact transaction semantics:
 
@@ -423,7 +423,7 @@ SCL timeout -> PLATFORM_ERR_TIMEOUT
 transaction failure -> preserve original error + best-effort STOP
 ```
 
-- [ ] **Step 7: Implement public transactions and deinit**
+- [x] **Step 7: Implement public transactions and deinit**
 
 Deinit behavior:
 
@@ -435,7 +435,7 @@ initialized = FALSE
 
 Do not destroy caller-owned GPIO object storage.
 
-- [ ] **Step 8: Run full Host regression set**
+- [x] **Step 8: Run full Host regression set**
 
 At minimum:
 
@@ -449,7 +449,7 @@ Tests/platform_bsp_uart
 
 Expected: ALL PASS.
 
-- [ ] **Step 9: Dependency / Coding Standard Review and commit**
+- [x] **Step 9: Dependency / Coding Standard Review and commit**
 
 Confirm:
 
