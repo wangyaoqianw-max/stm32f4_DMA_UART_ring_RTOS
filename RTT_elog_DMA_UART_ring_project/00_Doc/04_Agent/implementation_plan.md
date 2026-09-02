@@ -1,19 +1,20 @@
-# Board GPIO Binding + Target Smoke Test Phase 2 Implementation Plan
+# Software I2C Phase 3 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > 当前执行计划 / Current Active Plan  
-> 状态：COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
+> 状态：READY FOR EXECUTION  
 > 日期：2026-09-02
 
-**Goal:** 完成 LED、KEY、Software I2C SCL/SDA 四个板级 GPIO 资源到现有 Platform GPIO + STM32 GPIO Impl 的正式 Board/BSP 绑定，并完成 Host Test、Keil Build 和目标板 GPIO Smoke Test，从而关闭 Phase 2。
+**Goal:** 在已验证的 Platform GPIO + STM32 GPIO Impl + Board GPIO Binding 基线上，实现轻量、同步、Master-only 的 Software I2C 基础能力，并通过 Host Test、Keil Full Rebuild、串口助手、RTT 日志和逻辑分析仪完成目标板验收。
 
-**Architecture:** 沿用现有 `Platform BSP -> Impl BSP -> Generic STM32 GPIO Impl` 绑定方式。Platform BSP 只暴露逻辑板级资源；具体 GPIO Port / Pin 只存在于 Impl BSP。BSP constructor 只负责对象构造与物理资源绑定，不执行 `platform_gpio_configure()`，不拥有 GPIO 生命周期。
+**Architecture:** `Platform I2C` 位于 `03_Platform/platform_mcu/i2c/`，直接基于 `platform_gpio` 和现有 `platform_delay_us()` Platform 契约实现 Software I2C，不直接依赖 HAL。微秒延时由 `04_Impl/impl_mcu/impl_platform_delay.c` 使用 Cortex-M4 DWT CYCCNT 提供。DHT20 / MPU6050 设备语义不进入本 Phase。
 
-**Tech Stack:** C、STM32F411CEU6、STM32 HAL GPIO、现有 Platform GPIO、Host C Test、Keil MDK-ARM、逻辑分析仪 / 万用表。
+**Tech Stack:** C、STM32F411CEU6 / Cortex-M4F、STM32 HAL GPIO、CMSIS DWT、现有 Platform GPIO、Host C Test、Keil MDK-ARM、USART1 串口助手、EasyLogger + SEGGER RTT、逻辑分析仪。
 
 **Spec:**
-- `00_Doc/04_Agent/development_roadmap.md` Phase 2
+- `00_Doc/02_架构设计/Software_I2C_Phase1设计.md`
+- `00_Doc/04_Agent/development_roadmap.md` Phase 3
 - `00_Doc/04_Agent/handoff.md`
 - `00_Doc/02_架构设计/Platform_GPIO_Phase1设计.md`
 - `00_Doc/02_架构设计/GPIO_STM32_Impl_Phase1设计.md`
@@ -21,57 +22,30 @@
 ## Global Constraints
 
 - 固定依赖方向保持 `APP -> Service -> Platform -> Impl -> Vendor`。
-- 不修改已冻结的 Platform GPIO 公共 API / 类型。
-- 不修改 `impl_platform_gpio_context_t`。
-- 不增加 GPIO Registry、Context Pool、动态内存或 per-pin 通用实例框架。
-- Platform GPIO / Generic STM32 GPIO Impl 不得知道 LED、KEY、SCL、SDA。
-- Board/BSP 负责逻辑资源到具体 Port + Pin 的映射。
-- BSP constructor 只 construct / bind，不调用 `platform_gpio_configure()`。
-- GPIO Port RCC 继续由 CubeMX / Board Bootstrap 负责。
-- 不实现 LED 产品语义、Button 消抖、Software I2C 时序或 Sensor 驱动。
-- PA0 当前不使用 EXTI；Button Phase 第一版优先周期扫描。
-- 不启用 STM32 Hardware I2C。
-- 不修改当前已经确认正确的 CubeMX GPIO 模式。
-- CubeMX 自动生成文件不得手工修改生成区；临时板测入口如确有需要只能放在 USER CODE 区，并在验收后恢复。
+- Software I2C 属于 Platform MCU 基础能力，不放入 Service。
+- 公共命名使用 `platform_i2c_*`；当前内部实现为 Software I2C。
+- Software I2C 不直接调用 `HAL_GPIO_xxx()`，不直接知道 `GPIOB / GPIO_PIN_6 / GPIO_PIN_7`。
+- SCL / SDA 固定复用 Phase 2 已验证的 Platform BSP GPIO Binding。
+- PB6 / PB7 保持 Open-Drain Output / No Pull；外部上拉已确认存在。
+- transaction 中不动态切换 SDA Input / Output；HIGH 表示 release，实际电平使用 `platform_gpio_read()`。
+- 第一阶段仅支持 Master / 7-bit / synchronous transaction。
+- 不实现 Slave、10-bit、Multi-master、Arbitration、IRQ、DMA、Async、Registry、Dynamic allocation。
+- 不新增 Software I2C 内部 Mutex；Phase 3 调用合同为 Task Context / caller serialized。
+- 不新增 `platform_time_delay_us()` 或新的 Platform Delay 模块。
+- 复用 `platform_common/platform_def.h` 已预留的 `platform_delay_us(uint32_t us)`。
+- `platform_delay_us()` 使用 Cortex-M4 DWT CYCCNT busy-wait，并采用 lazy initialization。
+- `platform_delay_ms()` 旧预留接口不属于本 Phase 实现范围。
+- 静态时序配置放 `00_Config/project_config.h`。
+- `PROJECT_SOFT_I2C_HALF_PERIOD_US = 5U`。
+- `PROJECT_SOFT_I2C_SCL_TIMEOUT_US = 100U`。
+- 9 个 recovery clock、MSB first、7-bit addressing、last-byte NACK 属于协议固定规则，不放 project config。
+- 不增加 `mem_read / mem_write`；设备寄存器语义留给 Sensor Phase。
+- 正常运行路径禁止逐 bit / byte / ACK RTT 日志。
+- Phase 3 不实现正式 DHT20 / MPU6050 Driver；目标板只允许原始 transaction smoke verification。
+- CubeMX 生成区不得手工修改；临时测试入口必须可移除且不得污染正式运行路径。
 - 所有自研代码执行前必须完整读取 `00_Doc/02_架构设计/嵌入式项目C代码设计规范.md`。
-- 每个实现 Task 提交前执行 Coding Standard Review。
+- 每个 Task 提交前执行 Coding Standard Review。
 - 若冻结设计与仓库现实存在实质冲突：`STOP / BLOCKED`，不得静默重设计。
-
-当前冻结板级资源：
-
-```text
-Status LED      -> PC13 / active-low
-User Key        -> PA0  / active-low
-Soft I2C SCL    -> PB6
-Soft I2C SDA    -> PB7
-USART1 TX/RX    -> PA9 / PA10
-```
-
-当前 CubeMX 基线：
-
-```text
-PC13 : GPIO Output Push-Pull / No Pull / initial HIGH
-PA0  : GPIO Input / Pull-Up
-PB6  : GPIO Output Open-Drain / No Pull / initial HIGH
-PB7  : GPIO Output Open-Drain / No Pull / initial HIGH
-I2C1 : Disabled
-EXTI : Not used for KEY
-```
-
-硬件语义：
-
-```text
-PC13 LOW  -> LED ON
-PC13 HIGH -> LED OFF
-
-PA0 LOW   -> KEY pressed
-PA0 HIGH  -> KEY released
-
-PB6/PB7 LOW  -> MCU actively pulls bus low
-PB6/PB7 HIGH -> open-drain release; external pull-up raises bus
-```
-
-DHT20 与 MPU6050 模块原理图已确认 I2C 总线上存在外部上拉，因此 PB6/PB7 保持 `GPIO_NOPULL`。
 
 ---
 
@@ -81,6 +55,7 @@ DHT20 与 MPU6050 模块原理图已确认 I2C 总线上存在外部上拉，因
 
 ```text
 00_Doc/00_项目需求/最终功能需求.md
+00_Doc/02_架构设计/Software_I2C_Phase1设计.md
 00_Doc/02_架构设计/Platform_GPIO_Phase1设计.md
 00_Doc/02_架构设计/GPIO_STM32_Impl_Phase1设计.md
 00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
@@ -92,821 +67,653 @@ DHT20 与 MPU6050 模块原理图已确认 I2C 总线上存在外部上拉，因
 00_Doc/04_Agent/implementation_plan.md
 ```
 
-检查参考实现：
+检查当前生产基线：
 
 ```text
-03_Platform/platform_bsp/platform_bsp_uart.h
-04_Impl/impl_bsp/impl_platform_bsp_uart.c
-Tests/platform_bsp_uart/test_platform_bsp_uart.c
-
-03_Platform/platform_mcu/gpio/platform_gpio_types.h
+03_Platform/platform_common/platform_def.h
+03_Platform/platform_common/platform_error.h
 03_Platform/platform_mcu/gpio/platform_gpio.h
+03_Platform/platform_mcu/gpio/platform_gpio_types.h
 03_Platform/platform_mcu/gpio/platform_gpio.c
-
-04_Impl/impl_mcu/impl_platform_gpio.h
+03_Platform/platform_bsp/platform_bsp_gpio.h
 04_Impl/impl_mcu/impl_platform_gpio.c
-Tests/impl_platform_gpio/
-
+04_Impl/impl_bsp/impl_platform_bsp_gpio.c
+00_Config/project_config.h
 Core/Inc/main.h
 Core/Src/gpio.c
 RTT_elog_DMA_UART_ring_project.ioc
 ```
 
-执行前确认 CubeMX 当前状态：
+Preflight 必须确认：
 
 ```text
-PC13 -> LED_OUT
-PA0  -> KEY_IN
-PB6  -> I2C_SCL
-PB7  -> I2C_SDA
-
-PB6/PB7 = GPIO_MODE_OUTPUT_OD
-PB6/PB7 = GPIO_NOPULL
-PB6/PB7 initial = GPIO_PIN_SET
-
-PC13 initial = GPIO_PIN_SET
-PA0 pull = GPIO_PULLUP
-
-GPIOB clock enabled
-Hardware I2C disabled
-KEY EXTI disabled
+Phase 2 status                         COMPLETED / VERIFIED
+PB6                                   Soft I2C SCL
+PB7                                   Soft I2C SDA
+PB6/PB7                               GPIO Output Open-Drain / No Pull
+PB6/PB7 initial                       HIGH / released
+External pull-up                      PRESENT
+Hardware I2C                          DISABLED
+platform_delay_us declaration         PRESENT / NOT IMPLEMENTED
+Unrelated user changes                PRESERVED
 ```
 
-Preflight 固定汇报：
+固定汇报：
 
 ```text
-Phase 2 Roadmap: READ
-Platform GPIO Frozen Design: READ
-GPIO STM32 Impl Frozen Design: READ
-Coding Standard:
-00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
-Status: READ
+Software I2C Frozen Design: READ
+Coding Standard: READ
 Agent Execution Rules: READ
-CubeMX Phase 2 Configuration: INSPECTED
 Current repository state: INSPECTED
+Phase 2 board baseline: VERIFIED
 Unrelated user changes: PRESERVED
 ```
 
-若当前 `.ioc`、`gpio.c`、`main.h` 或现有 GPIO Impl 与上述冻结基线冲突，停止并报告，不得继续实现。
-
 ---
 
-### Task 1: Define Platform BSP GPIO Contract and Host Test
+### Task 1: Implement the Existing Microsecond Delay Contract
 
 **Files:**
-- Create: `03_Platform/platform_bsp/platform_bsp_gpio.h`
-- Create: `Tests/platform_bsp_gpio/test_platform_bsp_gpio.c`
-- Create as required for Host isolation: `Tests/platform_bsp_gpio/main.h`
-- Reuse or create minimal Fake HAL header only if the selected Host include strategy requires it.
+- Create: `04_Impl/impl_mcu/impl_platform_delay.c`
+- Create: `Tests/impl_platform_delay/` only if a focused compile/fake isolation test is useful without pretending to verify real timing.
+- Modify Keil project file/group only as required to compile the new production source.
 
 **Interfaces:**
-- Consumes: `platform_gpio_t`, `platform_error_t`.
-- Produces:
+- Consumes existing declaration:
 
 ```c
-platform_error_t platform_bsp_gpio_construct_status_led(
-    platform_gpio_t *gpio);
-
-platform_error_t platform_bsp_gpio_construct_user_key(
-    platform_gpio_t *gpio);
-
-platform_error_t platform_bsp_gpio_construct_soft_i2c_scl(
-    platform_gpio_t *gpio);
-
-platform_error_t platform_bsp_gpio_construct_soft_i2c_sda(
-    platform_gpio_t *gpio);
+void platform_delay_us(uint32_t us);
 ```
 
-- [x] **Step 1: Create the public BSP GPIO header**
+- Produces the same symbol using Cortex-M4 DWT CYCCNT.
 
-`platform_bsp_gpio.h` 只允许直接依赖：
+- [ ] **Step 1: Add the focused build/test scaffold before implementation**
+
+Create the minimum test/build slice that proves the symbol is currently missing or not linked, without adding a second public delay API.
+
+Expected RED condition:
+
+```text
+platform_delay_us implementation missing
+```
+
+- [ ] **Step 2: Implement lazy DWT initialization**
+
+Implementation rules:
+
+```text
+Enable CoreDebug trace if required
+Enable DWT CYCCNT if not already enabled
+Reset/prepare CYCCNT before first measured delay as required
+No public init API
+No dependency from Platform I2C on DWT registers
+```
+
+Delay calculation must use current core clock (`SystemCoreClock`) rather than a duplicated fixed-frequency literal.
+
+- [ ] **Step 3: Implement wrap-safe short busy-wait**
+
+Conceptual rule:
 
 ```c
-#include "platform_gpio.h"
-```
-
-公共 Header 不得暴露：
-
-```text
-GPIO_TypeDef
-GPIOA / GPIOB / GPIOC
-GPIO_PIN_x
-impl_platform_gpio_context_t
-STM32 HAL
-```
-
-公共 API Doxygen 按仓库 C 代码规范编写；`.c` 后续不重复相同公共 API 注释。
-
-- [x] **Step 2: Write the failing Host test**
-
-测试文件提供 Fake：
-
-```c
-platform_error_t impl_platform_gpio_construct(
-    platform_gpio_t *gpio,
-    const char *name,
-    impl_platform_gpio_context_t *context);
-```
-
-Fake 至少记录：
-
-```text
-callCount
-gpio
-name
-context pointer
-context->port
-context->pin
-configured fake return result
-```
-
-必须覆盖：
-
-```text
-NULL gpio -> PLATFORM_ERR_INVALID_PARAM
-           -> Impl constructor callCount remains 0
-
-status_led
-    -> name = "status_led_gpio"
-    -> GPIOC / GPIO_PIN_13
-
-user_key
-    -> name = "user_key_gpio"
-    -> GPIOA / GPIO_PIN_0
-
-soft_i2c_scl
-    -> name = "soft_i2c_scl_gpio"
-    -> GPIOB / GPIO_PIN_6
-
-soft_i2c_sda
-    -> name = "soft_i2c_sda_gpio"
-    -> GPIOB / GPIO_PIN_7
-
-Impl constructor returns PLATFORM_ERR_IO
-    -> BSP returns PLATFORM_ERR_IO unchanged
-```
-
-Fake `main.h` 必须提供当前 CubeMX 资源宏对应的 Host 替身，保证生产 BSP 源文件不因测试而改写：
-
-```c
-#define LED_OUT_Pin       GPIO_PIN_13
-#define LED_OUT_GPIO_Port GPIOC
-#define KEY_IN_Pin        GPIO_PIN_0
-#define KEY_IN_GPIO_Port  GPIOA
-#define I2C_SCL_Pin       GPIO_PIN_6
-#define I2C_SCL_GPIO_Port GPIOB
-#define I2C_SDA_Pin       GPIO_PIN_7
-#define I2C_SDA_GPIO_Port GPIOB
-```
-
-测试还必须证明 BSP constructor 不执行：
-
-```text
-platform_gpio_configure
-platform_gpio_write
-platform_gpio_read
-HAL_GPIO_Init
-HAL_GPIO_WritePin
-```
-
-- [x] **Step 3: Build and run the focused test to verify RED**
-
-从工程根目录使用 Host C 编译器，按现有 Test include 顺序优先放置 `Tests/platform_bsp_gpio/`，并链接：
-
-```text
-Tests/platform_bsp_gpio/test_platform_bsp_gpio.c
-04_Impl/impl_bsp/impl_platform_bsp_gpio.c
-```
-
-当前预期失败原因：
-
-```text
-platform_bsp_gpio.h missing
-or
-platform_bsp_gpio_construct_* undefined
-or
-impl_platform_bsp_gpio.c missing
-```
-
-不得通过修改 Production Header 绕过 Host 隔离问题。
-
-- [x] **Step 4: Coding Standard micro-review**
-
-检查 Header Guard、文件头、snake_case API、lower_snake_case_t 类型规则、中文注释、Doxygen、4 空格缩进、无 TAB、无 HAL 泄漏。
-
-- [x] **Step 5: Commit the contract/test slice**
-
-Suggested commit:
-
-```bash
-git add RTT_elog_DMA_UART_ring_project/03_Platform/platform_bsp/platform_bsp_gpio.h \
-        RTT_elog_DMA_UART_ring_project/Tests/platform_bsp_gpio/
-git commit -m "test: define board GPIO binding contract"
-```
-
----
-
-### Task 2: Implement Board GPIO Physical Binding
-
-**Files:**
-- Create: `04_Impl/impl_bsp/impl_platform_bsp_gpio.c`
-- Modify: `Tests/platform_bsp_gpio/test_platform_bsp_gpio.c` only if required by the already frozen production contract.
-
-**Interfaces:**
-- Consumes:
-
-```c
-typedef struct
+start = DWT->CYCCNT;
+cycles = requested_us * cycles_per_us;
+while ((uint32_t)(DWT->CYCCNT - start) < cycles)
 {
-    GPIO_TypeDef *port;
-    uint16_t pin;
-} impl_platform_gpio_context_t;
-
-platform_error_t impl_platform_gpio_construct(
-    platform_gpio_t *gpio,
-    const char *name,
-    impl_platform_gpio_context_t *context);
-```
-
-- Produces:
-
-```text
-status_led     -> PC13
-user_key       -> PA0
-soft_i2c_scl   -> PB6
-soft_i2c_sda   -> PB7
-```
-
-- [x] **Step 1: Define the four caller-owned static Context objects**
-
-Production BSP 必须使用 CubeMX `main.h` 生成的资源宏：
-
-```c
-static impl_platform_gpio_context_t g_statusLedContext =
-{
-    LED_OUT_GPIO_Port,
-    LED_OUT_Pin
-};
-
-static impl_platform_gpio_context_t g_userKeyContext =
-{
-    KEY_IN_GPIO_Port,
-    KEY_IN_Pin
-};
-
-static impl_platform_gpio_context_t g_softI2cSclContext =
-{
-    I2C_SCL_GPIO_Port,
-    I2C_SCL_Pin
-};
-
-static impl_platform_gpio_context_t g_softI2cSdaContext =
-{
-    I2C_SDA_GPIO_Port,
-    I2C_SDA_Pin
-};
-```
-
-不得重新写一套重复的物理绑定：
-
-```c
-/* forbidden duplicate board mapping */
-GPIOC, GPIO_PIN_13
-GPIOA, GPIO_PIN_0
-GPIOB, GPIO_PIN_6
-GPIOB, GPIO_PIN_7
-```
-
-CubeMX `main.h` 是本板 Pin 宏的来源，Impl BSP 负责把这些宏转换为 Generic GPIO Context。
-
-- [x] **Step 2: Implement the four BSP constructors**
-
-每个函数流程固定为：
-
-```text
-gpio == NULL ?
-    -> PLATFORM_ERR_INVALID_PARAM
-
-valid gpio
-    -> select frozen static Context
-    -> impl_platform_gpio_construct(gpio, frozenName, &context)
-    -> return result unchanged
-```
-
-例如 Status LED：
-
-```c
-platform_error_t platform_bsp_gpio_construct_status_led(
-    platform_gpio_t *gpio)
-{
-    if (gpio == NULL) {
-        return PLATFORM_ERR_INVALID_PARAM;
-    }
-
-    return impl_platform_gpio_construct(gpio,
-                                        "status_led_gpio",
-                                        &g_statusLedContext);
 }
 ```
 
-其他三个函数使用对应冻结名称和 Context。
+Handle `us == 0U` as immediate return.
 
-禁止在 BSP constructor 中调用：
+Do not implement `platform_delay_ms()` as part of this task.
 
-```c
-platform_gpio_configure();
-platform_gpio_write();
-platform_gpio_read();
-HAL_GPIO_Init();
-HAL_GPIO_WritePin();
-```
-
-- [x] **Step 3: Run `Tests/platform_bsp_gpio` and verify GREEN**
+- [ ] **Step 4: Run focused compile/test and Keil compile check**
 
 Expected:
 
 ```text
-all Platform BSP GPIO binding tests PASS
+platform_delay_us symbol resolves
+DWT / CMSIS references compile on STM32F411 target
+no new warnings from impl_platform_delay.c
 ```
 
-- [x] **Step 4: Run GPIO regressions**
+- [ ] **Step 5: Coding Standard Review and commit**
 
-至少执行：
-
-```text
-Tests/platform_gpio
-Tests/impl_platform_gpio
-Tests/platform_bsp_uart
-Tests/platform_bsp_gpio
-```
-
-Expected:
-
-```text
-ALL PASS
-```
-
-- [x] **Step 5: Run dependency/boundary scan**
-
-确认：
-
-```text
-platform_bsp_gpio.h does not include STM32 HAL
-platform_gpio.* has no LED / KEY / SCL / SDA knowledge
-impl_platform_gpio.* has no LED / KEY / SCL / SDA knowledge
-only impl_platform_bsp_gpio.c owns concrete board mapping
-no RCC enable added to Generic GPIO Impl
-```
-
-- [x] **Step 6: Coding Standard Review**
-
-至少回答：
-
-```text
-1. Naming / Header / comments compliant?
-2. NULL paths checked?
-3. Static Context lifetime valid for whole firmware lifetime?
-4. No dynamic allocation / registry / pool?
-5. No device polarity leaked into Generic GPIO Impl?
-6. No generated/Vendor code modified?
-```
-
-- [x] **Step 7: Commit**
+Review: naming, comments, integer arithmetic, zero-delay path, no duplicate public API, no HAL GPIO dependency.
 
 Suggested commit:
 
 ```bash
-git add RTT_elog_DMA_UART_ring_project/04_Impl/impl_bsp/impl_platform_bsp_gpio.c \
-        RTT_elog_DMA_UART_ring_project/Tests/platform_bsp_gpio/
-git commit -m "feat: bind board GPIO resources"
+git add RTT_elog_DMA_UART_ring_project/04_Impl/impl_mcu/impl_platform_delay.c \
+        RTT_elog_DMA_UART_ring_project/Tests/impl_platform_delay/ \
+        RTT_elog_DMA_UART_ring_project/*.uvprojx
+
+git commit -m "feat: implement platform microsecond delay"
 ```
+
+Only add paths that actually changed.
 
 ---
 
-### Task 3: Integrate Board GPIO BSP into Keil Project
+### Task 2: Define Platform I2C Contract and Static Configuration
 
 **Files:**
-- Modify: `MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx` only as required to compile the new production source.
+- Create: `03_Platform/platform_mcu/i2c/platform_i2c.h`
+- Create: `03_Platform/platform_mcu/i2c/platform_i2c.c`
+- Create `platform_i2c_types.h` only if required by the frozen object/type structure.
+- Modify: `00_Config/project_config.h`
+- Create: `Tests/platform_i2c/test_platform_i2c.c`
 
 **Interfaces:**
-- Consumes: `impl_platform_bsp_gpio.c`.
-- Produces: target project can link the new `platform_bsp_gpio_construct_*()` APIs.
+- Produces:
 
-- [x] **Step 1: Inspect the existing BSP source group**
+```c
+platform_error_t platform_i2c_init(
+    platform_i2c_t *i2c,
+    const char *name,
+    platform_gpio_t *scl,
+    platform_gpio_t *sda);
 
-Locate the group currently containing:
+platform_error_t platform_i2c_write(
+    platform_i2c_t *i2c,
+    uint8_t address,
+    const uint8_t *data,
+    uint16_t length);
 
-```text
-04_Impl/impl_bsp/impl_platform_bsp_uart.c
+platform_error_t platform_i2c_read(
+    platform_i2c_t *i2c,
+    uint8_t address,
+    uint8_t *data,
+    uint16_t length);
+
+platform_error_t platform_i2c_write_read(
+    platform_i2c_t *i2c,
+    uint8_t address,
+    const uint8_t *tx_data,
+    uint16_t tx_length,
+    uint8_t *rx_data,
+    uint16_t rx_length);
+
+platform_error_t platform_i2c_deinit(platform_i2c_t *i2c);
 ```
 
-The new GPIO BSP implementation must be added to the same responsibility-level group; do not create a new arbitrary architecture layer.
+- [ ] **Step 1: Write failing public-contract Host tests**
 
-- [x] **Step 2: Add `impl_platform_bsp_gpio.c` to the Keil project**
+Tests must initially fail because Platform I2C files/APIs do not exist.
 
-Add exactly:
-
-```text
-04_Impl/impl_bsp/impl_platform_bsp_gpio.c
-```
-
-Do not add Host Test sources to the product target.
-
-- [x] **Step 3: Verify include paths**
-
-The target must resolve at least:
+Cover parameter contract:
 
 ```text
-03_Platform/platform_bsp
-03_Platform/platform_mcu/gpio
-04_Impl/impl_mcu
-Core/Inc
+NULL i2c / scl / sda / data
+address > 0x7F
+zero write length
+zero read length
+write_read zero tx or rx length
+operation before init
+repeat init
 ```
 
-Reuse existing include paths when already present; do not duplicate them.
+- [ ] **Step 2: Add static project config**
 
-- [x] **Step 4: Run Keil Full Rebuild**
+Append to `project_config.h`:
 
-Gate:
+```c
+#define PROJECT_SOFT_I2C_HALF_PERIOD_US    (5U)
+#define PROJECT_SOFT_I2C_SCL_TIMEOUT_US    (100U)
+```
+
+Do not introduce a misleading `PROJECT_SOFT_I2C_FREQ_HZ` constant.
+
+- [ ] **Step 3: Implement the lightweight object and public validation skeleton**
+
+Frozen runtime object fields:
 
 ```text
-0 errors
-no warning newly introduced by Phase 2 board binding
+name
+scl pointer
+sda pointer
+initialized
 ```
 
-Existing historical warnings are not expanded into this Phase unless the new code causes or depends on them.
+No timing field, mutex, busy state, ops table, dynamic memory or device registry.
 
-- [x] **Step 5: Inspect generated/configuration regression**
+- [ ] **Step 4: Run focused tests**
 
-Confirm Task 3 did not unintentionally alter:
+Expected:
 
 ```text
-USART1
-DMA2_Stream2 circular RX
-FreeRTOS
-Clock Tree
-RTT / EasyLogger
-RTT_elog_DMA_UART_ring_project.ioc
-Core/Src/gpio.c
+public API compiles
+parameter/state tests PASS
+protocol-behavior tests remain RED until Task 3
 ```
 
-- [x] **Step 6: Commit**
+- [ ] **Step 5: Coding Standard Review and commit**
 
 Suggested commit:
 
 ```bash
-git add RTT_elog_DMA_UART_ring_project/MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx
-git commit -m "build: integrate board GPIO binding"
+git add RTT_elog_DMA_UART_ring_project/03_Platform/platform_mcu/i2c/ \
+        RTT_elog_DMA_UART_ring_project/00_Config/project_config.h \
+        RTT_elog_DMA_UART_ring_project/Tests/platform_i2c/
+
+git commit -m "test: define platform I2C contract"
 ```
 
 ---
 
-### Task 4: Prepare and Execute Target Board GPIO Smoke Test
+### Task 3: Implement Software I2C Protocol and Transaction Behavior
 
 **Files:**
-- Create: `Tests/board_gpio_smoke/README.md`
-- Create a minimal temporary smoke source under `Tests/board_gpio_smoke/` only if required for target execution.
-- Modify `Core/Src/main.c` only inside an existing USER CODE section if a temporary call site is necessary; restore the normal call path after board verification.
+- Modify: `03_Platform/platform_mcu/i2c/platform_i2c.c`
+- Modify: `Tests/platform_i2c/test_platform_i2c.c`
+
+**Interfaces:**
+- Consumes: `platform_gpio_configure/write/read/deinit`, `platform_delay_us`, project Software I2C config.
+- Produces working synchronous transaction APIs from Task 2.
+
+- [ ] **Step 1: Extend Fake GPIO / delay interaction recorder**
+
+Host Fake must record:
+
+```text
+GPIO identity: SCL or SDA
+configure calls
+LOW / RELEASE writes
+read calls and scripted read values
+platform_delay_us values
+operation order
+configured error injection
+```
+
+The read script must be able to model:
+
+```text
+SCL HIGH
+SCL stuck LOW
+SDA ACK LOW
+SDA NACK HIGH
+arbitrary RX bit sequence
+SDA stuck LOW during init
+```
+
+- [ ] **Step 2: Write RED tests for init / electrical model / recovery**
+
+Verify:
+
+```text
+SCL/SDA configure = OUTPUT + OPEN_DRAIN + NO_PULL + initial HIGH
+SCL/SDA remain output; no direction switching during reads
+release means write HIGH
+Idle = SCL HIGH + SDA HIGH
+SDA stuck LOW at init triggers <= 9 recovery clocks + STOP
+SCL cannot become HIGH -> PLATFORM_ERR_TIMEOUT
+normal transaction non-idle -> BUSY/TIMEOUT without repeated auto-recovery
+```
+
+- [ ] **Step 3: Implement private line primitives and SCL-high wait**
+
+Private behavior only; do not expose public START/STOP/ACK APIs.
+
+Implement semantic primitives equivalent to:
+
+```text
+sda_low / sda_release / sda_read
+scl_low / scl_release / scl_read
+wait_scl_high
+```
+
+Every SCL release that requires HIGH must validate the physical SCL level with timeout.
+
+- [ ] **Step 4: Write RED tests for START / STOP / byte / ACK behavior**
+
+Verify GPIO sequence for:
+
+```text
+START: SCL HIGH while SDA HIGH -> LOW
+STOP:  SCL HIGH while SDA LOW -> HIGH
+MSB-first write byte
+9th-clock ACK sampling
+NACK detection
+read byte reconstruction
+intermediate read byte -> ACK
+last read byte -> NACK
+```
+
+- [ ] **Step 5: Implement private protocol primitives**
+
+Implement private/static logic for:
+
+```text
+START / repeated START
+STOP
+write bit
+read bit
+write byte
+read byte
+wait ACK
+send ACK
+send NACK
+bus recovery
+```
+
+Do not log normal per-bit / per-byte operations.
+
+- [ ] **Step 6: Write RED transaction tests**
+
+Verify exact transaction semantics:
+
+```text
+WRITE:
+START -> (address << 1 | 0) -> ACK -> data -> ACK -> STOP
+
+READ:
+START -> (address << 1 | 1) -> ACK -> RX -> final NACK -> STOP
+
+WRITE_READ:
+START -> write address -> TX -> Repeated START -> read address -> RX -> STOP
+```
+
+Also cover:
+
+```text
+address NACK -> PLATFORM_ERR_NOT_FOUND
+data NACK -> PLATFORM_ERR_IO
+GPIO lower-layer failure propagated where practical
+SCL timeout -> PLATFORM_ERR_TIMEOUT
+transaction failure -> preserve original error + best-effort STOP
+```
+
+- [ ] **Step 7: Implement public transactions and deinit**
+
+Deinit behavior:
+
+```text
+release SDA/SCL
+platform_gpio_deinit(SDA/SCL)
+initialized = FALSE
+```
+
+Do not destroy caller-owned GPIO object storage.
+
+- [ ] **Step 8: Run full Host regression set**
+
+At minimum:
+
+```text
+Tests/platform_i2c
+Tests/platform_gpio
+Tests/impl_platform_gpio
+Tests/platform_bsp_gpio
+Tests/platform_bsp_uart
+```
+
+Expected: ALL PASS.
+
+- [ ] **Step 9: Dependency / Coding Standard Review and commit**
+
+Confirm:
+
+```text
+no HAL GPIO in platform_i2c.*
+no concrete PB6/PB7 in platform_i2c.*
+no Sensor names / commands / registers
+no internal mutex
+no public protocol primitives
+no per-bit logging
+```
+
+Suggested commit:
+
+```bash
+git add RTT_elog_DMA_UART_ring_project/03_Platform/platform_mcu/i2c/ \
+        RTT_elog_DMA_UART_ring_project/Tests/platform_i2c/
+
+git commit -m "feat: implement software I2C transactions"
+```
+
+---
+
+### Task 4: Integrate Platform I2C into Target Build and Prepare Smoke Harness
+
+**Files:**
+- Modify Keil project groups/include paths as required.
+- Create a temporary Phase 3 board smoke source in an existing test/smoke location consistent with Phase 2 practice.
+- Modify USER CODE integration point only if required for explicit target smoke execution; restore normal startup path after verification.
+- Do not create permanent Sensor Driver files.
 
 **Interfaces:**
 - Consumes:
 
-```c
-platform_bsp_gpio_construct_status_led()
-platform_bsp_gpio_construct_user_key()
+```text
 platform_bsp_gpio_construct_soft_i2c_scl()
 platform_bsp_gpio_construct_soft_i2c_sda()
-
-platform_gpio_configure()
-platform_gpio_write()
-platform_gpio_read()
+platform_i2c_init/write/read/write_read/deinit()
 ```
 
-- Produces: real-board verification record for the complete GPIO vertical slice.
+- [ ] **Step 1: Integrate new production sources into Keil**
 
-## Hardware precondition
+Add only required files/include paths. Preserve current USART1/DMA/RTOS configuration.
 
-PB6/PB7 使用 Open-Drain + No Pull，因此测试释放 HIGH 时必须存在外部上拉。
-
-当前 DHT20 与 MPU6050 模块原理图均已确认存在 I2C 外部上拉。板测时至少连接一个具有有效上拉且正确供电的模块，或使用明确的临时外部上拉到 3.3 V。
-
-必须保证：
-
-```text
-MCU GND == Sensor / external pull-up GND
-I2C pull-up rail == 3.3 V compatible rail
-```
-
-不得为了 Smoke Test 把 CubeMX 改成内部 Pull-Up。
-
-- [x] **Step 1: Document the smoke-test sequence**
-
-`Tests/board_gpio_smoke/README.md` 必须记录接线、预期电平、测试顺序和 PASS/FAIL 表格，不加入 Software I2C 协议步骤。
-
-- [x] **Step 2: Construct the four GPIO objects through BSP**
-
-Smoke harness 必须使用：
-
-```c
-platform_bsp_gpio_construct_status_led(&statusLedGpio);
-platform_bsp_gpio_construct_user_key(&userKeyGpio);
-platform_bsp_gpio_construct_soft_i2c_scl(&softI2cSclGpio);
-platform_bsp_gpio_construct_soft_i2c_sda(&softI2cSdaGpio);
-```
-
-不得在 Smoke Test 直接构造 `GPIO_TypeDef + GPIO_PIN_x` 绕过 BSP。
-
-- [x] **Step 3: Configure through Platform GPIO**
-
-LED：
-
-```c
-const platform_gpio_config_t ledConfig =
-{
-    PLATFORM_GPIO_DIRECTION_OUTPUT,
-    PLATFORM_GPIO_PULL_NONE,
-    PLATFORM_GPIO_OUTPUT_PUSH_PULL,
-    PLATFORM_GPIO_LEVEL_HIGH
-};
-```
-
-KEY：
-
-```c
-const platform_gpio_config_t keyConfig =
-{
-    PLATFORM_GPIO_DIRECTION_INPUT,
-    PLATFORM_GPIO_PULL_UP,
-    PLATFORM_GPIO_OUTPUT_PUSH_PULL,
-    PLATFORM_GPIO_LEVEL_LOW
-};
-```
-
-`outputType` / `initialLevel` 对 INPUT 不产生硬件写入；这里保持确定值，仅为完整初始化结构体字段。
-
-SCL / SDA：
-
-```c
-const platform_gpio_config_t softI2cConfig =
-{
-    PLATFORM_GPIO_DIRECTION_OUTPUT,
-    PLATFORM_GPIO_PULL_NONE,
-    PLATFORM_GPIO_OUTPUT_OPEN_DRAIN,
-    PLATFORM_GPIO_LEVEL_HIGH
-};
-```
-
-所有返回值必须检查；失败立即记录并停止后续相关 GPIO 操作。
-
-- [x] **Step 4: Verify PC13 Status LED**
-
-通过 `platform_gpio_write()` 验证：
-
-```text
-LOW  -> LED ON
-HIGH -> LED OFF
-```
-
-最终恢复 HIGH / OFF。
-
-Expected:
-
-```text
-PASS
-```
-
-- [x] **Step 5: Verify PA0 User Key**
-
-通过 `platform_gpio_read()` 验证：
-
-```text
-released -> HIGH
-pressed  -> LOW
-```
-
-本 Task 不做 debounce / single / double / long-press。
-
-Expected:
-
-```text
-PASS
-```
-
-- [x] **Step 6: Verify PB6 SCL open-drain behavior**
-
-使用逻辑分析仪或万用表：
-
-```text
-platform_gpio_write(LOW)
-    -> SCL approximately 0 V
-
-platform_gpio_write(HIGH)
-    -> MCU releases SCL
-    -> external pull-up raises SCL to HIGH
-```
-
-不得把 `HIGH` 描述为 MCU push-pull drive high。
-
-- [x] **Step 7: Verify PB7 SDA write/read behavior**
-
-验证：
-
-```text
-write LOW
-read -> LOW
-
-write HIGH / RELEASE
-read -> HIGH
-```
-
-逻辑分析仪 / 万用表同时确认释放后由外部上拉形成高电平。
-
-- [x] **Step 8: Confirm Phase 3 protocol is not implemented here**
-
-本 Task 禁止发送：
-
-```text
-START
-STOP
-7-bit address
-ACK / NACK
-DHT20 command
-MPU6050 register access
-```
-
-这些属于 Phase 3 Software I2C。
-
-- [x] **Step 9: Restore normal firmware startup**
-
-若使用了临时 USER CODE 调用：
-
-```text
-disable/remove temporary smoke call
-retain reusable test source/doc under Tests only if useful
-normal APP startup restored
-```
-
-不得留下开机自动翻转 SCL/SDA/LED 的临时产品行为。
-
-- [x] **Step 10: Run final Keil Full Rebuild**
+- [ ] **Step 2: Full Rebuild**
 
 Expected:
 
 ```text
 0 errors
-normal firmware startup path restored
+no new Phase 3 warnings
 ```
 
-- [x] **Step 11: Record manual board result**
+Record existing unrelated warning count separately; do not silently “clean up” unrelated warnings in this Phase.
 
-只有人工真实观察完成后才允许记录：
+- [ ] **Step 3: Add temporary low-frequency smoke harness**
+
+Smoke harness must:
 
 ```text
-PC13 Status LED                       PASS
-PA0 User Key                          PASS
-PB6 Open-Drain Pull-Low / Release     PASS
-PB7 Open-Drain Pull-Low / Release     PASS
-PB7 Physical Readback                 PASS
+construct SCL/SDA using existing Platform BSP binding
+init Platform I2C
+perform a small raw I2C transaction against an already connected known slave
+report stage/result
+stop cleanly on failure
 ```
 
-Agent 不得仅凭 Host Test 或编译结果把真实板测标记为 PASS。
+Do not build a formal DHT20 / MPU6050 driver here.
+
+Use only a raw transaction that is known not to perform destructive device reconfiguration. If a safe read transaction cannot be justified from the already reviewed sensor datasheets, limit target proof to address/ACK behavior and protocol waveform rather than guessing device commands.
+
+- [ ] **Step 4: Add serial-assistant stage output**
+
+Low-frequency result format:
+
+```text
+I2C_SMOKE,START
+I2C_SMOKE,INIT,PASS
+I2C_SMOKE,TXRX,PASS
+I2C_SMOKE,PASS
+```
+
+Failure:
+
+```text
+I2C_SMOKE,FAIL,<stage>,<platform_error>
+```
+
+Do not print every bit/byte/ACK.
+
+- [ ] **Step 5: Add RTT smoke logging**
+
+RTT only logs:
+
+```text
+init result
+bus recovery if it occurs
+address NACK / timeout / I/O failure
+smoke final result
+```
+
+Serial and RTT results must describe the same final outcome.
+
+- [ ] **Step 6: Coding Standard / generated-code boundary review**
+
+Temporary harness must be removable. No permanent business logic may remain in generated `main.c` regions.
+
+- [ ] **Step 7: Commit target integration**
+
+Suggested commit:
+
+```bash
+git add <actual changed Keil files> <actual smoke harness files>
+git commit -m "test: prepare software I2C target verification"
+```
 
 ---
 
-### Task 5: Phase 2 Closure and Handoff
+### Task 5: Target Board Verification and Phase 3 Closure
 
 **Files:**
 - Modify: `00_Doc/04_Agent/handoff.md`
 - Modify: `00_Doc/04_Agent/implementation_plan.md`
+- Remove/disable temporary smoke integration after evidence has been collected, while retaining reusable test source only if consistent with repository practice.
 
 **Interfaces:**
-- Consumes: Task 1-4 verification results.
-- Produces: Phase 2 closure state and clean handoff to Phase 3 design.
+- Human observation uses USART1 serial assistant + SEGGER RTT + logic analyzer on PB6/PB7.
 
-- [x] **Step 1: Record final board resource contract**
+- [ ] **Step 1: Verify with serial assistant**
 
-Handoff 必须包含：
-
-```text
-PC13 Status LED       active-low
-PA0  User Key         active-low
-PB6  Software I2C SCL open-drain / external pull-up / no internal pull
-PB7  Software I2C SDA open-drain / external pull-up / no internal pull
-```
-
-- [x] **Step 2: Record CubeMX state**
+Required observations:
 
 ```text
-Board Resource Freeze            PASS
-CubeMX Configuration             PASS
-Board / GPIO Context Binding     PASS
-GPIO BSP Host Test               PASS
-GPIO Platform Regression         PASS
-Keil Build                       PASS
-Target Board GPIO Smoke Test     PASS only after real observation
-Coding Standard Review           PASS
+I2C smoke starts
+init succeeds
+transaction succeeds or emits explicit failure
+firmware does not hang
 ```
 
-- [x] **Step 3: Run Phase 2 completion gate**
+- [ ] **Step 2: Verify with RTT / EasyLogger**
 
-必须同时满足：
+Required observations:
 
 ```text
-Keil Build PASS
-
-PC13 output controllable
-PA0 input readable
-PB6 open-drain pull-low/release verified
-PB7 open-drain pull-low/release/read verified
-
-LED / KEY / SCL / SDA no resource conflict
-CubeMX / USER CODE boundary PASS
-
-No hardware I2C introduced
-No EXTI introduced
-No Software I2C protocol code introduced
+init/status consistent with serial output
+no unexpected repeated recovery
+timeout/NACK errors identifiable if injected or encountered
+no high-frequency bit logging
 ```
 
-- [x] **Step 4: Mark Phase 2 completed only when all gates pass**
+- [ ] **Step 3: Verify with logic analyzer**
 
-最终状态：
+Connect:
 
 ```text
-Phase 2 — Board Resource + CubeMX Configuration
-COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
+PB6 -> SCL
+PB7 -> SDA
+GND -> common ground
 ```
 
-若真实目标板尚未验证，则必须保持：
+Verify visually and with I2C decoder where available:
 
 ```text
-Phase 2 — Board Resource + CubeMX Configuration
-IMPLEMENTED / TARGET BOARD VERIFICATION PENDING
+Idle SCL/SDA HIGH
+START correct
+STOP correct
+7-bit address correct
+R/W bit correct
+ACK/NACK correct
+MSB-first data correct
+Repeated START correct for write_read
+Read final byte followed by NACK
+SCL high/low time stable
+actual clock remains in acceptable Standard-mode range
 ```
 
-- [x] **Step 5: Stop before Phase 3 implementation**
+Exact 100 kHz is not required.
 
-不得继续实现 Software I2C。
+- [ ] **Step 4: Cross-check the three observation channels**
 
-下一步必须先做 Phase 3 专项设计并冻结：
+Closure requires:
 
 ```text
-Software I2C object/interface model
-SCL/SDA release/read strategy
-microsecond timing source
-clock-stretch policy if supported
-ACK/NACK behavior
-transaction timeout
-bus recovery policy
-DHT20 / MPU6050 required transaction subset
-Host / logic-analyzer verification strategy
+Serial Assistant result
+RTT result
+Logic Analyzer waveform/decoder
 ```
 
-然后再重写新的 `00_Doc/04_Agent/implementation_plan.md`。
+all consistent.
+
+If Host + Keil pass but target observation is incomplete, record:
+
+```text
+Phase 3 — IMPLEMENTED / TARGET BOARD VERIFICATION PENDING
+```
+
+- [ ] **Step 5: Restore normal firmware path**
+
+Remove temporary startup calls/groups that alter normal product behavior. Rebuild again.
+
+Expected:
+
+```text
+normal firmware path restored
+0 errors
+no new Phase 3 warnings
+```
+
+- [ ] **Step 6: Final Coding Standard / Architecture Review**
+
+Confirm:
+
+```text
+Platform I2C -> Platform GPIO only; no HAL leakage
+DWT details only in Impl
+No formal Sensor Driver created
+No internal Mutex / async framework
+No Hardware I2C enabled
+No generated-code pollution
+```
+
+- [ ] **Step 7: Update docs and close Phase 3**
+
+Only after real target verification:
+
+```text
+Phase 3 — COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
+```
+
+Update `handoff.md` with measured observations, final warning count, actual target transaction, and any remaining technical debt.
+
+- [ ] **Step 8: Commit closure**
+
+Suggested commit:
+
+```bash
+git add <restored integration files> \
+        RTT_elog_DMA_UART_ring_project/00_Doc/04_Agent/handoff.md \
+        RTT_elog_DMA_UART_ring_project/00_Doc/04_Agent/implementation_plan.md
+
+git commit -m "docs: close software I2C phase 3"
+```
 
 ---
 
-# Phase 2 Definition of Done
+# Completion Gate
 
-Phase 2 关闭前最终检查：
+Phase 3 closes only when all are true:
 
 ```text
-[x] Platform BSP GPIO public contract exists
-[x] Board physical binding exists only in Impl BSP
-[x] PC13 / PA0 / PB6 / PB7 mappings match CubeMX
-[x] BSP constructors do not configure hardware
-[x] Host BSP binding tests PASS
-[x] Platform GPIO regression PASS
-[x] STM32 GPIO Impl regression PASS
-[x] Keil Full Rebuild PASS
-[x] LED board smoke PASS
-[x] KEY board smoke PASS
-[x] SCL open-drain smoke PASS
-[x] SDA open-drain/read smoke PASS
-[x] No EXTI introduced
-[x] No Hardware I2C introduced
-[x] No Software I2C protocol implementation leaked into Phase 2
-[x] Coding Standard Review PASS
-[x] handoff.md updated
+Microsecond DWT implementation             PASS
+Platform I2C Host Test                     PASS
+Platform GPIO regressions                  PASS
+Coding Standard Review                     PASS
+Keil Full Rebuild                          PASS
+Serial Assistant target observation        PASS
+RTT target observation                     PASS
+Logic Analyzer START/STOP                  PASS
+Logic Analyzer Address/ACK                 PASS
+Logic Analyzer Repeated START              PASS
+Logic Analyzer Read/Write transaction      PASS
+Normal firmware path restored              PASS
+No Hardware I2C introduced                 PASS
+No Sensor business logic introduced        PASS
 ```
 
-Phase 2 完成后停止执行，等待 Phase 3 Software I2C 专项设计。
-
-## Execution Record
-
-2026-09-02: Preflight completed on `main`; frozen design, coding standard, CubeMX GPIO configuration and current repository state inspected. Unrelated user changes: none found.
-
-2026-09-02: Task 1 completed. Added the Platform BSP GPIO public contract and Host Test with Host-only `main.h` / HAL substitutes. RED observed before the contract/implementation existed; focused Host Test PASS after the minimum binding implementation was available. Commit: `e89ae7f`.
-
-2026-09-02: Task 2 implementation completed. Added four caller-owned static board Context bindings through CubeMX resource macros. Focused BSP Test, Platform GPIO, STM32 GPIO Impl and Platform BSP UART regressions PASS. Coding Standard Review: PASS. Commit: `b81d7a0`.
-
-2026-09-02: Task 3 completed. Added `impl_platform_bsp_gpio.c` to the existing `impl/impl_bsp` Keil group without changing include paths or CubeMX-generated files. Full Rebuild linked with 0 errors; the new production BSP source introduced no warning. Commit: `b3b91c7`.
-
-2026-09-02: Task 4 prepared `Tests/board_gpio_smoke/board_gpio_smoke.c/.h/README.md`. Temporary Keil compilation passed with 0 errors and no Smoke source warning; the temporary group was removed and a final normal Full Rebuild passed with 0 errors. Real target observation was not available. The manual procedure requires serial assistant + RTT logs together with meter/logic-analyzer readings.
-
-2026-09-02: Independent review found that Smoke Test cleanup would deinitialize GPIOs before `osKernelStart()`, and that level mismatches were not emitted as structured failures. Removed the deinitialization path, added serial/RTT `FAIL` reporting for key and SDA level mismatches, and recompiled the temporary Smoke source with 0 errors and no Smoke source warning.
-
-2026-09-02: Phase 2 remains `IMPLEMENTED / TARGET BOARD VERIFICATION PENDING`. PC13, PA0, PB6 and PB7 board smoke gates remain unchecked. Stop before Phase 3 Software I2C.
-
-2026-09-02: User confirmed the target-board GPIO smoke test passed using the serial assistant + RTT logs together with physical observation / logic-analyzer verification: PC13 LED on/off, PA0 key release/press levels, PB6 open-drain pull-low/release, and PB7 open-drain pull-low/release/readback. All Phase 2 target-board gates are now PASS.
-
-2026-09-02: Phase 2 closed as `COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED`. The next step is Phase 3 Software I2C dedicated design; do not implement the protocol until the Phase 3 interface, timing, release/read, ACK/NACK, timeout and recovery decisions are frozen.
+After closure, stop implementation and return to roadmap review before entering Phase 4 — LED Module.
