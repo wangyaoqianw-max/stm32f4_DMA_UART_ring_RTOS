@@ -550,7 +550,7 @@ RTT_elog_DMA_UART_ring_project.ioc
 Core/Src/gpio.c
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Suggested commit:
 
