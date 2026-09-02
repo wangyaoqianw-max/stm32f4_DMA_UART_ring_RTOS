@@ -121,7 +121,7 @@ Phase 2 — Board Resource + CubeMX Configuration
 ```text
 Board Resource Freeze               PASS
 CubeMX GPIO Configuration           PASS
-Board / GPIO Context Binding        NOT YET IMPLEMENTED
+Board / GPIO Context Binding        COMPLETED / HOST VERIFIED
 Target Board GPIO Verification      NOT YET VERIFIED
 ```
 
@@ -748,7 +748,7 @@ Phase 2 — Board Resource + CubeMX Configuration
 ```text
 Resource Table        FROZEN
 CubeMX Configuration  COMPLETED / INSPECTED
-Board Binding         READY FOR EXECUTION
+Board Binding         IMPLEMENTED / HOST + KEIL VERIFIED
 Target Board Smoke    PENDING
 ```
 
@@ -883,8 +883,49 @@ Coding Standard Review: PASS / NEEDS_FIX / EXCEPTION
 
 如为 EXCEPTION，必须记录文件、规则、原因与后续整改状态。
 
-当前 Phase 2 尚未执行生产代码，因此：
+当前 Phase 2 已完成生产代码、Host Test 和 Keil 编译验证；真实目标板尚未连接观察，因此：
 
 ```text
-Phase 2 Coding Standard Review: PENDING
+Phase 2 Coding Standard Review: PASS
+Target Board GPIO Smoke Test: PENDING
+Phase 2 status: IMPLEMENTED / TARGET BOARD VERIFICATION PENDING
 ```
+
+---
+
+# 19. 2026-09-02 Phase 2 执行续接记录
+
+本次在 `main` 分支完成了当前 implementation plan 的 Board GPIO Binding 和目标板 Smoke Test 准备：
+
+```text
+Status LED      -> LED_OUT_GPIO_Port / LED_OUT_Pin -> PC13 / active-low
+User Key        -> KEY_IN_GPIO_Port / KEY_IN_Pin   -> PA0  / active-low
+Soft I2C SCL    -> I2C_SCL_GPIO_Port / I2C_SCL_Pin -> PB6  / open-drain
+Soft I2C SDA    -> I2C_SDA_GPIO_Port / I2C_SDA_Pin -> PB7  / open-drain
+```
+
+已完成验证：
+
+```text
+Platform BSP GPIO Host Test       PASS
+Platform GPIO Regression          PASS
+STM32 GPIO Impl Regression        PASS
+Platform BSP UART Regression      PASS
+Keil Full Rebuild                 PASS (0 errors, 20 existing warnings)
+```
+
+本次新增的 `impl_platform_bsp_gpio.c` 和临时 `board_gpio_smoke.c` 均未产生 warning。临时 Smoke 分组已经从 Keil 工程移除，`Core/Src/main.c` 未加入临时入口，正常固件启动路径保持不变。
+
+目标板验证方案必须同时使用 USART1 串口助手和 RTT 日志：串口助手观察 `GPIO_SMOKE,...` 阶段标记，RTT 观察对应 `gpio smoke ...` 日志；两条记录与万用表 / 逻辑分析仪结果一致后，才可将 PC13、PA0、PB6、PB7 各项标为 PASS。
+
+当前真实硬件状态：
+
+```text
+PC13 Status LED                       PENDING
+PA0 User Key                          PENDING
+PB6 Open-Drain Pull-Low / Release     PENDING
+PB7 Open-Drain Pull-Low / Release     PENDING
+PB7 Physical Readback                 PENDING
+```
+
+在人工目标板验证完成前，Phase 2 不关闭；下一步只进行真实 GPIO Smoke Test，不开始 Phase 3 Software I2C 实现。

@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > 当前执行计划 / Current Active Plan  
-> 状态：READY FOR EXECUTION  
+> 状态：IMPLEMENTED / TARGET BOARD VERIFICATION PENDING
 > 日期：2026-09-02
 
 **Goal:** 完成 LED、KEY、Software I2C SCL/SDA 四个板级 GPIO 资源到现有 Platform GPIO + STM32 GPIO Impl 的正式 Board/BSP 绑定，并完成 Host Test、Keil Build 和目标板 GPIO Smoke Test，从而关闭 Phase 2。
@@ -177,7 +177,7 @@ platform_error_t platform_bsp_gpio_construct_soft_i2c_sda(
     platform_gpio_t *gpio);
 ```
 
-- [ ] **Step 1: Create the public BSP GPIO header**
+- [x] **Step 1: Create the public BSP GPIO header**
 
 `platform_bsp_gpio.h` 只允许直接依赖：
 
@@ -197,7 +197,7 @@ STM32 HAL
 
 公共 API Doxygen 按仓库 C 代码规范编写；`.c` 后续不重复相同公共 API 注释。
 
-- [ ] **Step 2: Write the failing Host test**
+- [x] **Step 2: Write the failing Host test**
 
 测试文件提供 Fake：
 
@@ -269,7 +269,7 @@ HAL_GPIO_Init
 HAL_GPIO_WritePin
 ```
 
-- [ ] **Step 3: Build and run the focused test to verify RED**
+- [x] **Step 3: Build and run the focused test to verify RED**
 
 从工程根目录使用 Host C 编译器，按现有 Test include 顺序优先放置 `Tests/platform_bsp_gpio/`，并链接：
 
@@ -290,11 +290,11 @@ impl_platform_bsp_gpio.c missing
 
 不得通过修改 Production Header 绕过 Host 隔离问题。
 
-- [ ] **Step 4: Coding Standard micro-review**
+- [x] **Step 4: Coding Standard micro-review**
 
 检查 Header Guard、文件头、snake_case API、lower_snake_case_t 类型规则、中文注释、Doxygen、4 空格缩进、无 TAB、无 HAL 泄漏。
 
-- [ ] **Step 5: Commit the contract/test slice**
+- [x] **Step 5: Commit the contract/test slice**
 
 Suggested commit:
 
@@ -337,7 +337,7 @@ soft_i2c_scl   -> PB6
 soft_i2c_sda   -> PB7
 ```
 
-- [ ] **Step 1: Define the four caller-owned static Context objects**
+- [x] **Step 1: Define the four caller-owned static Context objects**
 
 Production BSP 必须使用 CubeMX `main.h` 生成的资源宏：
 
@@ -379,7 +379,7 @@ GPIOB, GPIO_PIN_7
 
 CubeMX `main.h` 是本板 Pin 宏的来源，Impl BSP 负责把这些宏转换为 Generic GPIO Context。
 
-- [ ] **Step 2: Implement the four BSP constructors**
+- [x] **Step 2: Implement the four BSP constructors**
 
 每个函数流程固定为：
 
@@ -421,7 +421,7 @@ HAL_GPIO_Init();
 HAL_GPIO_WritePin();
 ```
 
-- [ ] **Step 3: Run `Tests/platform_bsp_gpio` and verify GREEN**
+- [x] **Step 3: Run `Tests/platform_bsp_gpio` and verify GREEN**
 
 Expected:
 
@@ -429,7 +429,7 @@ Expected:
 all Platform BSP GPIO binding tests PASS
 ```
 
-- [ ] **Step 4: Run GPIO regressions**
+- [x] **Step 4: Run GPIO regressions**
 
 至少执行：
 
@@ -446,7 +446,7 @@ Expected:
 ALL PASS
 ```
 
-- [ ] **Step 5: Run dependency/boundary scan**
+- [x] **Step 5: Run dependency/boundary scan**
 
 确认：
 
@@ -458,7 +458,7 @@ only impl_platform_bsp_gpio.c owns concrete board mapping
 no RCC enable added to Generic GPIO Impl
 ```
 
-- [ ] **Step 6: Coding Standard Review**
+- [x] **Step 6: Coding Standard Review**
 
 至少回答：
 
@@ -471,7 +471,7 @@ no RCC enable added to Generic GPIO Impl
 6. No generated/Vendor code modified?
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 Suggested commit:
 
@@ -492,7 +492,7 @@ git commit -m "feat: bind board GPIO resources"
 - Consumes: `impl_platform_bsp_gpio.c`.
 - Produces: target project can link the new `platform_bsp_gpio_construct_*()` APIs.
 
-- [ ] **Step 1: Inspect the existing BSP source group**
+- [x] **Step 1: Inspect the existing BSP source group**
 
 Locate the group currently containing:
 
@@ -502,7 +502,7 @@ Locate the group currently containing:
 
 The new GPIO BSP implementation must be added to the same responsibility-level group; do not create a new arbitrary architecture layer.
 
-- [ ] **Step 2: Add `impl_platform_bsp_gpio.c` to the Keil project**
+- [x] **Step 2: Add `impl_platform_bsp_gpio.c` to the Keil project**
 
 Add exactly:
 
@@ -512,7 +512,7 @@ Add exactly:
 
 Do not add Host Test sources to the product target.
 
-- [ ] **Step 3: Verify include paths**
+- [x] **Step 3: Verify include paths**
 
 The target must resolve at least:
 
@@ -525,7 +525,7 @@ Core/Inc
 
 Reuse existing include paths when already present; do not duplicate them.
 
-- [ ] **Step 4: Run Keil Full Rebuild**
+- [x] **Step 4: Run Keil Full Rebuild**
 
 Gate:
 
@@ -536,7 +536,7 @@ no warning newly introduced by Phase 2 board binding
 
 Existing historical warnings are not expanded into this Phase unless the new code causes or depends on them.
 
-- [ ] **Step 5: Inspect generated/configuration regression**
+- [x] **Step 5: Inspect generated/configuration regression**
 
 Confirm Task 3 did not unintentionally alter:
 
@@ -599,11 +599,11 @@ I2C pull-up rail == 3.3 V compatible rail
 
 不得为了 Smoke Test 把 CubeMX 改成内部 Pull-Up。
 
-- [ ] **Step 1: Document the smoke-test sequence**
+- [x] **Step 1: Document the smoke-test sequence**
 
 `Tests/board_gpio_smoke/README.md` 必须记录接线、预期电平、测试顺序和 PASS/FAIL 表格，不加入 Software I2C 协议步骤。
 
-- [ ] **Step 2: Construct the four GPIO objects through BSP**
+- [x] **Step 2: Construct the four GPIO objects through BSP**
 
 Smoke harness 必须使用：
 
@@ -616,7 +616,7 @@ platform_bsp_gpio_construct_soft_i2c_sda(&softI2cSdaGpio);
 
 不得在 Smoke Test 直接构造 `GPIO_TypeDef + GPIO_PIN_x` 绕过 BSP。
 
-- [ ] **Step 3: Configure through Platform GPIO**
+- [x] **Step 3: Configure through Platform GPIO**
 
 LED：
 
@@ -721,7 +721,7 @@ read -> HIGH
 
 逻辑分析仪 / 万用表同时确认释放后由外部上拉形成高电平。
 
-- [ ] **Step 8: Confirm Phase 3 protocol is not implemented here**
+- [x] **Step 8: Confirm Phase 3 protocol is not implemented here**
 
 本 Task 禁止发送：
 
@@ -736,7 +736,7 @@ MPU6050 register access
 
 这些属于 Phase 3 Software I2C。
 
-- [ ] **Step 9: Restore normal firmware startup**
+- [x] **Step 9: Restore normal firmware startup**
 
 若使用了临时 USER CODE 调用：
 
@@ -748,7 +748,7 @@ normal APP startup restored
 
 不得留下开机自动翻转 SCL/SDA/LED 的临时产品行为。
 
-- [ ] **Step 10: Run final Keil Full Rebuild**
+- [x] **Step 10: Run final Keil Full Rebuild**
 
 Expected:
 
@@ -783,7 +783,7 @@ Agent 不得仅凭 Host Test 或编译结果把真实板测标记为 PASS。
 - Consumes: Task 1-4 verification results.
 - Produces: Phase 2 closure state and clean handoff to Phase 3 design.
 
-- [ ] **Step 1: Record final board resource contract**
+- [x] **Step 1: Record final board resource contract**
 
 Handoff 必须包含：
 
@@ -794,7 +794,7 @@ PB6  Software I2C SCL open-drain / external pull-up / no internal pull
 PB7  Software I2C SDA open-drain / external pull-up / no internal pull
 ```
 
-- [ ] **Step 2: Record CubeMX state**
+- [x] **Step 2: Record CubeMX state**
 
 ```text
 Board Resource Freeze            PASS
@@ -843,7 +843,7 @@ Phase 2 — Board Resource + CubeMX Configuration
 IMPLEMENTED / TARGET BOARD VERIFICATION PENDING
 ```
 
-- [ ] **Step 5: Stop before Phase 3 implementation**
+- [x] **Step 5: Stop before Phase 3 implementation**
 
 不得继续实现 Software I2C。
 
@@ -870,23 +870,37 @@ Host / logic-analyzer verification strategy
 Phase 2 关闭前最终检查：
 
 ```text
-[ ] Platform BSP GPIO public contract exists
-[ ] Board physical binding exists only in Impl BSP
-[ ] PC13 / PA0 / PB6 / PB7 mappings match CubeMX
-[ ] BSP constructors do not configure hardware
-[ ] Host BSP binding tests PASS
-[ ] Platform GPIO regression PASS
-[ ] STM32 GPIO Impl regression PASS
-[ ] Keil Full Rebuild PASS
+[x] Platform BSP GPIO public contract exists
+[x] Board physical binding exists only in Impl BSP
+[x] PC13 / PA0 / PB6 / PB7 mappings match CubeMX
+[x] BSP constructors do not configure hardware
+[x] Host BSP binding tests PASS
+[x] Platform GPIO regression PASS
+[x] STM32 GPIO Impl regression PASS
+[x] Keil Full Rebuild PASS
 [ ] LED board smoke PASS
 [ ] KEY board smoke PASS
 [ ] SCL open-drain smoke PASS
 [ ] SDA open-drain/read smoke PASS
-[ ] No EXTI introduced
-[ ] No Hardware I2C introduced
-[ ] No Software I2C protocol implementation leaked into Phase 2
-[ ] Coding Standard Review PASS
-[ ] handoff.md updated
+[x] No EXTI introduced
+[x] No Hardware I2C introduced
+[x] No Software I2C protocol implementation leaked into Phase 2
+[x] Coding Standard Review PASS
+[x] handoff.md updated
 ```
 
 Phase 2 完成后停止执行，等待 Phase 3 Software I2C 专项设计。
+
+## Execution Record
+
+2026-09-02: Preflight completed on `main`; frozen design, coding standard, CubeMX GPIO configuration and current repository state inspected. Unrelated user changes: none found.
+
+2026-09-02: Task 1 completed. Added the Platform BSP GPIO public contract and Host Test with Host-only `main.h` / HAL substitutes. RED observed before the contract/implementation existed; focused Host Test PASS after the minimum binding implementation was available. Commit: `e89ae7f`.
+
+2026-09-02: Task 2 implementation completed. Added four caller-owned static board Context bindings through CubeMX resource macros. Focused BSP Test, Platform GPIO, STM32 GPIO Impl and Platform BSP UART regressions PASS. Coding Standard Review: PASS. Commit: `b81d7a0`.
+
+2026-09-02: Task 3 completed. Added `impl_platform_bsp_gpio.c` to the existing `impl/impl_bsp` Keil group without changing include paths or CubeMX-generated files. Full Rebuild linked with 0 errors; the new production BSP source introduced no warning. Commit: `b3b91c7`.
+
+2026-09-02: Task 4 prepared `Tests/board_gpio_smoke/board_gpio_smoke.c/.h/.md`. Temporary Keil compilation passed with 0 errors and no Smoke source warning; the temporary group was removed and a final normal Full Rebuild passed with 0 errors. Real target observation was not available. The manual procedure requires serial assistant + RTT logs together with meter/logic-analyzer readings.
+
+2026-09-02: Phase 2 remains `IMPLEMENTED / TARGET BOARD VERIFICATION PENDING`. PC13, PA0, PB6 and PB7 board smoke gates remain unchecked. Stop before Phase 3 Software I2C.
