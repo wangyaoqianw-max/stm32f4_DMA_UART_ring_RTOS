@@ -6,7 +6,7 @@
 > 只保存长期目标、稳定架构合同、已验证能力、当前阶段、技术债和下一步。
 > 详细业务需求以 `00_Doc/00_项目需求/最终功能需求.md` 为准。
 > 整体阶段拆分以 `00_Doc/04_Agent/development_roadmap.md` 为准。
-> 当前具体施工步骤只以用户确认后更新的 `00_Doc/04_Agent/implementation_plan.md` 为准。
+> 当前具体施工步骤只以 `00_Doc/04_Agent/implementation_plan.md` 为准。
 
 ---
 
@@ -43,19 +43,6 @@ UART 不定长接收 + DMA + RingBuffer + FreeRTOS
 
 > 在已验证 UART 通信链路和五层架构基础上，加入 GPIO、Software I2C、DHT20、MPU6050、按键控制、LED 状态反馈、UART 文本命令和 APP Control FSM，形成完整数据采集系统。
 
-项目同时用于验证：
-
-```text
-Requirements
- -> Design
- -> Implementation Plan
- -> AI Implementation
- -> Test / Review
- -> Handoff
-```
-
-的工程化 AI 辅助开发流程。
-
 ---
 
 # 2. 稳定总体架构
@@ -87,9 +74,9 @@ CubeMX 生成文件只作为初始化、IRQ / HAL Callback、Scheduler 和薄适
 
 ---
 
-# 3. 已完成基线与当前阶段
+# 3. 已验证基线
 
-已完成 / 已验证基线：
+已完成 / 已验证：
 
 ```text
 Platform BSP UART Binding Phase 1   COMPLETED
@@ -106,54 +93,31 @@ GPIO Header Isolation               PASS
 GPIO Platform Dependency Boundary   PASS
 GPIO Coding Standard Review         PASS
 GPIO STM32 Impl Phase 1             COMPLETED / HOST + KEIL VERIFIED
-GPIO STM32 Impl Host Verification   PASS
-GPIO STM32 Impl Keil Verification   PASS (0 errors, 15 warnings)
-```
-
-当前 Active Phase：
-
-```text
-Phase 2 — Board Resource + CubeMX Configuration
-```
-
-当前 Phase 2 状态：
-
-```text
 Board Resource Freeze               PASS
 CubeMX GPIO Configuration           PASS
 Board / GPIO Context Binding        COMPLETED / HOST VERIFIED
 Target Board GPIO Verification      PASS
 ```
 
-当前唯一执行计划：
+Phase 2 最终状态：
 
 ```text
-00_Doc/04_Agent/implementation_plan.md
+Phase 2 — COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
-当前计划标题：
+真实板测已确认：
 
 ```text
-Board GPIO Binding + Target Smoke Test Phase 2 Implementation Plan
-```
-
-当前尚未完成：
-
-```text
-Software I2C
-LED module
-Button module
-DHT20 module
-MPU6050 Motion module
-UART Application Command / Report
-Final RTOS Task / Event Design
-Final APP Control FSM
-Final Integrated Board Test
+PC13 Status LED                       PASS
+PA0 User Key                          PASS
+PB6 Open-Drain Pull-Low / Release     PASS
+PB7 Open-Drain Pull-Low / Release     PASS
+PB7 Physical Readback                 PASS
 ```
 
 ---
 
-# 4. 已验证 UART / RingBuffer 合同
+# 4. UART / RingBuffer 稳定合同
 
 当前 RX 链：
 
@@ -173,13 +137,9 @@ SPSC RingBuffer
 Platform Notify From ISR
   ↓
 APP Communication Task
-  ↓
-Application-level byte-stream handling
 ```
 
-新增 `START / STOP / ONCE / STATUS / HELP` 必须复用这条链路，不允许绕过 UART Service / RingBuffer 另建命令 RX。
-
-RingBuffer 冻结为：
+RingBuffer 冻结：
 
 ```text
 SPSC byte stream
@@ -197,9 +157,9 @@ Producer = UART Service RX callback
 Consumer = APP Communication Task
 ```
 
-不得给当前 SPSC 路径加入普通 Mutex。
+不得给当前 SPSC 链路加入普通 Mutex。
 
-异步 UART TX Buffer 在 TX Complete / Error / Canceled 前不得被修改或失效。
+新增 `START / STOP / ONCE / STATUS / HELP` 必须复用现有 UART Service / RingBuffer RX 链。
 
 ---
 
@@ -223,12 +183,13 @@ ordinary mutex
 malloc/free
 完整协议解析
 传感器业务
+Software I2C transaction
 LED 闪烁延时
 大量格式化日志
 非 ISR-safe RTOS API
 ```
 
-后续 Button、LED、Sensor、UART Command 等业务都应在 Task / Service / APP 上下文处理。
+Software I2C Phase 1 明确为 Task Context / synchronous / caller serialized。
 
 ---
 
@@ -248,7 +209,7 @@ EasyLogger Adapter
 EasyLogger / RTT
 ```
 
-最终功能日志原则：
+日志原则：
 
 ```text
 INFO  -> 初始化、START / STOP / ONCE、关键状态切换
@@ -264,28 +225,15 @@ ERROR -> 初始化失败、关键操作失败
 逐 I2C bit / byte / ACK 打日志
 逐 GPIO read/write 打日志
 ISR 中大量格式化日志
-每层重复打印同一成功状态
 ```
 
-初始化过程和采集 / 收发过程需要可观察，但不要求 Platform / Impl 每一层都主动打印；APP / Service 根据返回结果记录关键状态即可。
+Phase 3 目标板 Smoke Test 允许临时低频阶段日志。
 
 ---
 
-# 7. Platform GPIO 与 STM32 GPIO Impl 合同
+# 7. Platform GPIO / Board 基线
 
-Platform GPIO 专项设计：
-
-```text
-00_Doc/02_架构设计/Platform_GPIO_Phase1设计.md
-```
-
-GPIO STM32 Impl 专项设计：
-
-```text
-00_Doc/02_架构设计/GPIO_STM32_Impl_Phase1设计.md
-```
-
-Platform 公共 API 已完成并 Host Verified：
+Platform GPIO 公共 API：
 
 ```text
 platform_gpio_init
@@ -295,89 +243,18 @@ platform_gpio_read
 platform_gpio_deinit
 ```
 
-`platform_gpio_t` 是轻量 MCU Resource，不继承 `platform_device_t`。
-
-Platform GPIO 不知道：
+Generic STM32 GPIO Impl：
 
 ```text
-GPIO_TypeDef
-GPIO_PIN_x
-LED
-KEY
-SCL
-SDA
-DHT20
-MPU6050
-```
-
-当前 GPIO STM32 Impl 冻结为：
-
-```text
-Generic MCU implementation
 Caller-owned Context
 Context = GPIO_TypeDef *port + uint16_t pin
 One Platform GPIO = one physical pin
 No Context Pool
 No Registry
 No dynamic allocation
-No reverse Platform pointer
 ```
 
-Context 只描述 STM32 Port / Pin；具体设备语义和有效电平不进入 Generic Impl。
-
-## 7.1 Config -> HAL
-
-冻结映射：
-
-```text
-INPUT                  -> GPIO_MODE_INPUT
-OUTPUT + PUSH_PULL     -> GPIO_MODE_OUTPUT_PP
-OUTPUT + OPEN_DRAIN    -> GPIO_MODE_OUTPUT_OD
-PULL_NONE              -> GPIO_NOPULL
-PULL_UP                -> GPIO_PULLUP
-PULL_DOWN              -> GPIO_PULLDOWN
-GPIO Speed             -> GPIO_SPEED_FREQ_LOW (Impl private policy)
-```
-
-Platform 不新增 GPIO Speed API。
-
-## 7.2 Initial Level
-
-OUTPUT 配置顺序冻结：
-
-```text
-HAL_GPIO_WritePin(initialLevel)
-    -> HAL_GPIO_Init(output mode)
-```
-
-用于减少切换输出模式时的错误瞬态。
-
-INPUT 配置不执行 initial-level write。
-
-## 7.3 RCC / CubeMX
-
-GPIO STM32 Impl 不负责 GPIO Port RCC Enable / Disable。
-
-冻结所有权：
-
-```text
-CubeMX / Board Bootstrap
-    -> GPIO Port RCC
-
-STM32 GPIO Impl
-    -> Pin mode / pull / output type / level
-
-Board / BSP
-    -> concrete Port + Pin / device polarity
-```
-
-调用 `platform_gpio_configure()` 前，对应 GPIO Port Clock 必须已经启用。
-
----
-
-# 8. Phase 2 Board Resource / CubeMX 基线
-
-当前冻结资源：
+当前板级资源：
 
 ```text
 PC13 -> Status LED
@@ -388,126 +265,18 @@ PA9  -> USART1_TX
 PA10 -> USART1_RX
 ```
 
-当前 CubeMX 标签：
+Software I2C GPIO：
 
 ```text
-PC13 -> LED_OUT
-PA0  -> KEY_IN
-PB6  -> I2C_SCL
-PB7  -> I2C_SDA
-```
-
-当前 CubeMX GPIO 配置：
-
-```text
-PC13 : GPIO Output Push-Pull / No Pull / initial HIGH
-PA0  : GPIO Input / Pull-Up
-PB6  : GPIO Output Open-Drain / No Pull / initial HIGH
-PB7  : GPIO Output Open-Drain / No Pull / initial HIGH
-```
-
-当前 MCU / CubeMX 侧状态：
-
-```text
-GPIOB RCC enabled
-Hardware I2C peripheral disabled
-PA0 EXTI disabled
-USART1 + DMA configuration preserved
-```
-
-## 8.1 LED 极性
-
-板级原理图 / 资源表已确认：
-
-```text
-PC13 LOW  -> LED ON
-PC13 HIGH -> LED OFF
-```
-
-系统启动要求：
-
-```text
-STOPPED
-LED OFF
-```
-
-因此 CubeMX 初始电平和后续 Platform LED 初始配置均应使用 HIGH。
-
-## 8.2 KEY 极性与输入策略
-
-按键冻结为：
-
-```text
-PA0 LOW  -> pressed
-PA0 HIGH -> released
-```
-
-当前 Phase 2 保持：
-
-```text
-GPIO Input
-Pull-Up
-No EXTI
-```
-
-Button Phase 第一版优先使用约 `10~20 ms` 周期扫描 + 软件消抖 / single / double / long-press 状态机。EXTI 不是当前需求的必需能力，不在 Phase 2 提前引入。
-
-## 8.3 Software I2C GPIO 电气策略
-
-PB6 / PB7 冻结为：
-
-```text
+PB6 / PB7
 GPIO Output Open-Drain
 GPIO_NOPULL
 initial HIGH
+external pull-up present
+Hardware I2C disabled
 ```
 
-逻辑语义：
-
-```text
-write LOW  -> MCU actively pulls line low
-write HIGH -> open-drain release, external pull-up raises line high
-```
-
-DHT20 和 MPU6050 模块原理图已确认 SDA / SCL 总线上存在外部上拉，因此 MCU 内部 Pull-Up 不启用。
-
-Software I2C Phase 应优先采用：
-
-```text
-SDA_LOW()      -> write LOW
-SDA_RELEASE()  -> write HIGH / release
-SDA_READ()     -> read physical pin level
-
-SCL_LOW()
-SCL_RELEASE()
-SCL_READ()     -> if later needed by clock-stretch policy
-```
-
-第一版不需要为了读取 ACK 而强制在 Input / Output 间来回切换 SDA；STM32 开漏输出状态下仍可读取引脚实际输入电平。最终策略在 Phase 3 专项设计中冻结。
-
----
-
-# 9. Phase 2 Board / BSP Binding 合同
-
-Phase 2C 采用现有 UART BSP 相同的绑定模式：
-
-```text
-Platform BSP public contract
-        ↓
-Impl BSP concrete board mapping
-        ↓
-Generic STM32 GPIO Impl
-```
-
-计划新增：
-
-```text
-03_Platform/platform_bsp/platform_bsp_gpio.h
-04_Impl/impl_bsp/impl_platform_bsp_gpio.c
-Tests/platform_bsp_gpio/
-```
-
-Platform BSP 计划暴露：
+Board BSP 已提供：
 
 ```text
 platform_bsp_gpio_construct_status_led()
@@ -516,238 +285,30 @@ platform_bsp_gpio_construct_soft_i2c_scl()
 platform_bsp_gpio_construct_soft_i2c_sda()
 ```
 
-具体绑定只存在于 Impl BSP：
-
-```text
-status_led     -> PC13
-user_key       -> PA0
-soft_i2c_scl   -> PB6
-soft_i2c_sda   -> PB7
-```
-
-Impl BSP 必须使用 CubeMX `main.h` 生成的 `*_GPIO_Port` / `*_Pin` 宏构造 caller-owned static Context，避免在自研代码中维护第二套重复 Pin 常量。
-
-冻结边界：
-
-```text
-BSP constructor
-    -> construct / bind only
-
-BSP constructor
-    != platform_gpio_configure
-    != platform_gpio_write
-    != HAL GPIO lifecycle
-```
-
-设备极性和产品行为不进入 Generic Platform GPIO / STM32 GPIO Impl。
+BSP constructor 只 construct / bind，不执行 `platform_gpio_configure()`。
 
 ---
 
-# 10. Phase 2 Target Board Smoke Test 基线
-
-Phase 2 完成前必须使用真实开发板验证完整 GPIO vertical slice：
-
-```text
-Board BSP
-    ↓
-Platform GPIO
-    ↓
-STM32 GPIO Impl
-    ↓
-HAL
-    ↓
-PCB / external modules
-```
-
-至少验证：
-
-```text
-PC13:
-    write LOW  -> LED ON
-    write HIGH -> LED OFF
-
-PA0:
-    released -> HIGH
-    pressed  -> LOW
-
-PB6:
-    write LOW  -> line LOW
-    write HIGH -> release -> external pull-up HIGH
-
-PB7:
-    write LOW  -> read LOW
-    write HIGH -> release -> read HIGH
-```
-
-PB6 / PB7 板测时必须存在有效外部上拉并与 MCU 共地。
-
-本 Smoke Test 明确不实现：
-
-```text
-I2C START / STOP
-Address
-ACK / NACK
-DHT20 command
-MPU6050 register access
-```
-
-这些属于 Phase 3。
-
-只有真实人工观察完成后，才允许把 `Target Board GPIO Smoke Test` 标记为 PASS。
-
----
-
-# 11. 最终功能基线
-
-权威需求：
-
-```text
-00_Doc/00_项目需求/最终功能需求.md
-```
-
-系统状态：
-
-```text
-STOPPED
-RUNNING
-```
-
-启动完成：
-
-```text
-STOPPED
-LED OFF
-UART RX ACTIVE
-RTT ACTIVE
-```
-
-按键：
-
-```text
-STOPPED + SINGLE       -> START
-STOPPED + DOUBLE       -> ONCE
-RUNNING + LONG >= 3 s  -> STOP
-```
-
-UART 命令：
-
-```text
-START
-STOP
-ONCE
-STATUS
-HELP
-```
-
-按键和 UART 必须统一转换为 APP 控制事件，最终只维护一个 APP Control FSM。
-
----
-
-# 12. 采集 / LED / Software I2C 基线
-
-RUNNING：
-
-```text
-每 5 s
-  -> DHT20 temperature / humidity
-  -> MPU6050 Accel XYZ / Gyro XYZ
-  -> text report
-  -> existing UART TX
-  -> PC serial assistant
-```
-
-第一阶段 MPU6050 不做：
-
-```text
-Roll
-Pitch
-Yaw
-DMP
-Kalman
-Complementary Filter
-高频姿态融合
-```
-
-LED 产品语义：
-
-```text
-STOPPED               -> OFF
-RUNNING               -> ON
-RUNNING 5 s report     -> stays ON
-ONCE TX success        -> blink 3 times, then OFF
-ONCE failure           -> stays OFF
-```
-
-Software I2C 架构：
-
-```text
-DHT20 + MPU6050
-       ↓
-Software I2C
-       ↓
-Platform GPIO
-       ↓
-STM32 GPIO Impl
-```
-
-Software I2C 不直接依赖 HAL GPIO；使用微秒级时序；第一阶段优先串行访问两个传感器，避免无必要 I2C 并发。
-
----
-
-# 13. 当前开发阶段路线
-
-整体路线：
-
-```text
-00_Doc/04_Agent/development_roadmap.md
-```
-
-当前冻结的阶段顺序：
-
-```text
-Phase 1  GPIO STM32 Impl
-Phase 2  Board Resource + CubeMX Configuration
-Phase 3  Software I2C
-Phase 4  LED Module
-Phase 5  Button Module
-Phase 6  DHT20 Environment Module
-Phase 7  MPU6050 Motion Module
-Phase 8  UART Application Communication
-Phase 9  RTOS Task / Event Design
-Phase 10 Final APP Integration
-```
-
-RTT / EasyLogger 与 Config 属于横切要求，随各 Phase 一起完成，不单独拆成 Phase。
-
-阶段原则：
-
-```text
-Roadmap
-    = 整个最终功能的阶段顺序和边界
-
-implementation_plan.md
-    = 当前唯一已确认 Phase 的具体施工计划
-```
-
-禁止一次生成 Phase 1 ~ Phase 10 的超长施工计划并连续实现。
-
----
-
-# 14. 当前 Active Phase
+# 8. 当前 Active Phase
 
 当前阶段：
 
 ```text
-Phase 2 — Board Resource + CubeMX Configuration
+Phase 3 — Software I2C
 ```
 
 状态：
 
 ```text
-Resource Table        FROZEN
-CubeMX Configuration  COMPLETED / INSPECTED
-Board Binding         IMPLEMENTED / HOST + KEIL VERIFIED
-Target Board Smoke    PASS
+DESIGN FROZEN
+IMPLEMENTATION PLAN READY
+CODE NOT STARTED
+```
+
+专项设计：
+
+```text
+00_Doc/02_架构设计/Software_I2C_Phase1设计.md
 ```
 
 当前唯一执行计划：
@@ -756,97 +317,467 @@ Target Board Smoke    PASS
 00_Doc/04_Agent/implementation_plan.md
 ```
 
-执行计划只覆盖 Phase 2 剩余范围：
+当前计划标题：
 
 ```text
-Phase 2C Board / GPIO Context Binding
-Phase 2D Target Board GPIO Smoke Test
-Phase 2 Closure / Handoff
-```
-
-不得重新设计或重复执行：
-
-```text
-Platform GPIO Phase 1
-GPIO STM32 Impl Phase 1
-Board Resource Freeze
-CubeMX Pin Configuration
-```
-
-除非 Preflight 发现仓库现实与冻结合同发生冲突。
-
----
-
-# 15. Phase 2 完成门槛
-
-Phase 2 关闭前必须满足：
-
-```text
-Platform BSP GPIO contract          PASS
-Board / GPIO Context Binding        PASS
-GPIO BSP Host Test                  PASS
-Platform GPIO Regression            PASS
-STM32 GPIO Impl Regression          PASS
-Coding Standard Review              PASS
-Keil Full Rebuild                   PASS
-PC13 LED board smoke                PASS
-PA0 KEY board smoke                 PASS
-PB6 OD pull-low / release smoke     PASS
-PB7 OD pull-low / release / read    PASS
-No Hardware I2C introduced          PASS
-No EXTI introduced                  PASS
-No Software I2C protocol leakage    PASS
-```
-
-若 Host / Keil 已通过但真实板测尚未完成：
-
-```text
-Phase 2 — IMPLEMENTED / TARGET BOARD VERIFICATION PENDING
-```
-
-只有真实板测全部通过后才能记录：
-
-```text
-Phase 2 — COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
+Software I2C Phase 3 Implementation Plan
 ```
 
 ---
 
-# 16. Phase 2 完成后的下一步
+# 9. Software I2C Phase 1 冻结设计
 
-Phase 2 完成后停止实现，进入 Phase 3 设计讨论：
-
-```text
-Phase 3 — Software I2C
-```
-
-Phase 3 开码前至少冻结：
+定位：
 
 ```text
-Software I2C object/interface model
-SCL/SDA release/read strategy
-microsecond timing source
-clock-stretch policy if supported
-ACK/NACK behavior
-transaction timeout
-bus recovery policy
-DHT20 / MPU6050 required transaction subset
-Host / logic-analyzer verification strategy
+Platform MCU basic communication capability
+Master only
+7-bit address
+Synchronous
+No internal mutex
+No dynamic allocation
 ```
 
-然后再用新的 Phase 3 内容覆盖：
+公共命名：
 
 ```text
-00_Doc/04_Agent/implementation_plan.md
+platform_i2c_*
 ```
 
-禁止直接从当前 Phase 2 执行计划继续编写 Software I2C。
+当前内部实现：Software I2C。
+
+计划文件：
+
+```text
+03_Platform/platform_mcu/i2c/platform_i2c.h
+03_Platform/platform_mcu/i2c/platform_i2c.c
+```
+
+公共 transaction API：
+
+```text
+platform_i2c_init
+platform_i2c_write
+platform_i2c_read
+platform_i2c_write_read
+platform_i2c_deinit
+```
+
+不暴露：
+
+```text
+START
+STOP
+ACK / NACK
+write_byte
+read_byte
+```
+
+这些属于 `platform_i2c.c` private protocol primitives。
+
+不增加 `mem_read / mem_write`，寄存器语义留给 MPU6050 等具体设备模块。
 
 ---
 
-# 17. 当前暂缓范围
+# 10. Software I2C GPIO / 时序合同
 
-当前明确暂缓：
+SCL / SDA transaction 中始终保持：
+
+```text
+Open-Drain Output
+```
+
+语义：
+
+```text
+LOW     -> actively pull low
+HIGH    -> release
+READ    -> physical line readback
+```
+
+不动态切换 SDA Input / Output。
+
+内部语义优先使用：
+
+```text
+SDA_LOW
+SDA_RELEASE
+SDA_READ
+SCL_LOW
+SCL_RELEASE
+SCL_READ
+```
+
+时序：
+
+```text
+Standard-mode oriented
+nominal ~100 kHz
+exact 100 kHz not required
+MSB first
+Repeated START supported
+last read byte -> NACK
+```
+
+每次需要 SCL HIGH 时：
+
+```text
+release SCL
+read actual SCL
+wait in us steps if LOW
+timeout -> PLATFORM_ERR_TIMEOUT
+```
+
+第一版因此具备基础 clock-stretch / stuck-low 检测能力，但不构建复杂 Clock Stretching Framework。
+
+---
+
+# 11. 微秒延时冻结方案
+
+现有：
+
+```text
+03_Platform/platform_common/platform_def.h
+```
+
+已经预留：
+
+```c
+void platform_delay_ms(uint32_t ms);
+void platform_delay_us(uint32_t us);
+```
+
+Phase 3 只实现：
+
+```text
+platform_delay_us()
+```
+
+计划实现位置：
+
+```text
+04_Impl/impl_mcu/impl_platform_delay.c
+```
+
+实现：
+
+```text
+Cortex-M4 DWT CYCCNT
+busy-wait
+lazy initialization
+SystemCoreClock based conversion
+```
+
+不新增：
+
+```text
+platform_time_delay_us()
+new Platform Delay module
+public delay init API
+```
+
+现有：
+
+```text
+platform_time_delay_ms()
+```
+
+继续作为 FreeRTOS / CMSIS-RTOS2 Task Context 毫秒调度延时。
+
+两个延时底层语义不同：
+
+```text
+ms -> scheduler delay
+us -> short busy-wait timing
+```
+
+旧预留 `platform_delay_ms()` 不属于 Phase 3 必须实现范围。
+
+---
+
+# 12. Software I2C 静态配置
+
+静态配置统一放：
+
+```text
+00_Config/project_config.h
+```
+
+冻结计划：
+
+```c
+#define PROJECT_SOFT_I2C_HALF_PERIOD_US    (5U)
+#define PROJECT_SOFT_I2C_SCL_TIMEOUT_US    (100U)
+```
+
+不把 timing 放进 `platform_i2c_t` Context。
+
+协议固定行为不进入 Config：
+
+```text
+7-bit address
+MSB first
+9 recovery clocks maximum
+last read byte NACK
+```
+
+---
+
+# 13. Transaction / 错误合同
+
+Write：
+
+```text
+START
+Address + W
+ACK
+TX bytes + ACK
+STOP
+```
+
+Read：
+
+```text
+START
+Address + R
+ACK
+RX bytes
+intermediate ACK
+last byte NACK
+STOP
+```
+
+WriteRead：
+
+```text
+START
+Address + W
+TX
+Repeated START
+Address + R
+RX
+STOP
+```
+
+地址由上层传 7-bit address，I2C 层内部生成 R/W bit。
+
+错误复用 `platform_error_t`：
+
+```text
+invalid param       -> PLATFORM_ERR_INVALID_PARAM
+not initialized     -> PLATFORM_ERR_NOT_INITIALIZED
+address NACK        -> PLATFORM_ERR_NOT_FOUND
+data/protocol error -> PLATFORM_ERR_IO
+SCL timeout         -> PLATFORM_ERR_TIMEOUT
+bus non-idle        -> PLATFORM_ERR_BUSY
+```
+
+transaction 已开始后失败：
+
+```text
+preserve original error
+best-effort STOP / release
+return original error
+```
+
+---
+
+# 14. Init / Recovery / Deinit
+
+Init：
+
+```text
+validate
+store SCL/SDA
+configure both OD Output / No Pull / initial HIGH
+release both
+check physical Idle
+```
+
+Idle：
+
+```text
+SCL HIGH
+SDA HIGH
+```
+
+初始化时：
+
+```text
+SCL HIGH + SDA LOW
+    -> allow one bus recovery
+```
+
+Recovery：
+
+```text
+release SDA
+up to 9 SCL pulses
+stop early if SDA releases
+finally generate STOP
+verify Idle
+```
+
+正常 transaction 如果总线异常，不自动反复 recovery；返回错误给调用者。
+
+Deinit：
+
+```text
+release SCL/SDA
+platform_gpio_deinit()
+clear initialized
+```
+
+I2C 不销毁 caller-owned GPIO 对象存储。
+
+---
+
+# 15. Phase 3 验证方案
+
+Phase 3 不允许只凭 Host Test / Keil Build 关闭。
+
+验证分层：
+
+```text
+Host Test
+    -> protocol logic / GPIO interaction sequence
+
+Keil Full Rebuild
+    -> STM32 / DWT / integration
+
+Target Board
+    -> Serial Assistant
+    -> RTT / EasyLogger
+    -> Logic Analyzer
+```
+
+目标板三路观察冻结为：
+
+## 15.1 串口助手
+
+观察低频测试阶段 / 最终结果，例如：
+
+```text
+I2C_SMOKE,START
+I2C_SMOKE,INIT,PASS
+I2C_SMOKE,TXRX,PASS
+I2C_SMOKE,PASS
+```
+
+失败：
+
+```text
+I2C_SMOKE,FAIL,<stage>,<platform_error>
+```
+
+## 15.2 RTT / EasyLogger
+
+观察：
+
+```text
+I2C init result
+bus recovery occurrence / failure
+address NACK
+timeout
+I/O failure
+smoke final result
+```
+
+不打印逐 bit / byte / ACK 正常日志。
+
+## 15.3 逻辑分析仪
+
+连接：
+
+```text
+PB6 -> SCL
+PB7 -> SDA
+GND -> common ground
+```
+
+必须观察：
+
+```text
+Idle HIGH
+START
+STOP
+Repeated START
+7-bit Address
+R/W
+ACK / NACK
+TX / RX Data
+MSB first
+last-read-byte NACK
+SCL high / low time
+actual clock in acceptable Standard-mode range
+```
+
+优先使用逻辑分析仪 I2C decoder。
+
+串口助手、RTT 与逻辑分析仪结果必须一致。
+
+目标板允许使用已连接 DHT20 / MPU6050 做原始 I2C transaction smoke verification，但 Phase 3 不建立正式 Sensor Driver，不猜测未经数据手册确认的破坏性命令。
+
+---
+
+# 16. Phase 3 完成门槛
+
+必须全部满足：
+
+```text
+Microsecond DWT implementation             PASS
+Platform I2C Host Test                     PASS
+Platform GPIO regressions                  PASS
+Coding Standard Review                     PASS
+Keil Full Rebuild                          PASS
+Serial Assistant target observation        PASS
+RTT target observation                     PASS
+Logic Analyzer START / STOP                PASS
+Logic Analyzer Address / ACK               PASS
+Logic Analyzer Repeated START              PASS
+Logic Analyzer Read / Write transaction    PASS
+Normal firmware path restored              PASS
+No Hardware I2C introduced                 PASS
+No HAL GPIO leakage into Platform I2C      PASS
+No Sensor business logic introduced        PASS
+No unnecessary mutex / async framework     PASS
+```
+
+若 Host / Keil 已通过但真实板测未完成：
+
+```text
+Phase 3 — IMPLEMENTED / TARGET BOARD VERIFICATION PENDING
+```
+
+只有三路目标板观察全部通过后：
+
+```text
+Phase 3 — COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
+```
+
+---
+
+# 17. 当前后续路线
+
+冻结顺序：
+
+```text
+Phase 3  Software I2C          <- CURRENT
+Phase 4  LED Module
+Phase 5  Button Module
+Phase 6  DHT20 Environment Module
+Phase 7  MPU6050 Motion Module
+Phase 8  UART Application Communication
+Phase 9  RTOS Task / Event Design
+Phase 10 Final APP Integration
+Final Integrated Board Test
+```
+
+Phase 3 完成后停止继续扩展 I2C，先回到 Roadmap / Handoff 评审，再进入 Phase 4。
+
+---
+
+# 18. 当前暂缓范围
 
 ```text
 SPI / LCD / GUI
@@ -860,72 +791,4 @@ Kalman / Complementary Filter
 无需求驱动的框架扩展
 ```
 
-除非最终功能需求重新变更，否则不得主动把这些内容加入当前开发主线。
-
----
-
-# 18. Coding Standard 状态
-
-当前已完成阶段：
-
-```text
-Platform GPIO Phase 1 Coding Standard Review  PASS
-GPIO STM32 Impl Phase 1 Coding Standard Review PASS
-```
-
-当前 Phase 2 新增 / 修改的所有自研 C 代码在提交前必须再次执行：
-
-```text
-Coding Standard Review: PASS / NEEDS_FIX / EXCEPTION
-```
-
-如为 EXCEPTION，必须记录文件、规则、原因与后续整改状态。
-
-当前 Phase 2 已完成生产代码、Host Test、Keil 编译和真实目标板观察验证：
-
-```text
-Phase 2 Coding Standard Review: PASS
-Target Board GPIO Smoke Test: PASS
-Phase 2 status: COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
-```
-
----
-
-# 19. 2026-09-02 Phase 2 执行续接记录
-
-本次在 `main` 分支完成了当前 implementation plan 的 Board GPIO Binding 和目标板 Smoke Test 准备：
-
-```text
-Status LED      -> LED_OUT_GPIO_Port / LED_OUT_Pin -> PC13 / active-low
-User Key        -> KEY_IN_GPIO_Port / KEY_IN_Pin   -> PA0  / active-low
-Soft I2C SCL    -> I2C_SCL_GPIO_Port / I2C_SCL_Pin -> PB6  / open-drain
-Soft I2C SDA    -> I2C_SDA_GPIO_Port / I2C_SDA_Pin -> PB7  / open-drain
-```
-
-已完成验证：
-
-```text
-Platform BSP GPIO Host Test       PASS
-Platform GPIO Regression          PASS
-STM32 GPIO Impl Regression        PASS
-Platform BSP UART Regression      PASS
-Keil Full Rebuild                 PASS (0 errors, 20 existing warnings)
-```
-
-本次新增的 `impl_platform_bsp_gpio.c` 和临时 `board_gpio_smoke.c` 均未产生 warning。临时 Smoke 分组已经从 Keil 工程移除，`Core/Src/main.c` 未加入临时入口，正常固件启动路径保持不变。
-
-独立审查发现 Smoke Harness 若在 `osKernelStart()` 前调用 `platform_gpio_deinit()` 会破坏后续 GPIO 配置；现已移除该清理路径。PA0 / PB7 电平读值不符预期时，现会同时输出串口 `GPIO_SMOKE,FAIL,...` 和 RTT ERROR，并停止后续步骤。
-
-目标板验证方案必须同时使用 USART1 串口助手和 RTT 日志：串口助手观察 `GPIO_SMOKE,...` 阶段标记，RTT 观察对应 `gpio smoke ...` 日志；两条记录与万用表 / 逻辑分析仪结果一致后，才可将 PC13、PA0、PB6、PB7 各项标为 PASS。
-
-当前真实硬件状态：
-
-```text
-PC13 Status LED                       PASS
-PA0 User Key                          PASS
-PB6 Open-Drain Pull-Low / Release     PASS
-PB7 Open-Drain Pull-Low / Release     PASS
-PB7 Physical Readback                 PASS
-```
-
-用户已确认上述三组硬件现象均通过，并使用串口助手 + RTT 日志配合逻辑分析仪完成观察。Phase 2 现已关闭；下一步进入 Phase 3 Software I2C 专项设计，先冻结接口、时序、释放/读回、ACK/NACK、超时和总线恢复策略，再开始协议实现。
+不得主动加入当前开发主线。
