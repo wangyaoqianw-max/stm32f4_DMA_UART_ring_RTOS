@@ -25,6 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "i2c_smoke.h"
 
 /* USER CODE END Includes */
 
@@ -98,6 +99,10 @@ int main(void)
   /* Init scheduler */
   osKernelInitialize();  /* Call init function for freertos objects (in freertos.c) */
   MX_FREERTOS_Init();
+
+  /* USER CODE BEGIN I2C_SMOKE */
+  i2c_smoke_run();
+  /* USER CODE END I2C_SMOKE */
 
   /* Start scheduler */
   osKernelStart();

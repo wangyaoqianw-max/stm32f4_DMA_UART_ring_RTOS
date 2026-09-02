@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F411xE</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;../05_vendors/RTT;../05_vendors/easylogger/inc;../05_vendors/easylogger/plugins/file;../05_vendors/easylogger/plugins/flash;../04_Impl/impl_middleware/impl_log;../03_Platform/platform_middleware;../03_Platform/platform_common;../03_Platform/platform_os;../03_Platform/platform_mcu/uart;../03_Platform/platform_mcu/gpio;../03_Platform/platform_bsp;../04_Impl/impl_mcu;../04_Impl/impl_os/freertos;../04_Impl/impl_board;../02_Service/service_common;../02_Service/service_uart;../02_Service/service_log;../00_Config;../01_APP</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;../05_vendors/RTT;../05_vendors/easylogger/inc;../05_vendors/easylogger/plugins/file;../05_vendors/easylogger/plugins/flash;../04_Impl/impl_middleware/impl_log;../03_Platform/platform_middleware;../03_Platform/platform_common;../03_Platform/platform_os;../03_Platform/platform_mcu/uart;../03_Platform/platform_mcu/gpio;../03_Platform/platform_bsp;../04_Impl/impl_mcu;../04_Impl/impl_os/freertos;../04_Impl/impl_board;../02_Service/service_common;../02_Service/service_uart;../02_Service/service_log;../00_Config;../01_APP;../Tests/i2c_smoke</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -732,6 +732,21 @@
               <FileName>platform_i2c.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\03_Platform\platform_mcu\i2c\platform_i2c.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Tests/i2c_smoke</GroupName>
+          <Files>
+            <File>
+              <FileName>i2c_smoke.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Tests\i2c_smoke\i2c_smoke.c</FilePath>
+            </File>
+            <File>
+              <FileName>i2c_smoke.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Tests\i2c_smoke\i2c_smoke.h</FilePath>
             </File>
           </Files>
         </Group>
