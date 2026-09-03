@@ -2,7 +2,7 @@
 
 > 文档类型：Development Phase Roadmap  
 > 状态：Baseline  
-> 日期：2026-09-01  
+> 日期：2026-09-03  
 > 适用工程：`stm32f4_DMA_UART_ring_RTOS`
 
 ---
@@ -266,21 +266,57 @@ Address + ACK 可观察
 
 ## 7.1 目标
 
-在 GPIO 基础能力上建立 LED 设备能力和产品反馈语义。
+在现有 Platform GPIO 与 Board GPIO Binding 基线上，建立轻量 LED 设备能力和提示灯 Service 语义。
 
-当前预期分层：
+冻结分层：
 
 ```text
-LED Platform / BSP capability
+Indicator Service
         ↓
-LED Impl / Board binding
+Platform LED
         ↓
-LED Service product indication
+Platform GPIO
+        ↓
+STM32 GPIO Impl
 ```
 
-具体是否需要每一层独立文件，由专项设计依据“是否提供真实职责”决定，禁止三层无意义透传。
+Phase 4 不新增独立 `impl_led` 透传层。
 
-## 7.2 最终产品语义
+专项设计：
+
+```text
+00_Doc/02_架构设计/LED_Phase1设计.md
+```
+
+## 7.2 Platform LED
+
+第一阶段使用轻量 `platform_led_t`，不接入统一 `platform_device_t` / runtime device type。
+
+基础能力：
+
+```text
+init
+on
+off
+toggle
+deinit
+```
+
+Status LED GPIO 继续复用 Phase 2 已验证的 PC13 Board Binding。
+
+LED active level 作为产品编译期静态配置进入 `00_Config/project_config.h`，不得把 LOW/HIGH 极性泄漏到 Service / APP。
+
+## 7.3 Indicator Service
+
+提示事件：
+
+```text
+STOPPED
+RUNNING
+ONCE_SUCCESS
+```
+
+产品语义：
 
 ```text
 STOPPED               -> LED OFF
@@ -290,14 +326,64 @@ ONCE TX success        -> blink 3 times, then OFF
 ONCE failure           -> stay OFF
 ```
 
-LED 高 / 低有效极性必须封装在 Board / BSP / Impl 边界，不泄漏到 APP。
+Indicator Service 不维护 APP 真实 RUNNING / STOPPED 状态，不判断 UART 是否成功，只消费未来上层已经确认的语义事件。
 
-## 7.3 完成门槛
+## 7.4 闪烁时序
 
-- ON / OFF 板测正确；
-- 三闪行为可验证；
-- 闪烁过程不在 ISR 中阻塞执行；
-- APP 不直接处理 GPIO 电平极性。
+静态配置：
+
+```text
+blink count = 3
+blink ON = 100 ms
+blink OFF = 100 ms
+```
+
+统一进入 `00_Config/project_config.h`。
+
+最终系统采用独立 Indicator Task，因此闪烁允许在该 Task Context 中使用 `platform_time_delay_ms()` 顺序延时。
+
+Phase 4 不正式创建最终 Indicator Task；永久 Task 创建、优先级、栈大小和事件投递方式留给 Phase 9。
+
+禁止：
+
+```text
+HAL_Delay in Service / smoke Task
+osDelay / vTaskDelay bypassing Platform OS
+ISR / HAL Callback blink delay
+```
+
+## 7.5 验证
+
+目标板 Smoke Test 在 FreeRTOS Scheduler 启动后的临时 Task Context 中执行。
+
+验证工具：
+
+```text
+LED visual observation
+RTT / EasyLogger
+Serial Assistant as communication regression observation
+```
+
+本 Phase 不要求逻辑分析仪。
+
+完成 smoke 后必须删除临时验证入口并恢复正常固件路径。
+
+## 7.6 完成门槛
+
+```text
+Platform LED Host Test PASS
+Indicator Service Host Test PASS
+Platform GPIO regression PASS
+Keil Full Rebuild PASS
+OFF / ON board behavior PASS
+ONCE three-blink board behavior PASS
+final OFF PASS
+RTT smoke PASS
+existing communication regression PASS
+temporary smoke removed PASS
+normal-path Keil rebuild PASS
+Coding Standard Review PASS
+```
 
 ---
 
@@ -333,7 +419,7 @@ LONG >= 3000 ms
 
 单击与双击存在判定冲突，因此 SINGLE 必须等待双击窗口结束后确认。
 
-Button Service 应优先设计为可由周期 process / time input 驱动的状态机，以便 Host Test；不应默认与某个 FreeRTOS Task 强绑定。
+Button Service 应优先设计为可由周期 process / time input 驱动的状态机，以便 Host Test；是否独立 Button Task 留到 Phase 9 最终冻结。
 
 ## 8.3 完成门槛
 
@@ -358,14 +444,16 @@ Host / Board 测试至少覆盖：
 预期链路：
 
 ```text
-Environment Service
+Environment Service / Device Module
        ↓
-DHT20 Platform / BSP
+DHT20 device capability
        ↓
 Software I2C
 ```
 
 DHT20 不新增 STM32 专用 Impl；MCU 相关实现已经由 Software I2C -> Platform GPIO -> STM32 GPIO Impl 承担。
+
+DHT20 具有明确身份、配置、生命周期和数据语义，专项设计阶段应评估复用统一 `platform_device_t` 模型，而不是照搬 LED 的轻量对象策略。
 
 ## 9.2 第一阶段数据
 
@@ -400,6 +488,8 @@ MPU6050 Motion / IMU Data Module
 ## 10.2 目标
 
 通过 Software I2C 完成 MPU6050 基础初始化和六轴数据读取。
+
+MPU6050 具有明确身份、配置、生命周期和数据语义，专项设计阶段应评估复用统一 `platform_device_t` 模型。
 
 第一阶段数据：
 
@@ -505,32 +595,55 @@ MPU6050 Accel XYZ / Gyro XYZ
 
 在各模块职责和调用方式已经明确后，再决定最终 Task、周期调度、事件通知和资源所有权。
 
-本阶段不是“为了使用 RTOS 而增加 Task”。
+本阶段不是“为了使用 RTOS 而增加 Task”，但已冻结的真实并发职责应得到独立执行上下文。
 
-优先减少无必要线程。
+当前已确认方向：
 
-需要明确：
+```text
+Communication Task
+Acquisition Task
+Indicator Task
+```
+
+Button 是否独立 Task 留待 Phase 5 + Phase 9 决定。
+
+本阶段需要明确：
 
 ```text
 Communication processing context
 Button periodic processing context
 5 s acquisition scheduling
 ONCE execution context
-LED blink execution context
+Indicator event delivery
+Indicator Task priority / stack / queueing policy
 APP control event delivery
 UART async TX completion handling
 ```
 
-## 12.2 Software I2C 并发
+## 12.2 Indicator Task
 
-第一阶段优先保证 DHT20 和 MPU6050 在同一采集执行上下文中串行访问 Software I2C，从结构上避免总线竞争。
+Indicator Task 的存在已经由 Phase 4 专项设计冻结，职责是：
+
+```text
+consume indicator events
+serialize LED behavior
+execute blocking blink timing using platform_time_delay_ms()
+isolate LED timing from APP / UART / acquisition tasks
+```
+
+Phase 9 冻结其具体创建方式和事件机制，而不是重新讨论是否需要该 Task。
+
+## 12.3 Software I2C 并发
+
+第一阶段优先保证 DHT20 和 MPU6050 在同一 Acquisition Task 中串行访问 Software I2C，从结构上避免总线竞争。
 
 只有出现多个真实并发访问者时，才设计 I2C Mutex；Mutex 必须覆盖完整 transaction。
 
-## 12.3 完成门槛
+## 12.4 完成门槛
 
 - 每个 Task 有明确职责；
-- 没有为 LED / DHT20 / MPU6050 等简单模块机械创建独立 Task；
+- 没有为 DHT20 / MPU6050 等设备机械创建独立 Task；
+- Indicator Task 职责和事件缓存策略明确；
 - ISR / Task 边界符合现有合同；
 - 共享数据和 Buffer 所有权明确；
 - 5 s 周期与 Button 时间基准明确。
@@ -566,24 +679,24 @@ APP_CTRL_GET_STATUS
 ```text
 Startup
  -> STOPPED
- -> LED OFF
+ -> submit indicator STOPPED
  -> UART RX active
 
 START
  -> RUNNING
- -> LED ON
+ -> submit indicator RUNNING
  -> every 5 s acquire DHT20 + MPU6050
  -> UART report
 
 STOP
  -> STOPPED
  -> stop periodic acquisition/report
- -> LED OFF
+ -> submit indicator STOPPED
 
 ONCE while STOPPED
  -> acquire DHT20 + MPU6050 once
  -> UART TX once
- -> TX success: LED blink 3 times
+ -> TX success: submit indicator ONCE_SUCCESS
  -> remain STOPPED
 ```
 
@@ -622,6 +735,7 @@ ERROR -> 初始化失败、关键操作失败
 ```text
 逐 UART byte 正常日志
 逐 I2C bit / byte / ACK 正常日志
+逐 LED on/off 边沿正常日志
 ISR 大量格式化日志
 每层重复打印同一成功信息
 ```
@@ -641,8 +755,10 @@ Acquisition report period = 5000 ms
 Button debounce time
 Button double-click window
 Button long-press threshold = 3000 ms
+Status LED active level
 LED ONCE blink count = 3
-LED blink interval
+LED blink ON = 100 ms
+LED blink OFF = 100 ms
 UART command / report limits if needed
 ```
 
@@ -690,19 +806,31 @@ Enter next Phase
 
 # 17. 当前下一阶段
 
-当前应讨论：
+当前执行阶段：
 
 ```text
 Phase 4 — LED Module
 ```
 
-Phase 3 的临时 smoke 已移除；清理后的最终 Keil Full Rebuild 待执行。当前尚未生成 LED Module 的专项设计和详细执行计划。
+专项设计已经冻结：
 
-在 LED Module 专项设计和执行边界确认之前：
+```text
+00_Doc/02_架构设计/LED_Phase1设计.md
+```
 
-- 不直接开始编码；
-- 不把 LED 高低有效极性泄漏到 APP；
-- 不把 LED 闪烁放进 ISR 或阻塞延时路径；
-- 不开始 Phase 5 Button 或传感器业务。
+当前执行步骤以：
 
-下一步应围绕 LED 的板级极性封装、Platform / BSP / Service 职责划分、ONCE 三闪的非阻塞执行方式以及 Host / Keil / Board 验证方式讨论具体设计，然后再更新 `implementation_plan.md`。
+```text
+00_Doc/04_Agent/implementation_plan.md
+```
+
+为唯一计划。
+
+Phase 4 完成前：
+
+- 不开始 Phase 5 Button；
+- 不实现 Final APP Control FSM；
+- 不正式创建永久 Indicator Task；
+- 不增加 `impl_led` 透传层；
+- 不将 LED 接入统一 Device Registry；
+- 不使用 HAL_Delay 代替 Platform Time。
