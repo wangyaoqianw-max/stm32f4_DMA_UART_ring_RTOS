@@ -28,7 +28,6 @@
 #include "usart.h"
 #include "service_log.h"
 #include "app_system.h"
-#include "freertos_indicator_smoke.h"
 #include "platform_time.h"
 /* USER CODE END Includes */
 
@@ -131,7 +130,6 @@ void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
   (void)argument;
-  freertos_indicator_smoke_run();
 
   /* Infinite loop */
   for(;;)

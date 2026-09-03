@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > 当前执行计划 / Current Active Plan  
-> 状态：READY FOR IMPLEMENTATION  
+> 状态：IMPLEMENTED / TARGET BOARD VERIFICATION PENDING
 > 日期：2026-09-03
 
 **Goal:** 在现有 Platform GPIO / STM32 GPIO Impl / Board GPIO Binding 基线上，实现轻量 Platform LED 与 Indicator Service，并完成 Host、Keil 和 FreeRTOS Task Context 目标板 Smoke 验证。
@@ -493,11 +493,11 @@ No logic analyzer evidence required for this Phase.
 - Modify: `00_Doc/04_Agent/handoff.md`
 - Update `00_Doc/04_Agent/implementation_plan.md` checkboxes / status as execution progresses.
 
-- [ ] **Step 1: Remove all temporary smoke-only paths**
+- [x] **Step 1: Remove all temporary smoke-only paths**
 
 Confirm no test loop remains in normal production execution.
 
-- [ ] **Step 2: Run normal-path Keil Full Rebuild**
+- [x] **Step 2: Run normal-path Keil Full Rebuild**
 
 Expected:
 
@@ -506,7 +506,7 @@ Expected:
 normal communication startup restored
 ```
 
-- [ ] **Step 3: Run final Host regression set**
+- [x] **Step 3: Run final Host regression set**
 
 At minimum:
 
@@ -518,7 +518,7 @@ Platform GPIO
 Platform BSP GPIO
 ```
 
-- [ ] **Step 4: Final Coding Standard Review**
+- [x] **Step 4: Final Coding Standard Review**
 
 Must report:
 
@@ -526,7 +526,7 @@ Must report:
 Coding Standard Review: PASS / NEEDS_FIX / EXCEPTION
 ```
 
-- [ ] **Step 5: Update handoff with actual implementation / verification evidence**
+- [x] **Step 5: Update handoff with actual implementation / verification evidence**
 
 Only after evidence exists, record Phase 4 status.
 
@@ -542,7 +542,7 @@ If all completion gates pass:
 Phase 4 — COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
-- [ ] **Step 6: Stop after Phase 4**
+- [x] **Step 6: Stop after Phase 4**
 
 Do not automatically begin Button Phase 5. Return implementation result for design/review handoff.
 
@@ -568,9 +568,9 @@ Platform LED Host Test                         PASS
 Indicator Service Host Test                    PASS
 GPIO regression                                PASS
 Keil Full Rebuild                              PASS
-Target OFF / ON / 3 blink / OFF                PASS
-RTT target smoke                               PASS
-Communication regression                       PASS
+Target OFF / ON / 3 blink / OFF                PENDING — no target-board evidence
+RTT target smoke                               PENDING — no target RTT session
+Communication regression                       PENDING — no target + PC serial session
 Logic Analyzer                                 NOT REQUIRED
 Temporary smoke removed                        PASS
 Normal-path Keil Full Rebuild                  PASS
