@@ -28,7 +28,6 @@
 #include "usart.h"
 #include "service_log.h"
 #include "app_system.h"
-#include "platform_time.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -129,12 +128,10 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
-  (void)argument;
-
   /* Infinite loop */
   for(;;)
   {
-    (void)platform_time_delay_ms(1U);
+    osDelay(1);
   }
   /* USER CODE END StartDefaultTask */
 }

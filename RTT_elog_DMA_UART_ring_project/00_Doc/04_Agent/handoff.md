@@ -377,7 +377,7 @@ Target + PC Serial Assistant communication check   NOT EXECUTED
 
 1. 在独立验证提交中按 Task 5 的隔离路径临时恢复 smoke；不得把它保留在正常固件。
 2. Keil Full Rebuild 后烧录，复位时观察：OFF 约 1 s、ON 约 2 s、OFF 约 1 s、3 次闪烁、最终 OFF。
-3. RTT 依次确认 `indicator smoke start`、两次 `STOPPED`、`RUNNING`、`ONCE_SUCCESS`、`indicator smoke pass`，并与视觉顺序对应。
+3. RTT 依次确认 `indicator smoke start`、`STOPPED`、`RUNNING`、`STOPPED`、`ONCE_SUCCESS`、`indicator smoke pass` 或 `indicator smoke fail`，并与视觉顺序对应。
 4. 使用既有 PC Serial Assistant 流程回归 UART 通信；不得新增 smoke 专用协议。
 5. 记录三项板测证据后，重新移除 smoke 并再跑一次正常路径 Keil Full Rebuild。
 
