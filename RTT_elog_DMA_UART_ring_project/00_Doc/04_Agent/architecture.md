@@ -2,7 +2,7 @@
 
 > 文档类型：Architecture Contract  
 > 状态：Baseline  
-> 版本：V2.1  
+> 版本：V2.2  
 > 更新时间：2026-09-03  
 > 适用工程：`stm32f4_DMA_UART_ring_RTOS`
 
@@ -63,37 +63,42 @@ Service -> Impl      FORBIDDEN
 当前最终业务架构：
 
 ```text
-                             +---------------- KEY
-                             |
-                             v
+User Key
+   ↓
+Platform Button
+   ↓ PRESSED / RELEASED
+Button Service
+   ↓ SINGLE / DOUBLE / LONG
+   +-----------------------------+
+                                 |
 PC -> UART RX -> RingBuffer -> Command Parser
-                             |
-                             v
-                      APP Control FSM
-                      STOPPED / RUNNING
-                       |            |
-                       |            +-------> Indicator Event
-                       |                         |
-                       |                         v
-                       |                  Indicator Task
-                       |                         |
-                       |                         v
-                       |                 Indicator Service
-                       |                         |
-                       |                         v
-                       |                    Platform LED
-                       |
-                       v
-                 Acquisition Flow
-                       |
-              +--------+--------+
-              |                 |
-              v                 v
-            DHT20             MPU6050
-              \                 /
-               +-- Software I2C
-                       |
-                 Platform GPIO
+                                 |
+                                 v
+                          APP Control FSM
+                          STOPPED / RUNNING
+                           |            |
+                           |            +-------> Indicator Event
+                           |                         |
+                           |                         v
+                           |                  Indicator Task
+                           |                         |
+                           |                         v
+                           |                 Indicator Service
+                           |                         |
+                           |                         v
+                           |                    Platform LED
+                           |
+                           v
+                     Acquisition Flow
+                           |
+                  +--------+--------+
+                  |                 |
+                  v                 v
+                DHT20             MPU6050
+                  \                 /
+                   +-- Software I2C
+                           |
+                     Platform GPIO
 
 Sensor Data
     -> APP / Communication
@@ -114,7 +119,7 @@ Runtime State / Error
 
 ```text
 APP Control FSM = 唯一业务状态源
-KEY / UART      = 控制输入
+Button / UART   = 控制输入
 Sensor          = 数据来源
 UART            = 业务数据通道
 RTT             = 诊断通道
@@ -159,6 +164,7 @@ HAL_GPIO_xxx
 FreeRTOS concrete handles
 RingBuffer internal indices
 Impl private context
+Button active HIGH / LOW polarity
 ```
 
 按键和 UART 不得各自拥有一套 `running` 标志。
@@ -181,12 +187,12 @@ Service 提供可复用的软件语义和数据处理能力。
 UART Service
 Log Service
 Service Common / RingBuffer composition
+Indicator Service
 ```
 
 最终功能允许新增的典型能力：
 
 ```text
-Indicator Service
 Button Service
 Environment Service
 Motion Service
@@ -209,19 +215,34 @@ Indicator Service 不负责：
 - 创建最终 Indicator Task；
 - 直接依赖 STM32 HAL。
 
-Button Service 的职责是：
+Button Service 第一阶段冻结为纯时间驱动 gesture recognizer：
 
 ```text
-raw key state
- -> debounce
- -> single / double / long event
+logical PRESSED / RELEASED + nowMs
+ -> time-based debounce
+ -> stable PRESS / RELEASE edge
+ -> SINGLE / DOUBLE / LONG event
 ```
+
+Button Service 不持有 `platform_button_t *`，不主动读取 GPIO，不主动获取 RTOS tick；调用方负责提供逻辑按键状态和单调毫秒时间。
 
 Button Service 不负责：
 
+- HIGH / LOW active-level translation；
 - START / STOP 最终业务决策；
+- APP RUNNING / STOPPED 状态；
 - LED 常亮 / 常灭；
-- 直接启动 DHT20 / MPU6050。
+- 直接启动 DHT20 / MPU6050；
+- 创建永久 Task / Queue。
+
+第一版公共事件：
+
+```text
+NONE
+SINGLE
+DOUBLE
+LONG
+```
 
 Sensor 类 Service 如引入，应负责数据转换、状态、错误语义，不直接依赖 HAL。
 
@@ -240,7 +261,8 @@ UART Service 继续只负责通信数据流、RingBuffer 和 UART 生命周期�
 ├── platform_os/
 ├── platform_middleware/
 └── platform_bsp/
-    └── led/
+    ├── led/
+    └── button/
 ```
 
 Platform 定义：
@@ -251,7 +273,7 @@ Platform 定义：
 
 > STM32 HAL 如何调用。
 
-当前稳定公共能力：
+当前稳定 / 已冻结公共能力方向：
 
 ```text
 Platform Common
@@ -260,6 +282,8 @@ Platform OS
 Platform Log
 Platform GPIO
 Platform I2C
+Platform LED
+Platform Button
 ```
 
 ## 6.1 Platform GPIO
@@ -279,7 +303,7 @@ Platform GPIO 不知道：
 
 ```text
 LED
-KEY
+Button
 SCL
 SDA
 DHT20
@@ -330,7 +354,54 @@ Platform LED 不负责 RUNNING / STOPPED / ONCE_SUCCESS 等产品状态。
 
 LED 与底层 GPIO 为一对一关系，第一阶段 `platform_led_t` 直接拥有自己的 `platform_gpio_t` 存储。
 
-## 6.4 Board / BSP
+## 6.4 Platform Button
+
+Platform Button 是 GPIO 之上的轻量输入设备能力，与 LED 一样不为层级对称增加新的 STM32 Impl。
+
+第一阶段 `platform_button_t`：
+
+```text
+caller-owned static object
+owns one platform_gpio_t
+stores activeLevel
+stores pull
+stores initialized state
+no malloc/free
+no platform_device_t
+no registry / manager
+```
+
+职责：
+
+```text
+init
+read -> PRESSED / RELEASED
+deinit
+active-level translation
+input pull configuration
+```
+
+Platform Button 不负责：
+
+```text
+debounce
+single / double / long
+APP START / STOP / ONCE
+RTOS Task ownership
+```
+
+冻结 User Key 静态板级属性：
+
+```text
+PA0
+Input / Pull-Up / no EXTI
+released = HIGH
+pressed  = LOW
+PROJECT_USER_KEY_ACTIVE_LEVEL = PLATFORM_GPIO_LEVEL_LOW
+PROJECT_USER_KEY_PULL         = PLATFORM_GPIO_PULL_UP
+```
+
+## 6.5 Board / BSP
 
 Board / BSP 表达具体板级设备语义，例如：
 
@@ -344,12 +415,27 @@ MPU6050
 适合封装：
 
 - LED 高 / 低有效极性；
-- KEY 高 / 低有效极性；
+- Button 高 / 低有效极性与输入 pull；
 - 具体 Soft I2C bus 绑定；
 - 具体传感器地址 / 板级连接；
 - 设备基础读写能力。
 
-Status LED 当前 GPIO 物理绑定继续复用既有 `platform_bsp_gpio_construct_status_led()`；有效电平作为产品编译期静态配置进入 `00_Config/project_config.h`，再由 BSP LED 构造阶段装配到 `platform_led_t`。
+Status LED：
+
+```text
+platform_bsp_led_construct_status_led()
+ -> platform_bsp_gpio_construct_status_led()
+ -> PROJECT_STATUS_LED_ACTIVE_LEVEL
+```
+
+User Key：
+
+```text
+platform_bsp_button_construct_user_key()
+ -> platform_bsp_gpio_construct_user_key()
+ -> PROJECT_USER_KEY_ACTIVE_LEVEL
+ -> PROJECT_USER_KEY_PULL
+```
 
 BSP 不负责 APP 的 START / STOP / ONCE 业务状态机。
 
@@ -381,19 +467,24 @@ Impl 回答：
 - IRQ / DMA；
 - EasyLogger / RTT。
 
-LED Phase 4 不新增 `impl_led.c`。LED STM32 硬件落地继续复用：
+LED 与 Button 均不新增无职责透传 Impl：
 
 ```text
-Platform LED
+Platform LED / Platform Button
  -> Platform GPIO
  -> STM32 GPIO Impl
 ```
 
-禁止为了层级对称增加无实际职责的 `impl_led_on() -> platform_gpio_write()` 透传层。
+禁止为了层级对称增加：
+
+```text
+impl_led_on() -> platform_gpio_write()
+impl_button_read() -> platform_gpio_read()
+```
 
 Impl 不负责：
 
-- 按键单双击业务；
+- 按键 debounce / 单双击 / 长按；
 - 5 s 采集策略；
 - UART 命令语义；
 - APP 状态机；
@@ -448,7 +539,8 @@ stm32f4xx_it.c
 - 不在生成文件中写 Button Service；
 - 不在生成文件中写 DHT20 / MPU6050 完整驱动；
 - 不在生成文件中写软件 I2C 协议实现；
-- 不将 CubeMX 文件作为长期 Service / Platform 模块。
+- 不将 CubeMX 文件作为长期 Service / Platform 模块；
+- Phase 5 Smoke 临时 Task / Queue 入口必须在测试结束后移除。
 
 ---
 
@@ -570,7 +662,24 @@ Indicator Task
 - isolate blink delay from APP / UART / acquisition contexts
 ```
 
-Button 是否独立 Task 仍留待 Button 与 Phase 9 专项设计确认。
+永久 Button 是否独立 Task 仍留到 Phase 9；Phase 5 不借 Smoke Test 提前冻结该决定。
+
+Phase 5 目标板验证允许临时：
+
+```text
+Button Smoke Task
+    -> 10 ms polling
+    -> Platform Button read
+    -> Platform OS time
+    -> Button Service process
+    -> temporary queue
+
+Indicator Smoke Task
+    -> consume mapped event
+    -> Indicator Service
+```
+
+该结构只用于在真实 FreeRTOS Scheduler 下验证 Button + Indicator 联动，不是永久 Task 架构。
 
 禁止无必要创建：
 
@@ -581,7 +690,7 @@ MPU6050 Task
 
 Indicator Task 已有明确并发职责，不属于“按设备机械拆 Task”。
 
-具体 Thread、Queue、Notification、Timer、优先级、栈大小和事件缓存策略仍由 Phase 9 冻结。
+具体 Thread、Queue、Notification、Timer、优先级、栈大小和永久事件缓存策略仍由 Phase 9 冻结。
 
 ---
 
@@ -650,7 +759,56 @@ LED 三闪不能在 ISR 内通过阻塞 delay 完成。
 
 ---
 
-# 17. 日志架构
+# 17. Button 架构边界
+
+正式能力链：
+
+```text
+PA0 electrical level
+    -> Platform GPIO HIGH / LOW
+    -> Platform Button PRESSED / RELEASED
+    -> Button Service SINGLE / DOUBLE / LONG
+    -> APP START / SAMPLE_ONCE / STOP
+```
+
+第一版采用 polling，不启用 EXTI。
+
+冻结时间参数：
+
+```text
+sample period = 10 ms
+debounce      = 30 ms
+double window = 300 ms
+long press    = 3000 ms
+```
+
+Debounce 使用稳定时间阈值，不以固定采样次数定义行为。
+
+Gesture 规则：
+
+```text
+SINGLE = first stable release + double window timeout
+DOUBLE = second stable press starts within <= 300 ms, then second stable release
+LONG   = stable press duration >= 3000 ms, emit once immediately
+```
+
+LONG 产生后当前 click candidate 作废，松手不得再产生 SINGLE；第二击如果持续达到 long threshold，最终只产生 LONG，不产生 DOUBLE。
+
+`nowMs` 由调用方注入，所有 elapsed-time 判断使用可处理 `uint32_t` wraparound 的差值方式。
+
+Phase 5 Smoke 可以将 Button 事件临时映射到既有 Indicator Service：
+
+```text
+SINGLE -> RUNNING      -> LED ON
+DOUBLE -> ONCE_SUCCESS -> blink 3 times -> OFF
+LONG   -> STOPPED      -> LED OFF
+```
+
+该映射只用于测试。正式业务仍由 APP 决定，DOUBLE 不能直接等价于 ONCE_SUCCESS。
+
+---
+
+# 18. 日志架构
 
 正式日志链：
 
@@ -676,13 +834,14 @@ ERROR = 初始化或关键通信失败
 - UART byte trace；
 - I2C bit / ACK trace；
 - LED 每个亮灭边沿 trace；
+- Button 每 10 ms polling trace；
 - ISR 高频打印。
 
 Platform / Impl 主要负责返回错误和事件。关键初始化信息可由 APP / Service 根据返回值统一记录，不要求所有底层层级直接调用日志 API。
 
 ---
 
-# 18. Config / Context / Data
+# 19. Config / Context / Data
 
 继续使用项目的数据模型原则：
 
@@ -696,24 +855,27 @@ Data    -> 模块当前有什么结果
 
 ```text
 Acquisition period = 5000 ms
-Button debounce
-Button double-click window
-Button long-press = 3000 ms
-Status LED active level
+PROJECT_USER_KEY_ACTIVE_LEVEL = LOW
+PROJECT_USER_KEY_PULL = PULL_UP
+PROJECT_BUTTON_SAMPLE_PERIOD_MS = 10 ms
+PROJECT_BUTTON_DEBOUNCE_MS = 30 ms
+PROJECT_BUTTON_DOUBLE_CLICK_MS = 300 ms
+PROJECT_BUTTON_LONG_PRESS_MS = 3000 ms
+Status LED active level = LOW
 LED one-shot blink count = 3
 LED blink on time = 100 ms
 LED blink off time = 100 ms
 ```
 
-放入 `00_Config`，具体宏名在专项设计中确认。
-
 业务状态属于 Context，不应混入 Config。
+
+Button Service 的 raw / stable / gesture / timestamps 属于 Context。
 
 传感器采集结果属于 Data，不应作为全局散乱变量跨层共享。
 
 ---
 
-# 19. 当前冻结与待设计边界
+# 20. 当前冻结与待设计边界
 
 已冻结 / 已验证：
 
@@ -727,17 +889,30 @@ Service Log / Platform Log / RTT
 Platform GPIO Phase 1 public contract
 STM32 GPIO Impl + board GPIO binding
 Software I2C Phase 1
-LED Phase 1 frozen design
+LED Phase 1 frozen design / implemented / verified
+Button Phase 5 design baseline frozen
 ```
 
-当前需求已冻结、但专项设计尚需逐项完成：
+Button 当前状态：
 
 ```text
-Button event service
+Platform Button / BSP Button boundary      FROZEN
+User Key active level / pull               FROZEN
+polling / time contract                    FROZEN
+Button Service event contract              FROZEN
+debounce / single / double / long rules    FROZEN
+Host Test strategy                         FROZEN
+FreeRTOS target smoke strategy             FROZEN
+implementation                             PENDING
+```
+
+仍需逐项专项设计 / 实现：
+
+```text
 DHT20
 MPU6050
 UART application communication
-Final RTOS event delivery details
+Final permanent RTOS event delivery details
 APP final acquisition/control FSM
 5 s report integration
 final board verification
@@ -747,7 +922,7 @@ final board verification
 
 ---
 
-# 20. 当前明确不做
+# 21. 当前明确不做
 
 ```text
 SPI / LCD
@@ -758,18 +933,22 @@ W25Q64 / AT24C02
 Bluetooth
 复杂 GUI
 复杂二进制应用协议
+Button EXTI in Phase 5
 与最终验收无关的通用框架扩张
 ```
 
 ---
 
-# 21. 架构核心结论
+# 22. 架构核心结论
 
 ```text
 UART 基线继续冻结。
 GPIO 是底层通用能力。
 Software I2C 建立在 GPIO 之上。
 Platform LED 建立在 GPIO 之上。
+Platform Button 建立在 GPIO 之上。
+Platform Button 只表达 PRESSED / RELEASED。
+Button Service 只表达 SINGLE / DOUBLE / LONG。
 Indicator Service 表达提示灯语义。
 Indicator Task 隔离提示灯事件与阻塞闪烁。
 Sensor 驱动建立在 I2C 之上。

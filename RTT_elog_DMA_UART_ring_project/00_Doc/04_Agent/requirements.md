@@ -2,8 +2,8 @@
 
 > 文档类型：Agent Requirements Baseline  
 > 状态：Baseline  
-> 版本：V2.0  
-> 更新时间：2026-09-01  
+> 版本：V2.1  
+> 更新时间：2026-09-03  
 > 适用工程：`stm32f4_DMA_UART_ring_RTOS`
 
 ---
@@ -29,27 +29,27 @@
 最终系统闭环：
 
 ```text
-KEY -----------------------------+
-                                  |
-                                  v
+KEY -> Platform Button -> Button Service ----+
+                                              |
+                                              v
 PC -> UART RX -> DMA -> RingBuffer -> Command Parser
-                                  |
-                                  v
-                           APP Control FSM
-                                  |
-                    +-------------+-------------+
-                    |                           |
-                    v                           v
-                  LED                   Sensor Acquisition
-                                                |
-                                  +-------------+-------------+
-                                  |                           |
-                                  v                           v
-                                DHT20                      MPU6050
-                                  \                           /
-                                   +------- Soft I2C --------+
-                                                |
-                                         Platform GPIO
+                                              |
+                                              v
+                                       APP Control FSM
+                                              |
+                                +-------------+-------------+
+                                |                           |
+                                v                           v
+                              LED                   Sensor Acquisition
+                                                            |
+                                              +-------------+-------------+
+                                              |                           |
+                                              v                           v
+                                            DHT20                      MPU6050
+                                              \                           /
+                                               +------- Soft I2C --------+
+                                                            |
+                                                     Platform GPIO
 
 Sensor Data
     -> APP / Communication
@@ -65,17 +65,7 @@ APP / Service Runtime State
     -> SEGGER RTT
 ```
 
-项目继续重点验证：
-
-- UART 不定长接收；
-- DMA 数据搬运；
-- RingBuffer 字节流缓存；
-- ISR / Task 协作；
-- FreeRTOS；
-- APP / Service / Platform / Impl 分层；
-- 静态内存、Buffer 生命周期与并发合同；
-- RTT 日志诊断；
-- AI 辅助 Requirements -> Design -> Plan -> Implementation -> Test -> Handoff 流程。
+项目继续重点验证：UART DMA、RingBuffer、ISR / Task 协作、FreeRTOS、分层、静态内存 / Buffer 生命周期、RTT 诊断，以及 Requirements -> Design -> Plan -> Implementation -> Test -> Handoff 流程。
 
 ---
 
@@ -95,17 +85,24 @@ Log        : EasyLogger + SEGGER RTT
 Toolchain  : Keil MDK-ARM + STM32CubeMX
 ```
 
-DHT20 与 MPU6050 共用一条软件 I2C 总线。
+DHT20 与 MPU6050 共用一条软件 I2C 总线；最终功能不使用 STM32 硬件 I2C。
 
-当前最终功能不使用 STM32 硬件 I2C 外设。
+SPI / LCD 当前暂停。
 
-SPI / LCD 当前暂停，不纳入本阶段最终验收。
+User Key 硬件基线已实板确认：
+
+```text
+PA0
+Input / Pull-Up / no EXTI
+released = HIGH
+pressed  = LOW
+```
 
 ---
 
 # 4. 系统状态与唯一状态源
 
-APP 层必须维护唯一的采集业务状态：
+APP 层必须维护唯一采集业务状态：
 
 ```text
 STOPPED
@@ -121,11 +118,9 @@ UART RX     = ACTIVE
 RTT Log     = ACTIVE
 ```
 
-按键和 UART 命令是两个控制入口，但不得分别维护两套采集状态。
+按键和 UART 命令只是两个控制入口，不得分别维护两套采集状态。
 
-所有控制输入最终必须转换为 APP 控制事件，并由同一状态机决定行为。
-
-推荐控制事件语义：
+推荐控制事件：
 
 ```text
 APP_CTRL_START
@@ -136,16 +131,18 @@ APP_CTRL_GET_STATUS
 
 ---
 
-# 5. 按键需求
+# 5. 按键需求与 Phase 5 设计约束
 
-按键第一阶段必须支持：
+## 5.1 最终业务行为
 
-- debounce；
-- single click；
-- double click；
-- long press >= 3 s。
+按键必须支持：
 
-行为：
+```text
+debounce
+single click
+double click
+long press >= 3 s
+```
 
 | 当前状态 | 按键事件 | 结果 |
 | --- | --- | --- |
@@ -156,9 +153,183 @@ APP_CTRL_GET_STATUS
 | RUNNING | 双击 | 不执行额外单次采样 |
 | RUNNING | 长按 >= 3 s | STOP，进入 STOPPED，LED 熄灭 |
 
-双击包含第一次短按，因此 single-click 不能在第一次释放后立即提交，必须经过双击判定窗口。
+Button Service 不决定上述状态相关行为，只产生 SINGLE / DOUBLE / LONG；APP 才是最终业务决策者。
 
-消抖时间、双击窗口、长按阈值等静态参数必须进入 Config，不允许散布魔法数字。
+## 5.2 Platform Button
+
+必须建立：
+
+```text
+Platform GPIO HIGH / LOW
+    -> Platform Button PRESSED / RELEASED
+    -> Button Service gesture event
+```
+
+`platform_button_t` 第一版使用 caller-owned 静态轻量对象，直接拥有一个 `platform_gpio_t`，保存 active level、pull 和 initialized 状态。
+
+不得为 Button 增加：
+
+```text
+platform_device_t
+runtime registry / manager
+dynamic allocation
+impl_button passthrough layer
+```
+
+User Key 配置：
+
+```text
+PROJECT_USER_KEY_ACTIVE_LEVEL = PLATFORM_GPIO_LEVEL_LOW
+PROJECT_USER_KEY_PULL         = PLATFORM_GPIO_PULL_UP
+```
+
+Service / APP 不得知道 LOW/HIGH 极性。
+
+## 5.3 Button Service 输入输出
+
+Button Service 不持有 Platform Button，不主动读取 GPIO，不直接读取 FreeRTOS tick。
+
+调用方提供：
+
+```text
+PRESSED / RELEASED
+uint32_t nowMs
+```
+
+Service 输出：
+
+```text
+NONE
+SINGLE
+DOUBLE
+LONG
+```
+
+状态机必须可在 Host 环境直接喂入逻辑状态和时间戳测试。
+
+## 5.4 时间参数
+
+第一版静态参数冻结：
+
+```text
+Button sampling period = 10 ms
+Button debounce        = 30 ms
+Button double window   = 300 ms
+Button long press      = 3000 ms
+```
+
+必须进入 `00_Config`，禁止魔法数字散落。
+
+消抖判断依据状态持续时间，不得把算法语义固定为“连续 N 次采样”。
+
+## 5.5 SINGLE / DOUBLE / LONG 边界
+
+SINGLE 不能在第一次释放后立即提交。
+
+规则：
+
+```text
+first stable RELEASE
+ -> start double window
+ -> second stable PRESS within <= 300 ms
+       -> wait second stable RELEASE
+       -> DOUBLE
+ -> no second stable PRESS before timeout
+       -> SINGLE
+```
+
+双击窗口判断第二次稳定 PRESS 是否在窗口内开始，不要求第二次 RELEASE 也落入窗口。
+
+LONG：
+
+```text
+stable PRESS duration >= 3000 ms
+ -> emit LONG immediately once
+ -> suppress click candidate until stable RELEASE
+```
+
+必须满足：
+
+```text
+2999 ms -> no LONG
+3000 ms -> LONG
+one hold -> only one LONG
+LONG release -> no SINGLE
+first click + second long hold -> LONG only, no DOUBLE
+```
+
+时间计算必须支持 `uint32_t` 单调毫秒计数自然回绕。
+
+## 5.6 Phase 5 Host Test
+
+至少验证：
+
+```text
+Platform Button active-low / active-high translation
+BSP User Key active-low + pull-up composition
+press / release bounce suppression
+single -> only SINGLE
+double -> only DOUBLE
+long -> only LONG
+2999 / 3000 ms boundary
+300 ms double boundary
+expired window behavior
+LONG release no SINGLE
+second press long conflict
+initial pressed behavior
+uint32_t wraparound
+irregular process interval
+```
+
+Host Test 通过注入 `nowMs` 推进时间，不真实等待 3 s。
+
+## 5.7 Phase 5 FreeRTOS Target Smoke
+
+目标板验证必须运行在 FreeRTOS Scheduler 已启动的真实 Task Context。
+
+允许临时测试结构：
+
+```text
+Button Smoke Task
+    -> Platform Button
+    -> platform_time_get_ms()
+    -> Button Service
+    -> temporary Queue
+
+Indicator Smoke Task
+    -> Indicator Service
+    -> Platform LED
+```
+
+Button Smoke Task sampling 约 10 ms，使用 `platform_time_delay_ms()`。
+
+目标板同时观察：
+
+```text
+USART1 Serial Assistant
+RTT / EasyLogger
+LED visual behavior
+```
+
+Phase 5 Smoke-only LED 映射：
+
+```text
+SINGLE -> SERVICE_INDICATOR_EVENT_RUNNING      -> LED ON
+DOUBLE -> SERVICE_INDICATOR_EVENT_ONCE_SUCCESS -> blink 3 times -> OFF
+LONG   -> SERVICE_INDICATOR_EVENT_STOPPED      -> LED OFF
+```
+
+该映射仅用于验证按键事件与现有 LED / Indicator 模块在 FreeRTOS 下协作。正式系统不得把 `DOUBLE` 直接解释为 `ONCE_SUCCESS`，正式链必须是：
+
+```text
+DOUBLE -> APP SAMPLE_ONCE -> sensor acquisition -> UART TX success -> ONCE_SUCCESS
+```
+
+Smoke 必须同时确认：无重复 gesture、无 HardFault、Button / Indicator / UART / RTT 可共存、既有 UART 通信无回归。
+
+Smoke 后必须移除临时 Task / Queue / 测试入口。
+
+永久 Button Task、priority、stack、Button -> APP IPC 和事件缓存策略留到 Phase 9。
 
 ---
 
@@ -174,8 +345,6 @@ STATUS\r\n
 HELP\r\n
 ```
 
-行为：
-
 | 命令 | STOPPED | RUNNING |
 | --- | --- | --- |
 | START | 进入 RUNNING | 保持 RUNNING，返回 already running |
@@ -184,7 +353,7 @@ HELP\r\n
 | STATUS | 返回 STOPPED | 返回 RUNNING |
 | HELP | 返回命令列表 | 返回命令列表 |
 
-UART 命令必须复用已验证 RX 链：
+必须复用：
 
 ```text
 USART1
@@ -198,46 +367,27 @@ USART1
  -> APP Control Event
 ```
 
-禁止为命令控制建立第二套绕过 UART Service / RingBuffer 的接收路径。
-
-UART Service 只负责通信能力，不得直接控制 LED、DHT20、MPU6050 或 APP 状态。
+UART Service 不得直接控制 LED、DHT20、MPU6050 或 APP 状态。
 
 ---
 
 # 7. 周期采集与发送
 
-第一阶段不做姿态计算，因此基础版本采用统一业务周期：
+第一阶段统一业务周期：
 
 ```text
 Acquisition / Report Period = 5000 ms
 ```
 
-RUNNING 状态每 5 s：
+RUNNING 每 5 s：DHT20 -> MPU6050 -> 组织数据 -> UART TX -> RTT DEBUG 摘要。
 
-1. 读取 DHT20；
-2. 读取 MPU6050；
-3. 组织一组业务数据；
-4. 通过既有 UART TX 链路发送到 PC；
-5. 通过 RTT DEBUG 记录本次采集 / 发送摘要。
-
-STOPPED 状态不得执行周期采集和周期发送。
-
-5 s 周期必须进入 `00_Config` 产品静态配置。
-
-后续若增加姿态算法，可重新把 MPU6050 高频采样周期和 5 s UART 上报周期拆开；第一阶段不得提前为未确认需求引入该复杂度。
+STOPPED 不执行周期采集 / 发送。
 
 ---
 
 # 8. DHT20 第一阶段需求
 
-必须实现：
-
-- 初始化；
-- 通信状态检查；
-- 温度读取；
-- 相对湿度读取；
-- 数据有效性判断；
-- 明确的通信 / 数据错误返回。
+必须实现：初始化、通信状态、温度、相对湿度、数据有效性和明确错误返回。
 
 DHT20 不得直接依赖 STM32 HAL GPIO API。
 
@@ -245,16 +395,9 @@ DHT20 不得直接依赖 STM32 HAL GPIO API。
 
 # 9. MPU6050 第一阶段需求
 
-必须实现：
+必须实现：初始化、WHO_AM_I、Accel XYZ、Gyro XYZ、基础转换和错误返回。
 
-- 初始化；
-- WHO_AM_I 验证；
-- Accel X / Y / Z；
-- Gyro X / Y / Z；
-- 基础原始值或物理量转换；
-- 明确的通信错误返回。
-
-当前明确不实现：
+当前不实现：
 
 ```text
 Roll
@@ -266,61 +409,35 @@ DMP
 高频姿态融合
 ```
 
-第一阶段 MPU6050 只是每 5 s 获取一次运动状态快照，不是实时姿态系统。
-
 ---
 
 # 10. 软件 I2C 需求
 
-软件 I2C 必须建立在 Platform GPIO 能力之上，协议逻辑不得直接调用 `HAL_GPIO_xxx`。
+Software I2C 必须建立在 Platform GPIO 上，不得直接调用 `HAL_GPIO_xxx`。
 
-至少支持：
+至少支持 START / STOP / ACK / NACK / byte / multi-byte / write-read；bit timing 不得使用 RTOS tick delay。
 
-- START；
-- STOP；
-- ACK / NACK；
-- byte write；
-- byte read；
-- multi-byte read / write；
-- 满足 DHT20 与 MPU6050 的组合读写需求。
-
-软件 I2C 需要微秒级时序能力。
-
-禁止直接使用 `osDelay()` 或 FreeRTOS tick delay 实现 bit-level I2C 时序。
-
-软件 I2C 的具体目录、公共对象模型和延时注入接口在专项设计阶段冻结；在专项设计完成前不得凭实现方便擅自扩大 Platform 公共接口。
-
-第一阶段优先使用单一采集执行上下文串行访问两个设备，避免无必要的总线并发。
-
-若未来拆为多个并发采集 Task，必须增加总线同步，并以完整 I2C transaction 为互斥范围。
+第一阶段单一采集执行上下文串行访问 DHT20 / MPU6050；只有真实多访问者时才增加 transaction-level synchronization。
 
 ---
 
 # 11. LED 产品语义
 
-LED 行为固定为：
-
 ```text
 STOPPED               -> OFF
 RUNNING               -> ON
-RUNNING 周期发送       -> 保持 ON，不闪烁
-ONCE TX SUCCESS        -> 闪烁 3 次，然后 OFF
+RUNNING 周期发送       -> 保持 ON
+ONCE TX SUCCESS        -> 闪 3 次 -> OFF
 ONCE sample/TX failure -> 保持 OFF
 ```
 
-单次采集时，只有成功完成业务发送后才执行三次成功反馈闪烁。
-
-若 UART 异步 TX 已有明确 TX Complete 事件，应优先以真正 TX Complete 作为“发送成功”语义；若当前阶段只能确认 DMA 发送请求已成功提交，专项设计必须明确这一限制。
-
-LED 的有效电平属于 Board / BSP 语义，上层不得知道实际 GPIO 高低电平极性。
-
-LED 闪烁不得在 ISR / HAL Callback 中执行阻塞延时。
+只有成功完成业务发送后才提交 `ONCE_SUCCESS`。LED active level 属于 Board / BSP，闪烁不得在 ISR / HAL Callback 中执行。
 
 ---
 
 # 12. UART 数据输出
 
-传感器业务数据必须复用既有 TX 链路：
+必须复用：
 
 ```text
 APP / Communication
@@ -332,109 +449,58 @@ APP / Communication
  -> PC Serial Assistant
 ```
 
-第一阶段使用文本格式，便于观察，例如：
+第一阶段使用文本格式，不要求自定义二进制应用协议。
 
-```text
-ENV,T=25.34,H=62.18\r\n
-IMU,AX=0.013,AY=-0.021,AZ=0.998,GX=0.12,GY=-0.42,GZ=0.08\r\n
-```
-
-不要求自定义二进制应用协议。
-
-异步 TX Buffer 在 TX complete / error / cancel 前不得修改或失效，继续遵守现有 Platform UART Buffer 生命周期合同。
+异步 TX Buffer 在 complete / error / cancel 前不得修改或失效。
 
 ---
 
 # 13. RTT / EasyLogger 需求
 
-正式日志链保持：
+正式链：
 
 ```text
 APP / Service
-    -> service_log
-    -> Platform Log
-    -> EasyLogger Adapter
-    -> EasyLogger / SEGGER RTT
+ -> service_log
+ -> Platform Log
+ -> EasyLogger Adapter
+ -> EasyLogger / SEGGER RTT
 ```
 
-RTT 的定位是运行状态与故障诊断，不是逐字节 Trace。
+```text
+INFO  -> 初始化、START / STOP / ONCE、状态变化
+DEBUG -> 5 s 摘要、完整 UART 命令、业务 TX 状态
+WARN  -> 可恢复 I2C / Sensor / UART / GPIO 异常
+ERROR -> 初始化或关键操作失败
+```
 
-## INFO
+正常运行禁止逐 UART byte、逐 I2C bit / ACK、逐 DMA 步骤、逐 Button 10 ms polling 刷日志。
 
-至少记录：
-
-- 系统初始化开始 / 完成；
-- 关键模块初始化结果；
-- DHT20 / MPU6050 初始化结果；
-- START / STOP / ONCE；
-- APP 采集状态变化；
-- 有价值时记录控制来源 button / UART。
-
-## DEBUG
-
-可记录：
-
-- 每 5 s 采集完成摘要；
-- 完整 UART 命令；
-- 一次业务 Report 发送开始 / 完成；
-- ONCE 成功反馈。
-
-## WARN / ERROR
-
-至少覆盖：
-
-- Software I2C NACK / timeout / bus error；
-- DHT20 读取失败；
-- MPU6050 WHO_AM_I / 读取失败；
-- UART TX 失败；
-- UART RX / RingBuffer overflow；
-- 初始化失败。
-
-正常运行时禁止持续打印：
-
-- 每个 UART byte；
-- 每个 I2C bit / byte / ACK；
-- 每个 DMA 内部步骤；
-- 高频无诊断价值日志。
-
-ISR / HAL Callback 中禁止大量格式化日志。
-
-初始化过程的可观测性由 APP / Service 根据各模块返回结果统一记录即可，不要求 Platform / Impl 为每个成功路径直接调用日志 API。
+ISR / HAL Callback 禁止大量格式化日志。
 
 ---
 
 # 14. 推荐 RTOS 执行模型
 
-第一阶段优先降低并发复杂度，而不是增加 Task 数量。
+永久任务数量由真实并发职责决定，不由设备数量决定。
 
-推荐职责：
+已确认：
 
 ```text
 Communication Task
-- 消费 UART RingBuffer
-- 识别完整文本命令
-- 转换为 APP 控制事件
-
-Acquisition / Control execution context
-- 维护 STOPPED / RUNNING
-- 处理 button / UART 控制事件
-- 每 5 s 执行 DHT20 + MPU6050 采集和 UART 上报
-- 执行 ONCE
-
-Button processing
-- 周期扫描或独立轻量任务
-- debounce / single / double / long
+Acquisition Task
+Indicator Task
 ```
 
-具体 Task 数量与 Queue / Notification / Timer 的使用在专项设计阶段确认。
+Indicator Task 已因阻塞闪烁隔离职责而冻结为独立执行上下文。
 
-不得为了展示 FreeRTOS 而无必要地为 DHT20、MPU6050、LED 分别建立 Task。
+永久 Button processing context 尚未冻结；Phase 5 使用临时 Button Smoke Task + Indicator Smoke Task 只为了在真实 FreeRTOS 环境验证，不代表永久架构。
+
+不得为 DHT20 / MPU6050 机械创建独立 Task。
 
 ---
 
 # 15. 分层与依赖要求
-
-固定依赖规则：
 
 ```text
 APP -> Service       ALLOWED
@@ -449,37 +515,26 @@ Service -> Impl      FORBIDDEN
 
 ```text
 APP
-- 产品级采集状态机
-- 控制事件决策
-- 周期业务编排
-- UART command 业务语义
+- 产品状态机 / 控制决策 / 周期业务编排
 
 Service
-- UART Service
-- Log Service
-- RingBuffer 组合
-- Button event recognition
-- 可复用的数据处理服务
+- UART / Log / Indicator / Button gesture recognition / data processing
 
 Platform
-- UART / GPIO / OS / Log 等公共能力
-- 软件 I2C 与 Board / BSP 的具体边界由专项设计冻结
+- UART / GPIO / OS / Log / Software I2C / LED / Button public capability
 
 Impl
-- STM32 UART / GPIO / OS / Log 的具体实现
-- HAL / CubeMX Handle / IRQ 适配
+- STM32 / FreeRTOS / Middleware concrete implementation
 
 Vendor
 - STM32 HAL / CMSIS / FreeRTOS / EasyLogger / RTT
 ```
 
-禁止 APP / Service 为快速联调直接依赖 HAL、CubeMX Handle 或 Impl 私有接口。
+APP / Service 不得直接依赖 HAL、CubeMX Handle 或 Impl 私有接口。
 
 ---
 
 # 16. 既有 UART / RingBuffer 基线继续冻结
-
-新功能不得破坏已验证能力：
 
 ```text
 DMA Circular + IDLE / HT / TC RX
@@ -494,91 +549,64 @@ RingBuffer overflow detection
 Service Log -> RTT
 ```
 
-RingBuffer 继续遵守：
-
-```text
-Single Producer = UART Service RX callback
-Single Consumer = APP Communication Task
-no malloc/free
-no ordinary mutex in current SPSC path
-no silent overwrite
-```
+RingBuffer 继续 SPSC、无 malloc/free、当前链路无普通 mutex、无 silent overwrite。
 
 ---
 
 # 17. ISR、并发与内存要求
 
-ISR / HAL Callback 允许：
+ISR / HAL Callback 允许 capture / necessary copy / lightweight state / ISR-safe notify / quick exit。
 
-- capture hardware state；
-- 搬运必要数据；
-- 更新轻量状态；
-- 调用明确 ISR-safe 的通知接口；
-- 尽快退出。
+禁止 blocking、ordinary mutex、malloc/free、完整协议、Button gesture FSM、Sensor 业务、LED delay、大量格式化日志、非 ISR-safe API。
 
-禁止：
-
-- blocking；
-- ordinary mutex；
-- malloc/free；
-- 完整命令解析；
-- 传感器业务状态机；
-- LED 闪烁延时；
-- 大量格式化日志；
-- 非 ISR-safe RTOS API。
-
-项目核心链路继续优先 static / caller-owned storage。
+核心链路优先 static / caller-owned storage。
 
 ---
 
 # 18. 当前范围冻结
 
-## 必须完成
+必须完成：
 
-- GPIO STM32 Impl 与目标板验证；
-- LED；
-- KEY；
-- Button debounce / single / double / long；
-- Software I2C；
-- DHT20；
-- MPU6050 六轴基础数据；
-- APP 采集状态机；
-- UART `START / STOP / ONCE / STATUS / HELP`；
-- 5 s 周期采集与 UART 上报；
-- ONCE 成功 LED 三闪反馈；
-- RTT 初始化、控制、采集、收发及错误状态日志；
-- 最终综合板测。
+```text
+GPIO STM32 Impl + board verification
+LED
+Platform Button / BSP Button
+Button debounce / single / double / long
+Software I2C
+DHT20
+MPU6050 basic 6-axis
+APP Control FSM
+UART START / STOP / ONCE / STATUS / HELP
+5 s acquisition + UART report
+ONCE success LED feedback
+RTT diagnostic coverage
+final integrated board test
+```
 
-## 当前不做
-
-- Roll / Pitch / Yaw；
-- DMP / Kalman / Complementary Filter；
-- SPI Platform / Impl；
-- SPI LCD / GUI；
-- W25Q64 / AT24C02；
-- 蓝牙；
-- 复杂自定义 UART 二进制协议；
-- 与当前验收无关的通用框架扩展。
+当前不做：Roll / Pitch / Yaw、DMP / filters、SPI / LCD / GUI、W25Q64 / AT24C02、Bluetooth、复杂二进制协议、Phase 5 Button EXTI、无需求驱动框架扩展。
 
 ---
 
 # 19. 配置要求
 
-产品静态配置应集中到 `00_Config`。
+产品静态配置集中到 `00_Config`。
 
-至少后续需要纳入：
+至少包括：
 
 ```text
 Acquisition period = 5000 ms
-Button debounce period
-Button double-click window
-Button long-press threshold = 3000 ms
-LED one-shot success blink count = 3
-LED blink interval
-Sensor / command buffer sizes（若需要）
+PROJECT_USER_KEY_ACTIVE_LEVEL = PLATFORM_GPIO_LEVEL_LOW
+PROJECT_USER_KEY_PULL = PLATFORM_GPIO_PULL_UP
+PROJECT_BUTTON_SAMPLE_PERIOD_MS = 10 ms
+PROJECT_BUTTON_DEBOUNCE_MS = 30 ms
+PROJECT_BUTTON_DOUBLE_CLICK_MS = 300 ms
+PROJECT_BUTTON_LONG_PRESS_MS = 3000 ms
+PROJECT_STATUS_LED_ACTIVE_LEVEL = PLATFORM_GPIO_LEVEL_LOW
+LED success blink count = 3
+LED blink ON = 100 ms
+LED blink OFF = 100 ms
+Sensor / command buffer sizes if needed
 ```
-
-具体宏命名由专项设计与现有代码规范统一确定。
 
 ---
 
@@ -588,14 +616,14 @@ Sensor / command buffer sizes（若需要）
 
 1. 上电后 STOPPED、LED 灭、UART RX / RTT 正常；
 2. STOPPED 单击 -> RUNNING、LED 常亮；
-3. RUNNING 每 5 s 向 PC 输出一组 DHT20 + MPU6050 数据；
+3. RUNNING 每 5 s 输出一组 DHT20 + MPU6050 数据；
 4. RUNNING 长按 >= 3 s -> STOPPED、LED 灭、停止周期上报；
 5. STOPPED 双击 -> 单次采集和发送 -> TX 成功后 LED 闪 3 次 -> STOPPED；
 6. UART `START` / `STOP` 与按键控制使用同一真实状态；
 7. UART `ONCE` 在 STOPPED 正确执行；
 8. `STATUS` / `HELP` 返回明确文本；
-9. 初始化、关键采集和 UART 收发过程在 RTT 中可观察；
-10. I2C / Sensor / UART / RingBuffer 异常具有明确错误与日志，不静默失败。
+9. 初始化、关键采集和 UART 收发在 RTT 中可观察；
+10. I2C / Sensor / UART / RingBuffer 异常不静默失败。
 
 ---
 
@@ -603,9 +631,11 @@ Sensor / command buffer sizes（若需要）
 
 ```text
 UART / RingBuffer 是已验证基础通信能力。
-GPIO / Software I2C / Sensor 是新增设备能力。
+GPIO 是底层通用资源能力。
+Platform Button 将电平转换为 PRESSED / RELEASED。
+Button Service 将稳定输入转换为 SINGLE / DOUBLE / LONG。
 APP Control FSM 是唯一业务状态源。
-UART 与 KEY 只是控制入口。
+UART 与 Button 只是控制入口。
 UART 是业务数据输出终端。
 RTT 是内部运行状态与诊断终端。
 ```

@@ -104,8 +104,17 @@ PB6 Open-Drain Pull-Low / Release     PASS
 PB7 Open-Drain Pull-Low / Release     PASS
 PB7 Physical Readback                 PASS
 LED OFF / ON / 3 blink / final OFF    PASS
-Indicator RTT stage sequence           PASS
+Indicator RTT stage sequence          PASS
 Existing UART communication regression PASS
+```
+
+PA0 User Key 电气行为已经由目标板验证，不再是推断：
+
+```text
+PA0
+Input / Pull-Up / no EXTI
+released = HIGH
+pressed  = LOW
 ```
 
 ---
@@ -178,6 +187,7 @@ malloc/free
 传感器业务
 Software I2C transaction
 LED 闪烁延时
+Button debounce / gesture FSM
 大量格式化日志
 非 ISR-safe RTOS API
 ```
@@ -185,6 +195,8 @@ LED 闪烁延时
 Software I2C 为 Task Context / synchronous / caller serialized。
 
 LED 三闪最终在独立 Indicator Task Context 执行，不在 ISR / HAL Callback 执行。
+
+Button 第一阶段采用周期轮询 + 时间状态机，不启用 EXTI；未来若因低功耗需要 EXTI，也只能用于 wake / notify，消抖和手势识别仍在 Task Context 完成。
 
 ---
 
@@ -220,6 +232,7 @@ ERROR -> 初始化失败、关键操作失败
 逐 I2C bit / byte / ACK 打日志
 逐 LED on/off 边沿打日志
 逐 GPIO read/write 打日志
+逐 10 ms Button polling 打日志
 ISR 中大量格式化日志
 ```
 
@@ -350,18 +363,14 @@ Phase 4 — COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```text
 Platform LED / BSP LED / Indicator Service       IMPLEMENTED
 Final Host regression (5 suites, -Werror)         PASS
-Normal-path Keil Full Rebuild                      PASS: 0 errors, 20 pre-existing warnings
-Phase 4 source warning scan                        PASS: service_indicator.c / platform_led.c /
-                                                   platform_bsp_led.c have no warnings
-Target LED visual verification                     PASS — OFF / ON / 3 blinks / final OFF
-Target RTT stage observation                       PASS — start / STOPPED / RUNNING /
-                                                   STOPPED / ONCE_SUCCESS / pass
-Target + PC Serial Assistant communication check   PASS — user confirmed Phase 4 plan completed
-Temporary FreeRTOS indicator smoke path            REMOVED
-Coding Standard Review                             PASS
+Normal-path Keil Full Rebuild                     PASS: 0 errors, 20 pre-existing warnings
+Phase 4 source warning scan                       PASS
+Target LED visual verification                    PASS — OFF / ON / 3 blinks / final OFF
+Target RTT stage observation                      PASS
+Target + PC Serial Assistant communication check  PASS
+Temporary FreeRTOS indicator smoke path           REMOVED
+Coding Standard Review                            PASS
 ```
-
-串口回归 PASS 的证据来源为开发者对“本次 Phase 4 计划全部完成”的明确确认，不额外虚构串口截图或新协议证据。
 
 ---
 
@@ -385,28 +394,16 @@ STM32 GPIO Impl         existing
 
 Phase 4 不实现正式 APP Control FSM，不永久创建 Indicator Task。
 
-## 10.1 Platform LED
-
-定位：
+Platform LED：
 
 ```text
 lightweight LED actuator abstraction
 caller-owned static object
 no malloc/free
+no platform_device_t
+no registry / manager
+no new impl_led layer
 ```
-
-第一版不使用：
-
-```text
-platform_device_t
-runtime device type
-registry
-manager
-ops table
-new impl_led layer
-```
-
-`platform_led_t` 与 GPIO 一对一，直接拥有自己的 `platform_gpio_t` 存储。
 
 公共能力：
 
@@ -418,71 +415,29 @@ platform_led_toggle
 platform_led_deinit
 ```
 
-## 10.2 BSP / 有效电平
-
-Status LED GPIO 继续复用：
+Status LED 静态有效电平：
 
 ```text
-platform_bsp_gpio_construct_status_led()
+PROJECT_STATUS_LED_ACTIVE_LEVEL = PLATFORM_GPIO_LEVEL_LOW
 ```
 
-具体 PC13 / GPIOC / HAL Pin 不重复进入 `00_Config`。
-
-静态有效电平：
+Indicator Service：
 
 ```text
-PROJECT_STATUS_LED_ACTIVE_LEVEL = LOW
+SERVICE_INDICATOR_EVENT_STOPPED      -> OFF
+SERVICE_INDICATOR_EVENT_RUNNING      -> ON
+SERVICE_INDICATOR_EVENT_ONCE_SUCCESS -> blink 3 times -> OFF
 ```
 
-由 BSP LED construction 将 GPIO Binding + active level 组合为 Status LED 对象。
-
-Service / APP 不知道 LOW/HIGH 极性。
-
-## 10.3 Indicator Service
-
-事件：
+闪烁配置：
 
 ```text
-SERVICE_INDICATOR_EVENT_STOPPED
-SERVICE_INDICATOR_EVENT_RUNNING
-SERVICE_INDICATOR_EVENT_ONCE_SUCCESS
+blink count  = 3
+blink ON ms  = 100
+blink OFF ms = 100
 ```
 
-公共能力：
-
-```text
-service_indicator_init
-service_indicator_handle_event
-service_indicator_deinit
-```
-
-行为：
-
-```text
-STOPPED      -> OFF
-RUNNING      -> ON
-ONCE_SUCCESS -> blink 3 times -> OFF
-```
-
-Indicator Service 不维护 APP `RUNNING / STOPPED` 真实状态，不决定 UART TX 是否成功。
-
-## 10.4 闪烁时序
-
-静态配置：
-
-```text
-blink count   = 3
-blink ON ms   = 100
-blink OFF ms  = 100
-```
-
-延时统一使用：
-
-```text
-platform_time_delay_ms()
-```
-
-最终存在独立 Indicator Task，因此三闪可以使用 Task blocking delay；只阻塞 Indicator Task，不阻塞 UART / Acquisition 等其他 Task。
+延时统一使用 `platform_time_delay_ms()`。
 
 ---
 
@@ -503,17 +458,17 @@ execute blink timing
 isolate LED delay from APP / UART / acquisition contexts
 ```
 
-以下细节仍留到 Phase 9：
+以下永久运行细节仍留到 Phase 9：
 
 ```text
-permanent Task creation
+Task creation
 priority
 stack size
 queue / notification mechanism
 event buffering / overwrite policy
 ```
 
-Button 是否独立 Task 尚未冻结，留到 Phase 5 / Phase 9 根据真实职责决定。
+Phase 5 目标板验证允许创建临时 Indicator Smoke Task；该测试 Task 不等于 Phase 9 的永久 Task 配置。
 
 ---
 
@@ -526,35 +481,309 @@ Button 是否独立 Task 尚未冻结，留到 Phase 5 / Phase 9 根据真实职
 ```text
 GPIO              -> lightweight resource, no platform_device_t
 LED               -> lightweight actuator, no platform_device_t
+Button            -> lightweight input device, no platform_device_t
 Software I2C      -> communication capability, no platform_device_t
 UART              -> real device object, platform_device_t already used
 DHT20             -> future design should evaluate platform_device_t
 MPU6050           -> future design should evaluate platform_device_t
 ```
 
-DHT20 / MPU6050 具有明确设备身份、配置、生命周期和数据语义，后续专项设计优先参考 UART 的 Device 模型，而不是照搬 LED 轻量对象。
+DHT20 / MPU6050 具有明确设备身份、配置、生命周期和数据语义，后续专项设计优先参考 UART 的 Device 模型，而不是照搬 LED / Button 轻量对象。
 
 ---
 
-# 13. 当前 Active Phase
+# 13. Button Phase 5 冻结设计基线
 
 当前阶段：
 
 ```text
-Phase 5 — Button Module (planning)
+Phase 5 — Button Module
+DESIGN BASELINE FROZEN / IMPLEMENTATION PENDING
 ```
 
-Phase 5 目前只进入专项设计，不直接编码。
+设计讨论已经收束；尚未生成新的 Phase 5 `implementation_plan.md`，不得直接开始编码。
 
-已知硬件基线：
+## 13.1 Platform Button / BSP Button
+
+冻结分层：
 
 ```text
-PA0 -> User Key
-Platform BSP GPIO constructor -> platform_bsp_gpio_construct_user_key()
-Target Board GPIO input verification -> PASS
+Button Service
+    ↓ logical PRESSED / RELEASED + nowMs
+Platform Button
+    ↓
+Platform GPIO
+    ↓
+STM32 GPIO Impl
 ```
 
-已冻结最终按键业务映射：
+`platform_button_t` 第一版：
+
+```text
+lightweight input device
+caller-owned static object
+owns one platform_gpio_t
+stores activeLevel + pull + initialized state
+no malloc/free
+no platform_device_t
+no registry / manager
+no impl_button layer
+```
+
+建议公共能力：
+
+```text
+platform_button_init
+platform_button_read -> PLATFORM_BUTTON_STATE_PRESSED / RELEASED
+platform_button_deinit
+```
+
+BSP Button 负责将 User Key 的板级属性与 GPIO Binding 装配起来：
+
+```text
+platform_bsp_button_construct_user_key()
+    -> platform_bsp_gpio_construct_user_key()
+    -> active level
+    -> pull configuration
+```
+
+User Key 冻结静态配置：
+
+```text
+PROJECT_USER_KEY_ACTIVE_LEVEL = PLATFORM_GPIO_LEVEL_LOW
+PROJECT_USER_KEY_PULL         = PLATFORM_GPIO_PULL_UP
+```
+
+具体 PA0 / GPIOA / GPIO_PIN_0 不进入 Service / APP。
+
+Platform Button 负责 HIGH / LOW 到 PRESSED / RELEASED 的转换，不识别 SINGLE / DOUBLE / LONG。
+
+## 13.2 Button Service
+
+Button Service 第一版是纯时间驱动状态机，不持有 `platform_button_t *`，不主动读取 GPIO，也不主动调用 RTOS tick。
+
+输入合同：
+
+```text
+platform_button_state_t buttonState
+uint32_t nowMs
+```
+
+输出事件：
+
+```text
+SERVICE_BUTTON_EVENT_NONE
+SERVICE_BUTTON_EVENT_SINGLE
+SERVICE_BUTTON_EVENT_DOUBLE
+SERVICE_BUTTON_EVENT_LONG
+```
+
+推荐 process 形态：
+
+```text
+service_button_process(service, buttonState, nowMs, &event)
+```
+
+Service Context 只保存输入历史、稳定状态、时间戳和 gesture state，不保存 GPIO / Task / Queue / FreeRTOS handle。
+
+内部逻辑分为两个阶段：
+
+```text
+raw state
+ -> time-based debounce
+ -> stable PRESS / RELEASE edge
+ -> gesture FSM
+ -> SINGLE / DOUBLE / LONG
+```
+
+## 13.3 时间参数与边界
+
+第一版冻结：
+
+```text
+PROJECT_BUTTON_SAMPLE_PERIOD_MS = 10 ms
+PROJECT_BUTTON_DEBOUNCE_MS      = 30 ms
+PROJECT_BUTTON_DOUBLE_CLICK_MS  = 300 ms
+PROJECT_BUTTON_LONG_PRESS_MS    = 3000 ms
+```
+
+消抖：
+
+```text
+raw state 改变 -> 记录 rawChangedMs
+raw state 连续保持 >= 30 ms -> 更新 stable state
+```
+
+不得用“固定 N 次采样”等价替代时间阈值，避免算法语义被 Task 周期绑定。
+
+单击 / 双击：
+
+```text
+first stable RELEASE
+ -> WAIT_SECOND
+ -> second stable PRESS within <= 300 ms -> SECOND_PRESS
+ -> second stable RELEASE -> DOUBLE
+ -> no second PRESS and window expires -> SINGLE
+```
+
+双击窗口从第一次稳定 RELEASE 开始；判断第二次稳定 PRESS 是否在窗口内，不要求第二次 RELEASE 也在窗口内。
+
+长按：
+
+```text
+stable PRESS
+ -> hold >= 3000 ms
+ -> emit LONG immediately once
+ -> suppress click candidate until RELEASE
+```
+
+规则：
+
+```text
+2999 ms -> not LONG
+3000 ms -> LONG
+LONG only once per hold
+LONG release -> no SINGLE
+first click + second press held >= 3000 ms -> LONG only, no DOUBLE
+```
+
+所有超时判断使用可自然处理 `uint32_t` 回绕的 elapsed-time 差值形式。
+
+## 13.4 Host Test 冻结方向
+
+至少新增 / 覆盖：
+
+```text
+Tests/platform_button/
+Tests/platform_bsp_button/
+Tests/service_button/
+```
+
+Platform Button：
+
+```text
+active-low and active-high translation
+INPUT + pull configuration
+init / read / deinit lifecycle
+error propagation
+```
+
+BSP Button：
+
+```text
+User Key active level = LOW
+User Key pull = UP
+correct GPIO binding
+```
+
+Button Service：
+
+```text
+initial released / initial pressed
+press / release bounce
+single only
+DOUBLE only, no preceding SINGLE
+2999 / 3000 ms long boundary
+very long hold emits LONG once
+LONG release does not emit SINGLE
+second press long -> LONG only
+double-click 300 ms boundary
+double-click expired path
+uint32_t time wraparound
+irregular process intervals
+```
+
+Host Test 使用逻辑时间输入，不真实 sleep 3 s。
+
+## 13.5 FreeRTOS 目标板 Smoke
+
+Phase 5 目标板验证必须运行在 FreeRTOS Scheduler 已启动的真实 Task Context 中，不采用 scheduler 前阻塞式 Harness。
+
+测试结构冻结为：
+
+```text
+Temporary Button Smoke Task
+    -> platform_button_read()
+    -> platform_time_get_ms()
+    -> service_button_process()
+    -> Button event
+    -> temporary Queue
+
+Temporary Indicator Smoke Task
+    -> consume mapped indicator event
+    -> service_indicator_handle_event()
+    -> Platform LED
+```
+
+Button Smoke Task 约每 10 ms 调用一次，延时使用 `platform_time_delay_ms()`；不得直接调用 `HAL_Delay()` / `osDelay()` / `vTaskDelay()` 绕过 Platform OS。
+
+由于 `ONCE_SUCCESS` 三闪会在调用 Task 中阻塞约 600 ms，Button 与 Indicator 使用两个临时 Task，使 LED 闪烁不打断 Button 10 ms sampling。
+
+目标板观察同时使用：
+
+```text
+USART1 Serial Assistant
+RTT / EasyLogger
+LED visual behavior
+```
+
+Smoke-only 映射：
+
+```text
+Button SINGLE -> SERVICE_INDICATOR_EVENT_RUNNING      -> LED ON
+Button DOUBLE -> SERVICE_INDICATOR_EVENT_ONCE_SUCCESS -> blink 3 times -> OFF
+Button LONG   -> SERVICE_INDICATOR_EVENT_STOPPED      -> LED OFF
+```
+
+注意：`DOUBLE -> ONCE_SUCCESS` 只用于 Phase 5 Smoke 验证 Button + Indicator 集成，不代表正式业务链已经变成直接成功反馈。正式系统仍是：
+
+```text
+DOUBLE -> APP SAMPLE_ONCE -> sensor acquisition -> UART TX success -> ONCE_SUCCESS
+```
+
+推荐人工验证序列：
+
+```text
+startup -> LED OFF
+single  -> SINGLE log + LED ON
+double  -> DOUBLE log + 3 blinks + final OFF
+single  -> LED ON
+long >= 3 s -> LONG log + LED OFF
+```
+
+串口助手输出结构化事件，RTT 输出初始化 / stable edge / gesture event / error 等诊断；禁止每 10 ms polling 刷日志。
+
+还必须确认：
+
+```text
+Button + Indicator + UART + RTT can coexist under FreeRTOS
+no HardFault
+no obvious scheduling stall
+no duplicate gesture event
+existing UART communication regression PASS
+```
+
+Smoke 完成后必须移除临时 Task / Queue / 测试入口并恢复正常固件路径。
+
+## 13.6 Phase 5 不冻结的内容
+
+以下仍留到 Phase 9：
+
+```text
+permanent Button Task ownership
+permanent Button Task priority
+permanent Button Task stack
+final Button -> APP IPC mechanism
+final event buffering / queue policy
+```
+
+Phase 5 的临时 Button / Indicator Smoke Task 与 Queue 仅用于目标板验证，不得反向成为永久 RTOS 架构合同。
+
+---
+
+# 14. 最终按键业务映射
+
+正式系统业务映射继续冻结：
 
 ```text
 Button single -> START
@@ -562,27 +791,11 @@ Button double -> SAMPLE_ONCE
 Button long   -> STOP
 ```
 
-但 Phase 5 尚需专项设计冻结：
-
-```text
-KEY Platform / BSP capability boundary
-active-level configuration
-polling / sampling interface
-debounce algorithm and timing
-double-click window
-long-press threshold = 3000 ms
-Button Service Context / event contract
-single vs double confirmation timing
-Host Test strategy
-FreeRTOS target-board smoke strategy
-whether Phase 5 itself needs a temporary task context
-```
-
-永久 Button Task / priority / stack / final event transport 仍优先留到 Phase 9，除非 Phase 5 设计证明必须提前冻结。
+APP Control FSM 是唯一 `STOPPED / RUNNING` 状态源；Button Service 只识别 gesture，不判断当前 APP 状态，不直接控制 LED / Sensor。
 
 ---
 
-# 14. 当前执行计划状态
+# 15. 当前执行计划状态
 
 当前文件：
 
@@ -598,28 +811,30 @@ LED Phase 4 Implementation Plan — COMPLETED
 
 不要直接把该计划用于 Button 编码。
 
-Phase 5 推荐流程：
+Phase 5 下一步：
 
 ```text
-Inspect current KEY / GPIO baseline
+Button design discussion               FROZEN
     ↓
-Discuss Button design point-by-point
-    ↓
-Freeze Button Phase 1 design document
+Write formal Button Phase 5 design doc NEXT
     ↓
 Replace / update implementation_plan.md with Phase 5 plan
     ↓
 Codex implementation
+    ↓
+Host / Keil / FreeRTOS target smoke
+    ↓
+Review + handoff update
 ```
 
 ---
 
-# 15. 当前后续路线
+# 16. 当前后续路线
 
 ```text
 Phase 3  Software I2C                   COMPLETED
 Phase 4  LED Module                     COMPLETED
-Phase 5  Button Module                  CURRENT / PLANNING
+Phase 5  Button Module                  CURRENT / DESIGN FROZEN / IMPLEMENTATION PENDING
 Phase 6  DHT20 Environment Module
 Phase 7  MPU6050 Motion Module
 Phase 8  UART Application Communication
@@ -630,7 +845,7 @@ Final Integrated Board Test
 
 ---
 
-# 16. 当前暂缓范围
+# 17. 当前暂缓范围
 
 ```text
 SPI / LCD / GUI
