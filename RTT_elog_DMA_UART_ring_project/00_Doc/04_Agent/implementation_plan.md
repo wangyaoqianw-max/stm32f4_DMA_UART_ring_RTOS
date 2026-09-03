@@ -131,7 +131,7 @@ PROJECT_INDICATOR_BLINK_ON_MS
 PROJECT_INDICATOR_BLINK_OFF_MS
 ```
 
-- [ ] **Step 1: Write failing Host contract tests**
+- [x] **Step 1: Write failing Host contract tests**
 
 Test coverage must include:
 
@@ -150,7 +150,7 @@ underlying GPIO configure/write/read/deinit error propagation as applicable
 
 Expected RED condition: Platform LED files / symbols do not yet exist.
 
-- [ ] **Step 2: Add Phase 4 static configuration**
+- [x] **Step 2: Add Phase 4 static configuration**
 
 Add only the frozen LED settings to `project_config.h`.
 
@@ -165,7 +165,7 @@ blink OFF = 100 ms
 
 Do not add PC13, GPIOC or HAL GPIO pin macros to Config.
 
-- [ ] **Step 3: Implement minimal lightweight Platform LED object**
+- [x] **Step 3: Implement minimal lightweight Platform LED object**
 
 Implementation must:
 
@@ -181,7 +181,7 @@ establish OFF during init
 
 Do not add blink policy or product states here.
 
-- [ ] **Step 4: Run focused Platform LED Host tests**
+- [x] **Step 4: Run focused Platform LED Host tests**
 
 Expected:
 
@@ -190,7 +190,7 @@ all Platform LED tests PASS
 no HAL dependency in Platform LED test build
 ```
 
-- [ ] **Step 5: Run existing Platform GPIO regression**
+- [x] **Step 5: Run existing Platform GPIO regression**
 
 Expected:
 
@@ -198,7 +198,7 @@ Expected:
 existing Platform GPIO Host tests PASS
 ```
 
-- [ ] **Step 6: Coding Standard Review and focused commit**
+- [x] **Step 6: Coding Standard Review and focused commit**
 
 Review: naming, object lifecycle, ownership, active-level semantics, no device-model overbuild, no HAL leakage.
 
