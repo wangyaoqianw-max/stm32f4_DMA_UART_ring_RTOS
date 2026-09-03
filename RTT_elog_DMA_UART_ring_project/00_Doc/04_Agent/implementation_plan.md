@@ -448,7 +448,7 @@ Do not log every ON/OFF edge.
 
 Expected: 0 errors.
 
-- [ ] **Step 4: Target board LED visual verification**
+- [x] **Step 4: Target board LED visual verification**
 
 Must confirm:
 
@@ -459,7 +459,7 @@ ONCE_SUCCESS = visible 3 blinks
 final state = OFF
 ```
 
-- [ ] **Step 5: RTT observation**
+- [x] **Step 5: RTT observation**
 
 RTT stage log must match the visible LED sequence.
 
@@ -568,8 +568,8 @@ Platform LED Host Test                         PASS
 Indicator Service Host Test                    PASS
 GPIO regression                                PASS
 Keil Full Rebuild                              PASS
-Target OFF / ON / 3 blink / OFF                PENDING — no target-board evidence
-RTT target smoke                               PENDING — no target RTT session
+Target OFF / ON / 3 blink / OFF                PASS — user-confirmed target observation
+RTT target smoke                               PASS — user-provided RTT screenshot
 Communication regression                       PENDING — no target + PC serial session
 Logic Analyzer                                 NOT REQUIRED
 Temporary smoke removed                        PASS
