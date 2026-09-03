@@ -611,10 +611,11 @@ Phase 4 计划新增：
 └── service_indicator.c
 
 03_Platform/platform_bsp/
-├── platform_led.h
-├── platform_led.c
-├── platform_bsp_led.h
-└── platform_bsp_led.c
+└── led/
+    ├── platform_led.h
+    ├── platform_led.c
+    ├── platform_bsp_led.h
+    └── platform_bsp_led.c
 
 Tests/platform_led/
 Tests/platform_bsp_led/

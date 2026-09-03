@@ -14,7 +14,7 @@
 //******************************** Includes *********************************//
 #include <string.h>
 
-#include "platform_bsp_led.h"
+#include "led/platform_bsp_led.h"
 #include "project_config.h"
 //******************************** Includes *********************************//
 

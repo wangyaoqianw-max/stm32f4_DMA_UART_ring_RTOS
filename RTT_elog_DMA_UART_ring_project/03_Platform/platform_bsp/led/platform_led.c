@@ -21,7 +21,8 @@
 static platform_error_t platform_led_validate_active_level(
     platform_gpio_level_t activeLevel)
 {
-    if (activeLevel >= PLATFORM_GPIO_LEVEL_MAX) {
+    if ((activeLevel != PLATFORM_GPIO_LEVEL_LOW) &&
+        (activeLevel != PLATFORM_GPIO_LEVEL_HIGH)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 

@@ -14,7 +14,7 @@
 //******************************** Includes *********************************//
 #include <stddef.h>
 
-#include "platform_led.h"
+#include "led/platform_led.h"
 //******************************** Includes *********************************//
 
 //******************************** Defines *********************************//
@@ -248,8 +248,10 @@ static int test_deinit_clears_led_hardware_state(void)
 static int test_init_rejects_invalid_active_level_and_duplicate_init(void)
 {
     platform_led_t invalidLed = PLATFORM_LED_INITIALIZER;
+    platform_led_t negativeLed = PLATFORM_LED_INITIALIZER;
     platform_led_t led = PLATFORM_LED_INITIALIZER;
     fake_gpio_context_t invalidContext = {0};
+    fake_gpio_context_t negativeContext = {0};
     fake_gpio_context_t context = {0};
 
     TEST_ASSERT(PLATFORM_ERR_OK == prepare_bound_led(
@@ -258,6 +260,13 @@ static int test_init_rejects_invalid_active_level_and_duplicate_init(void)
                 PLATFORM_GPIO_LEVEL_MAX));
     TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == platform_led_init(&invalidLed));
     TEST_ASSERT(0U == invalidContext.configureCallCount);
+
+    TEST_ASSERT(PLATFORM_ERR_OK == prepare_bound_led(
+                &negativeLed,
+                &negativeContext,
+                (platform_gpio_level_t)-1));
+    TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == platform_led_init(&negativeLed));
+    TEST_ASSERT(0U == negativeContext.configureCallCount);
 
     TEST_ASSERT(PLATFORM_ERR_OK ==
                 prepare_bound_led(&led, &context, PLATFORM_GPIO_LEVEL_HIGH));

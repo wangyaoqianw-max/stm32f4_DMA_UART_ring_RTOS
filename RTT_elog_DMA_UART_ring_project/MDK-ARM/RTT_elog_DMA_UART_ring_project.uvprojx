@@ -746,17 +746,17 @@
           </Files>
         </Group>
         <Group>
-          <GroupName>platform/platform_bsp</GroupName>
+          <GroupName>platform/platform_bsp/led</GroupName>
           <Files>
             <File>
               <FileName>platform_led.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\03_Platform\platform_bsp\platform_led.c</FilePath>
+              <FilePath>..\03_Platform\platform_bsp\led\platform_led.c</FilePath>
             </File>
             <File>
               <FileName>platform_bsp_led.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\03_Platform\platform_bsp\platform_bsp_led.c</FilePath>
+              <FilePath>..\03_Platform\platform_bsp\led\platform_bsp_led.c</FilePath>
             </File>
           </Files>
         </Group>

@@ -243,12 +243,12 @@ platform_led_deinit
 建议文件职责：
 
 ```text
-03_Platform/platform_bsp/platform_led.h
-03_Platform/platform_bsp/platform_led.c
+03_Platform/platform_bsp/led/platform_led.h
+03_Platform/platform_bsp/led/platform_led.c
     -> generic LED object + actions
 
-03_Platform/platform_bsp/platform_bsp_led.h
-03_Platform/platform_bsp/platform_bsp_led.c
+03_Platform/platform_bsp/led/platform_bsp_led.h
+03_Platform/platform_bsp/led/platform_bsp_led.c
     -> current board Status LED construction
 ```
 
@@ -507,10 +507,11 @@ Keil Full Rebuild again
 └── service_indicator.c
 
 03_Platform/platform_bsp/
-├── platform_led.h
-├── platform_led.c
-├── platform_bsp_led.h
-└── platform_bsp_led.c
+└── led/
+    ├── platform_led.h
+    ├── platform_led.c
+    ├── platform_bsp_led.h
+    └── platform_bsp_led.c
 
 00_Config/project_config.h
 ```

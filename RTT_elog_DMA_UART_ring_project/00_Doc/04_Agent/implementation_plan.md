@@ -110,8 +110,8 @@ Unrelated user changes: PRESERVED
 ### Task 1: Define Platform LED Contract and Static Configuration
 
 **Files:**
-- Create: `03_Platform/platform_bsp/platform_led.h`
-- Create: `03_Platform/platform_bsp/platform_led.c`
+- Create: `03_Platform/platform_bsp/led/platform_led.h`
+- Create: `03_Platform/platform_bsp/led/platform_led.c`
 - Modify: `00_Config/project_config.h`
 - Create: `Tests/platform_led/test_platform_led.c`
 - Modify host test build script / project only as required by the existing test pattern.
@@ -216,8 +216,8 @@ required host test build metadata
 ### Task 2: Add Status LED Board/BSP Construction
 
 **Files:**
-- Create: `03_Platform/platform_bsp/platform_bsp_led.h`
-- Create: `03_Platform/platform_bsp/platform_bsp_led.c`
+- Create: `03_Platform/platform_bsp/led/platform_bsp_led.h`
+- Create: `03_Platform/platform_bsp/led/platform_bsp_led.c`
 - Create: `Tests/platform_bsp_led/test_platform_bsp_led.c`
 - Modify host test build script / project only as required.
 
