@@ -28,6 +28,8 @@
 #include "usart.h"
 #include "service_log.h"
 #include "app_system.h"
+#include "freertos_indicator_smoke.h"
+#include "platform_time.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -128,10 +130,13 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
+  (void)argument;
+  freertos_indicator_smoke_run();
+
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+    (void)platform_time_delay_ms(1U);
   }
   /* USER CODE END StartDefaultTask */
 }
