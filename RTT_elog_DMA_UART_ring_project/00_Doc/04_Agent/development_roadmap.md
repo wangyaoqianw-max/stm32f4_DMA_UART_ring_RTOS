@@ -7,36 +7,22 @@
 
 ---
 
-# 1. 文档目的
+# 1. 文档职责
 
-本文档只回答：
+本文件回答：
 
 ```text
-后续分成哪些 Phase？
+有哪些开发 Phase？
 各 Phase 依赖什么？
-各 Phase 做到哪里停止？
-什么条件下进入下一 Phase？
+完成门槛是什么？
+当前下一步是什么？
 ```
 
-详细业务需求：
+详细业务需求：`00_Doc/00_项目需求/最终功能需求.md`  
+长期架构：`00_Doc/04_Agent/architecture.md`  
+当前施工计划：`00_Doc/04_Agent/implementation_plan.md`
 
-```text
-00_Doc/00_项目需求/最终功能需求.md
-```
-
-长期架构：
-
-```text
-00_Doc/04_Agent/architecture.md
-```
-
-当前唯一施工计划：
-
-```text
-00_Doc/04_Agent/implementation_plan.md
-```
-
-每个 Phase 都必须先专项设计，再生成 / 替换当前 implementation plan；不得把多个 Phase 一次性塞进同一实现计划。
+每个 Phase 必须先专项设计，再生成 / 替换当前 implementation plan。
 
 ---
 
@@ -53,12 +39,12 @@ Service Log + EasyLogger + RTT                 VERIFIED
 Platform GPIO + STM32 Impl + Board Binding     VERIFIED
 Software I2C                                  VERIFIED
 LED / Indicator Module                        VERIFIED
+Button / Button Service                       VERIFIED
 ```
 
 最终闭环仍缺：
 
 ```text
-Button implementation
 DHT20 environment data
 MPU6050 basic motion data
 UART application commands / report
@@ -69,150 +55,63 @@ Integrated target-board verification
 
 ---
 
-# 3. 总体阶段顺序
+# 3. 总体阶段
 
 ```text
 Phase 1  GPIO STM32 Impl                         COMPLETED
-    ↓
 Phase 2  Board Resource + CubeMX Configuration   COMPLETED
-    ↓
 Phase 3  Software I2C                            COMPLETED
-    ↓
 Phase 4  LED Module                              COMPLETED
-    ↓
 Phase 5  Button Module                           COMPLETED / HOST + KEIL + TARGET VERIFIED
-    ↓
-Phase 6  DHT20 Environment Module
-    ↓
+Phase 6  DHT20 Environment Module                NEXT / DESIGN PENDING
 Phase 7  MPU6050 Motion Module
-    ↓
 Phase 8  UART Application Communication
-    ↓
 Phase 9  RTOS Task / Event Design
-    ↓
 Phase 10 Final APP Integration
-    ↓
 Final Integrated Board Test
 ```
 
 ---
 
-# 4. Phase 1 — GPIO STM32 Impl
+# 4. 已完成阶段摘要
 
-目标：为 Platform GPIO 提供 STM32F411 + HAL 具体实现。
+## Phase 1 / 2 — GPIO + Board
 
-范围：
-
-```text
-configure
-write
-read
-deinit
-```
-
-明确不做：LED / KEY 产品语义、Debounce、Soft I2C、EXTI。
-
-状态：
-
-```text
-COMPLETED / HOST + KEIL VERIFIED
-```
-
----
-
-# 5. Phase 2 — Board Resource + CubeMX Configuration
+完成 STM32 GPIO Impl、Board Binding、CubeMX 配置和目标板 GPIO 验证。
 
 冻结资源：
 
 ```text
-PC13 -> Status LED
-PA0  -> User Key
-PB6  -> Software I2C SCL
-PB7  -> Software I2C SDA
-PA9 / PA10 -> USART1
+PC13 Status LED
+PA0 User Key
+PB6 Soft I2C SCL
+PB7 Soft I2C SDA
+USART1 existing pins
 ```
 
-User Key 实板基线：
+## Phase 3 — Software I2C
 
 ```text
-Input / Pull-Up / no EXTI
-released HIGH
-pressed LOW
-```
-
-状态：
-
-```text
-COMPLETED / TARGET BOARD VERIFIED
-```
-
----
-
-# 6. Phase 3 — Software I2C
-
-冻结：
-
-```text
-Platform communication capability
 Master-only
 7-bit
 synchronous
-START / STOP / ACK / NACK
-multi-byte read / write
-write-read / repeated START
-Open-Drain + external pull-up
-platform_delay_us()
-no internal mutex
+Platform GPIO based
+Repeated START
+microsecond timing
+Host + Keil + DHT20 target smoke verified
 ```
 
-目标板使用 DHT20 + logic analyzer 验证。
-
-状态：
+## Phase 4 — LED
 
 ```text
-COMPLETED / HOST + KEIL + TARGET VERIFIED
-```
-
----
-
-# 7. Phase 4 — LED Module
-
-专项设计：
-
-```text
-00_Doc/02_架构设计/LED_Phase1设计.md
-```
-
-冻结链：
-
-```text
-Indicator Service
- -> Platform LED
- -> Platform GPIO
- -> STM32 GPIO Impl
-```
-
-Platform LED：轻量、caller-owned、无 `platform_device_t`、无 `impl_led`。
-
-Indicator Service：
-
-```text
-STOPPED      -> OFF
-RUNNING      -> ON
+Indicator Service -> Platform LED -> Platform GPIO
+STOPPED -> OFF
+RUNNING -> ON
 ONCE_SUCCESS -> 3 blinks -> OFF
+Host + Keil + target verified
 ```
 
-最终独立 Indicator Task 的方向已冻结；永久 priority / stack / event policy 留到 Phase 9。
-
-状态：
-
-```text
-COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
-```
-
----
-
-# 8. Phase 5 — Button Module
+## Phase 5 — Button
 
 专项设计：
 
@@ -220,213 +119,92 @@ COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 00_Doc/02_架构设计/Button_Phase1设计.md
 ```
 
-当前执行计划：
+正式链：
 
 ```text
-00_Doc/04_Agent/implementation_plan.md
-Button Phase 5 Implementation Plan
-Status: COMPLETED
-```
-
-当前状态：
-
-```text
-REQUIREMENTS ALIGNED
-DESIGN FROZEN
-FORMAL DESIGN WRITTEN
-IMPLEMENTATION PLAN READY
-COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
-```
-
-## 8.1 正式能力链
-
-```text
-PA0 HIGH / LOW
- -> Platform GPIO
+Platform GPIO
  -> Platform Button PRESSED / RELEASED
  -> Button Service SINGLE / DOUBLE / LONG
- -> Future APP START / SAMPLE_ONCE / STOP
+ -> future APP control
 ```
 
-Phase 5 不实现最终 APP Control FSM。
-
-## 8.2 Platform Button
-
-第一版：
+冻结参数：
 
 ```text
-caller-owned lightweight object
-owns one platform_gpio_t
-activeLevel + pull + lifecycle
-no malloc/free
-no platform_device_t
-no registry / manager
-no impl_button
+active LOW / Pull-Up
+sample 10 ms
+debounce 30 ms
+double 300 ms
+long 3000 ms
 ```
 
-User Key Config：
+验证：
 
 ```text
-PROJECT_USER_KEY_ACTIVE_LEVEL = LOW
-PROJECT_USER_KEY_PULL = PULL_UP
+Platform Button Host Test          PASS
+Platform BSP Button Host Test      PASS
+Button Service Host Test           PASS
+Keil normal production rebuild     PASS
+FreeRTOS Button + Indicator smoke  PASS
+Serial Assistant / RTT             PASS
+LED visual mapping                 PASS
+Existing UART regression           PASS
+Temporary smoke cleanup            PASS
+Coding Standard Review             PASS
 ```
 
-## 8.3 Button Service
-
-输入：
-
-```text
-PRESSED / RELEASED
-caller-provided uint32_t nowMs
-```
-
-输出：
-
-```text
-NONE
-SINGLE
-DOUBLE
-LONG
-```
-
-内部：
-
-```text
-time-based debounce
- -> stable edge
- -> gesture FSM
-```
-
-冻结时间：
-
-```text
-sample period = 10 ms
-debounce      = 30 ms
-double window = 300 ms
-long press    = 3000 ms
-```
-
-关键规则：
-
-```text
-SINGLE waits for double window
-second stable PRESS <= 300 ms -> DOUBLE candidate
-DOUBLE never emits preceding SINGLE
-LONG >= 3000 ms -> exactly once
-LONG release -> no SINGLE
-second press can become LONG -> LONG only
-uint32 elapsed arithmetic supports wraparound
-```
-
-## 8.4 Host Test
-
-必须覆盖：
-
-```text
-Platform Button active-low / active-high
-BSP User Key composition
-press / release bounce
-single only
-double only
-2999 / 3000 ms long boundary
-very long hold one LONG
-LONG release no SINGLE
-second-press long conflict
-300 ms double boundary
-expired press preserved as new gesture
-initial pressed
-irregular intervals
-uint32 wraparound
-```
-
-Host Service Test 不真实等待 3 s。
-
-## 8.5 FreeRTOS Target Smoke
-
-运行在 Scheduler 已启动后的真实 Task Context：
-
-```text
-Button Smoke Task
- -> Platform Button
- -> Platform Time
- -> Button Service
- -> Serial Assistant + RTT
- -> Platform Queue
-
-Indicator Smoke Task
- -> Platform Queue
- -> Indicator Service
- -> Platform LED
-```
-
-Smoke-only 映射：
-
-```text
-SINGLE -> RUNNING      -> LED ON
-DOUBLE -> ONCE_SUCCESS -> 3 blinks -> OFF
-LONG   -> STOPPED      -> LED OFF
-```
-
-该映射只用于测试。正式 DOUBLE 仍必须经过 APP SAMPLE_ONCE + Sensor + UART TX success 才提交 ONCE_SUCCESS。
-
-观察：
-
-```text
-USART1 Serial Assistant
-RTT / EasyLogger
-PC13 LED
-```
-
-完成 smoke 后必须删除 normal startup 中的临时 Task / Queue hook，再执行 normal-path Keil rebuild。
-
-## 8.6 Phase 5 完成门槛
-
-```text
-Platform Button Host Test PASS
-Platform BSP Button Host Test PASS
-Button Service Host Test PASS
-Existing regression PASS
-Keil Full Rebuild PASS
-FreeRTOS Button + Indicator smoke PASS
-Serial Assistant event observation PASS
-RTT observation PASS
-LED mapping PASS
-Existing UART regression PASS
-Temporary smoke startup path removed PASS
-Normal-path Keil rebuild PASS
-Coding Standard Review PASS
-```
-
-未完成真实板测时最多标记：
-
-```text
-IMPLEMENTED / TARGET BOARD VERIFICATION PENDING
-```
+Phase 5：`COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED`。
 
 ---
 
-# 9. Phase 6 — DHT20 Environment Module
+# 5. Phase 6 — DHT20 Environment Module
 
-目标：基于 Software I2C 实现 DHT20：
+当前下一阶段，只进入专项设计，不直接编码。
+
+目标：
+
+```text
+Software I2C
+    ↓
+DHT20 device capability
+    ↓
+Environment data / service semantics
+```
+
+第一阶段至少解决：
 
 ```text
 initialization
-status check
+communication / status check
 temperature
 relative humidity
-data validity
-communication / data error semantics
+data validity / CRC or status handling
+error semantics
+Host Test
+target-board verification
 ```
 
-专项设计阶段评估是否复用统一 `platform_device_t` 模型。
+设计阶段必须先确认：
 
-不在本 Phase 加 APP Control 状态。
+```text
+DHT20 Platform / Service boundary
+是否使用 platform_device_t
+I2C bus ownership
+address / command / wait timing config
+raw data -> physical value conversion
+measurement lifecycle
+error model
+Host Test fake I2C strategy
+FreeRTOS target smoke strategy
+```
+
+在这些边界冻结前不写生产 DHT20 代码。
 
 ---
 
-# 10. Phase 7 — MPU6050 Motion Module
+# 6. Phase 7 — MPU6050 Motion Module
 
-第一阶段只实现：
+第一阶段只做：
 
 ```text
 WHO_AM_I
@@ -436,30 +214,16 @@ Gyro X / Y / Z
 raw / physical-unit conversion as designed
 ```
 
-明确不做：
-
-```text
-Roll / Pitch / Yaw
-DMP
-Kalman Filter
-Complementary Filter
-high-rate attitude fusion
-```
-
-专项设计阶段评估统一 Device 模型。
+不做 Roll / Pitch / Yaw、DMP、Kalman、Complementary Filter 和高频姿态融合。
 
 ---
 
-# 11. Phase 8 — UART Application Communication
+# 7. Phase 8 — UART Application Communication
 
-必须复用现有：
+复用现有：
 
 ```text
-UART DMA RX
- -> UART Service
- -> RingBuffer
- -> Communication Task
- -> Command Parser
+UART DMA RX -> UART Service -> RingBuffer -> Communication Task
 ```
 
 命令：
@@ -472,50 +236,36 @@ STATUS
 HELP
 ```
 
-第一阶段使用文本上报；5 s report 与 ONCE 共用同一报告 / TX 能力。
-
-不得把命令业务写进 UART Service。
+不得建立第二套 UART RX 路径。
 
 ---
 
-# 12. Phase 9 — RTOS Task / Event Design
+# 8. Phase 9 — RTOS Task / Event Design
 
-在各模块能力稳定后再冻结永久：
+已确认方向：
 
 ```text
 Communication Task
 Acquisition Task
 Indicator Task
-Button processing context
-control event delivery
-indicator event delivery
-priority / stack
-queue / notification
-5 s scheduling
-ONCE execution context
-UART TX completion integration
 ```
 
-已确认：Indicator Task 需要独立执行上下文。
+永久 Button processing context、priority、stack、Button -> APP IPC、Indicator event delivery 等在本 Phase 冻结。
 
-仍未确认：Button 是否永久独立 Task。
-
-Phase 5 临时 Button / Indicator Smoke Task 不能直接成为 Phase 9 结论。
-
-DHT20 / MPU6050 第一版优先由单一 Acquisition Task 串行访问 I2C，不按设备机械拆 Task。
+Phase 5 Smoke Task / Queue 不能作为永久架构依据。
 
 ---
 
-# 13. Phase 10 — Final APP Integration
+# 9. Phase 10 — Final APP Integration
 
-APP 是唯一真实状态源：
+APP 唯一状态：
 
 ```text
 STOPPED
 RUNNING
 ```
 
-统一控制事件：
+统一事件：
 
 ```text
 APP_CTRL_START
@@ -524,75 +274,25 @@ APP_CTRL_SAMPLE_ONCE
 APP_CTRL_GET_STATUS
 ```
 
-最终行为：
-
-```text
-Startup -> STOPPED -> indicator STOPPED
-START -> RUNNING -> indicator RUNNING -> every 5 s acquire + report
-STOP -> STOPPED -> stop periodic flow -> indicator STOPPED
-ONCE while STOPPED -> acquire once -> UART TX -> success -> ONCE_SUCCESS -> remain STOPPED
-```
-
-Button 与 UART 只产生控制输入，不拥有各自的 running 状态。
+最终闭环：Button / UART -> APP FSM -> Acquisition / Indicator / UART Report。
 
 ---
 
-# 14. Final Integrated Board Test
-
-至少验证：
+# 10. 当前下一步
 
 ```text
-startup STOPPED / LED OFF
-Button single -> RUNNING / LED ON
-5 s DHT20 + MPU6050 reports
-Button long -> STOPPED / LED OFF
-Button double while STOPPED -> ONCE -> TX success -> 3 blinks
-UART START / STOP / ONCE / STATUS / HELP
-Button + UART use same APP state
-RTT initialization / control / acquisition / error logs
-I2C / Sensor / UART / RingBuffer error visibility
+Phase 5 Button      CLOSED
+Phase 6 DHT20       NEXT / DESIGN PENDING
 ```
 
----
-
-# 15. 横切约束
-
-日志：
+流程：
 
 ```text
-INFO  -> lifecycle / state changes
-DEBUG -> acquisition / command / TX summary
-WARN  -> recoverable errors
-ERROR -> init / critical failures
+Inspect DHT20 + current Software I2C baseline
+ -> Discuss design
+ -> Freeze DHT20 design document
+ -> Replace implementation_plan.md with Phase 6 plan
+ -> Codex implementation
 ```
 
-禁止逐 UART byte、逐 I2C bit / ACK、逐 LED edge、逐 Button 10 ms poll 正常刷日志。
-
-Config：
-
-```text
-Acquisition = 5000 ms
-Button = LOW active / PULL_UP / 10 / 30 / 300 / 3000 ms
-LED = LOW active / 3 blinks / 100 ms ON / 100 ms OFF
-```
-
-静态配置集中在 `00_Config`；Context 保存运行状态；Data 保存采集结果。
-
----
-
-# 16. 当前下一步
-
-当前完成状态：
-
-```text
-Phase 5 — Button Module
-COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
-```
-
-下一步：
-
-```text
-Stop after Phase 5. Phase 6 requires a new frozen design and implementation plan.
-```
-
-执行时必须停在 Phase 5 完成点，不得在同一轮继续 Phase 6。
+不得在设计冻结前直接进入 Phase 6 编码，也不得跳到 Phase 7+。
