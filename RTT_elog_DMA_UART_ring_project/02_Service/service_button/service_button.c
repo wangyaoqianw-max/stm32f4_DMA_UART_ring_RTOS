@@ -14,6 +14,8 @@
 //******************************** Includes *********************************//
 #include "service_button.h"
 
+#include <string.h>
+
 #include "project_config.h"
 #include "platform_def.h"
 //******************************** Includes *********************************//
@@ -157,7 +159,7 @@ platform_error_t service_button_deinit(service_button_t *service)
         return PLATFORM_ERR_NOT_INITIALIZED;
     }
 
-    *service = (service_button_t)SERVICE_BUTTON_INITIALIZER;
+    (void)memset(service, 0, sizeof(*service));
 
     return PLATFORM_ERR_OK;
 }

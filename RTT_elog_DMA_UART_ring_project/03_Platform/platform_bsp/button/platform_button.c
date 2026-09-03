@@ -31,8 +31,7 @@ static platform_error_t platform_button_validate_active_level(
 
 static platform_error_t platform_button_validate_pull(platform_gpio_pull_t pull)
 {
-    if ((pull < PLATFORM_GPIO_PULL_NONE) ||
-        (pull >= PLATFORM_GPIO_PULL_MAX)) {
+    if (pull >= PLATFORM_GPIO_PULL_MAX) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
