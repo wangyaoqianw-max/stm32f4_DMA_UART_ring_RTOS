@@ -366,11 +366,11 @@ Review: Service/Platform boundary, error handling, event semantics, no hidden AP
 - Modify: `RTT_elog_DMA_UART_ring_project.uvprojx` only for new production source/header groups required by the build.
 - Do not add permanent Phase 9 Indicator Task code.
 
-- [ ] **Step 1: Add production LED and Indicator sources to the existing Keil grouping convention**
+- [x] **Step 1: Add production LED and Indicator sources to the existing Keil grouping convention**
 
 Preserve unrelated project settings.
 
-- [ ] **Step 2: Keil Full Rebuild**
+- [x] **Step 2: Keil Full Rebuild**
 
 Expected:
 
@@ -380,7 +380,7 @@ no new warnings from Phase 4 sources
 existing communication firmware still builds
 ```
 
-- [ ] **Step 3: Resolve integration-only issues without changing frozen architecture**
+- [x] **Step 3: Resolve integration-only issues without changing frozen architecture**
 
 If resolution would require any of the following, STOP and return to design review:
 
@@ -393,7 +393,7 @@ HAL_Delay inside Service
 rewriting existing GPIO public contract
 ```
 
-- [ ] **Step 4: Coding Standard Review and focused commit**
+- [x] **Step 4: Coding Standard Review and focused commit**
 
 ---
 
