@@ -63,12 +63,12 @@ Service Log + EasyLogger + RTT
 Platform GPIO Phase 1 / Host Verified
 GPIO STM32 Impl / Board Resource / CubeMX Configuration
 Software I2C / Host + Keil + DHT20 Target Smoke Verified
+LED Module / Host + Keil + Target Board Verified
 ```
 
 当前最终闭环尚缺：
 
 ```text
-LED
 Button
 DHT20
 MPU6050 basic motion data
@@ -368,7 +368,7 @@ Serial Assistant as communication regression observation
 
 完成 smoke 后必须删除临时验证入口并恢复正常固件路径。
 
-## 7.6 完成门槛
+## 7.6 完成状态
 
 ```text
 Platform LED Host Test PASS
@@ -384,6 +384,8 @@ temporary smoke removed PASS
 normal-path Keil rebuild PASS
 Coding Standard Review PASS
 ```
+
+Phase 4：`COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED`。
 
 ---
 
@@ -806,31 +808,48 @@ Enter next Phase
 
 # 17. 当前下一阶段
 
-当前执行阶段：
+当前阶段：
 
 ```text
-Phase 4 — LED Module
+Phase 5 — Button Module (planning)
 ```
 
-专项设计已经冻结：
+Phase 4 已完成：
 
 ```text
-00_Doc/02_架构设计/LED_Phase1设计.md
+Phase 4 — COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
-当前执行步骤以：
+当前 `implementation_plan.md` 暂时保留 Phase 4 完成记录，不能直接作为 Phase 5 编码计划。
+
+Phase 5 下一步应先讨论并冻结：
+
+```text
+KEY Platform / BSP capability boundary
+PA0 active-level configuration
+polling / sampling contract
+debounce timing and algorithm
+double-click confirmation window
+long-press threshold = 3000 ms
+Button Service Context / event API
+single / double / long event semantics
+Host Test strategy
+FreeRTOS target-board smoke strategy
+Button Task 是否需要独立执行上下文
+```
+
+专项设计冻结后，再把：
 
 ```text
 00_Doc/04_Agent/implementation_plan.md
 ```
 
-为唯一计划。
+更新为 Button Phase 5 的唯一施工计划，然后交给 Codex 执行。
 
-Phase 4 完成前：
+在 Phase 5 设计冻结前：
 
-- 不开始 Phase 5 Button；
-- 不实现 Final APP Control FSM；
-- 不正式创建永久 Indicator Task；
-- 不增加 `impl_led` 透传层；
-- 不将 LED 接入统一 Device Registry；
-- 不使用 HAL_Delay 代替 Platform Time。
+- 不直接开始 Button 编码；
+- 不提前实现最终 APP Control FSM；
+- 不让 Button Service 维护产品 RUNNING / STOPPED 状态；
+- 不把按键 active level 泄漏到 APP；
+- 不提前开始 DHT20 / MPU6050 Phase。
