@@ -1,6 +1,6 @@
 # 工程长期记忆与交接说明
 
-更新时间：2026-09-02
+更新时间：2026-09-03
 
 > 本文件是 AI Agent 与人工开发者恢复工程上下文时的长期入口。
 > 只保存长期目标、稳定架构合同、已验证能力、当前阶段、技术债和下一步。
@@ -31,12 +31,6 @@ Sensors    : DHT20 + MPU6050
 I2C        : Software I2C over GPIO
 Input      : 1 x KEY
 Indicator  : 1 x LED
-```
-
-项目最初目标：
-
-```text
-UART 不定长接收 + DMA + RingBuffer + FreeRTOS
 ```
 
 当前最终目标：
@@ -98,12 +92,6 @@ CubeMX GPIO Configuration           PASS
 Board / GPIO Context Binding        COMPLETED / HOST VERIFIED
 Target Board GPIO Verification      PASS
 Software I2C Phase 3                COMPLETED / HOST + KEIL + DHT20 TARGET SMOKE VERIFIED
-```
-
-Phase 2 最终状态：
-
-```text
-Phase 2 — COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
 真实板测已确认：
@@ -190,7 +178,9 @@ LED 闪烁延时
 非 ISR-safe RTOS API
 ```
 
-Software I2C Phase 1 明确为 Task Context / synchronous / caller serialized。
+Software I2C 为 Task Context / synchronous / caller serialized。
+
+LED 三闪最终在独立 Indicator Task Context 执行，不在 ISR / HAL Callback 执行。
 
 ---
 
@@ -224,11 +214,10 @@ ERROR -> 初始化失败、关键操作失败
 ```text
 逐 UART byte 打日志
 逐 I2C bit / byte / ACK 打日志
+逐 LED on/off 边沿打日志
 逐 GPIO read/write 打日志
 ISR 中大量格式化日志
 ```
-
-Phase 3 目标板 Smoke Test 允许临时低频阶段日志。
 
 ---
 
@@ -266,17 +255,6 @@ PA9  -> USART1_TX
 PA10 -> USART1_RX
 ```
 
-Software I2C GPIO：
-
-```text
-PB6 / PB7
-GPIO Output Open-Drain
-GPIO_NOPULL
-initial HIGH
-external pull-up present
-Hardware I2C disabled
-```
-
 Board BSP 已提供：
 
 ```text
@@ -286,62 +264,11 @@ platform_bsp_gpio_construct_soft_i2c_scl()
 platform_bsp_gpio_construct_soft_i2c_sda()
 ```
 
-BSP constructor 只 construct / bind，不执行 `platform_gpio_configure()`。
+BSP GPIO constructor 只 construct / bind，不执行 GPIO hardware configure。
 
 ---
 
-# 8. 当前 Active Phase
-
-当前阶段：
-
-```text
-Phase 4 — LED Module (planning)
-```
-
-状态：
-
-```text
-Phase 3 completed
-Host + Keil + DHT20 target smoke verified
-Temporary smoke harness removed
-Normal-path Keil rebuild: 0 errors
-```
-
-专项设计：
-
-```text
-00_Doc/02_架构设计/Software_I2C_Phase1设计.md
-```
-
-当前唯一执行计划：
-
-```text
-00_Doc/04_Agent/implementation_plan.md
-```
-
-当前计划标题：
-
-```text
-Software I2C Phase 3 Completion Record
-```
-
-Phase 3 目标板证据（2026-09-02）：
-
-```text
-Keil Full Rebuild (with smoke)        0 errors
-Serial Assistant                      I2C_SMOKE,TXRX,PASS,status=0x18
-RTT / EasyLogger                      i2c smoke txrx pass, status=0x18
-Logic Analyzer                         START -> 0x38(W) -> 0xAC 0x33 0x00 -> STOP
-Decoder ACK                            address and all three command bytes ACK
-Temporary verification path            removed from source and Keil project
-Keil Full Rebuild (normal path)        0 errors
-```
-
-烟测使用 DHT20 的安全原始事务：写触发命令 `0xAC, 0x33, 0x00`，通过 `platform_time_delay_ms(80)` 等待后读取 7 字节。`status=0x18` 表示设备未忙且校准位有效。当前尚未采集 `write_read()` 的目标板 Repeated START / final-NACK 专项波形，Host Test 已覆盖该协议分支；清理 smoke 后的最终 Keil Full Rebuild 已通过，0 errors。
-
----
-
-# 9. Software I2C Phase 1 冻结设计
+# 8. Software I2C 已冻结 / 已完成摘要
 
 定位：
 
@@ -354,22 +281,7 @@ No internal mutex
 No dynamic allocation
 ```
 
-公共命名：
-
-```text
-platform_i2c_*
-```
-
-当前内部实现：Software I2C。
-
-计划文件：
-
-```text
-03_Platform/platform_mcu/i2c/platform_i2c.h
-03_Platform/platform_mcu/i2c/platform_i2c.c
-```
-
-公共 transaction API：
+公共 API：
 
 ```text
 platform_i2c_init
@@ -379,407 +291,364 @@ platform_i2c_write_read
 platform_i2c_deinit
 ```
 
-不暴露：
+SCL / SDA：
 
 ```text
-START
-STOP
-ACK / NACK
-write_byte
-read_byte
-```
-
-这些属于 `platform_i2c.c` private protocol primitives。
-
-不增加 `mem_read / mem_write`，寄存器语义留给 MPU6050 等具体设备模块。
-
----
-
-# 10. Software I2C GPIO / 时序合同
-
-SCL / SDA transaction 中始终保持：
-
-```text
+PB6 / PB7
 Open-Drain Output
-```
-
-语义：
-
-```text
-LOW     -> actively pull low
-HIGH    -> release
-READ    -> physical line readback
-```
-
-不动态切换 SDA Input / Output。
-
-内部语义优先使用：
-
-```text
-SDA_LOW
-SDA_RELEASE
-SDA_READ
-SCL_LOW
-SCL_RELEASE
-SCL_READ
+No Pull
+external pull-up
+HIGH = release
+LOW = actively pull low
+physical readback
 ```
 
 时序：
 
 ```text
-Standard-mode oriented
-nominal ~100 kHz
-exact 100 kHz not required
-MSB first
-Repeated START supported
-last read byte -> NACK
-```
-
-每次需要 SCL HIGH 时：
-
-```text
-release SCL
-read actual SCL
-wait in us steps if LOW
-timeout -> PLATFORM_ERR_TIMEOUT
-```
-
-第一版因此具备基础 clock-stretch / stuck-low 检测能力，但不构建复杂 Clock Stretching Framework。
-
----
-
-# 11. 微秒延时冻结方案
-
-现有：
-
-```text
-03_Platform/platform_common/platform_def.h
-```
-
-已经预留：
-
-```c
-void platform_delay_ms(uint32_t ms);
-void platform_delay_us(uint32_t us);
-```
-
-Phase 3 只实现：
-
-```text
 platform_delay_us()
-```
-
-计划实现位置：
-
-```text
-04_Impl/impl_mcu/impl_platform_delay.c
-```
-
-实现：
-
-```text
 Cortex-M4 DWT CYCCNT
-busy-wait
-lazy initialization
-SystemCoreClock based conversion
+nominal ~100 kHz
+Repeated START supported
+last RX byte NACK
 ```
 
-不新增：
+Phase 3 目标板证据（2026-09-02）：
 
 ```text
-platform_time_delay_us()
-new Platform Delay module
-public delay init API
+Keil Full Rebuild (with smoke)         0 errors
+Serial Assistant                       I2C_SMOKE,TXRX,PASS,status=0x18
+RTT / EasyLogger                       i2c smoke txrx pass, status=0x18
+Logic Analyzer                         START -> 0x38(W) -> 0xAC 0x33 0x00 -> STOP
+Decoder ACK                            address and all three command bytes ACK
+Temporary verification path           removed
+Keil Full Rebuild (normal path)        0 errors
 ```
-
-现有：
-
-```text
-platform_time_delay_ms()
-```
-
-继续作为 FreeRTOS / CMSIS-RTOS2 Task Context 毫秒调度延时。
-
-两个延时底层语义不同：
-
-```text
-ms -> scheduler delay
-us -> short busy-wait timing
-```
-
-旧预留 `platform_delay_ms()` 不属于 Phase 3 必须实现范围。
 
 ---
 
-# 12. Software I2C 静态配置
+# 9. 当前 Active Phase
 
-静态配置统一放：
+当前阶段：
+
+```text
+Phase 4 — LED Module
+```
+
+状态：
+
+```text
+DESIGN FROZEN
+IMPLEMENTATION PLAN READY
+IMPLEMENTATION NOT STARTED
+```
+
+专项设计：
+
+```text
+00_Doc/02_架构设计/LED_Phase1设计.md
+```
+
+当前唯一执行计划：
+
+```text
+00_Doc/04_Agent/implementation_plan.md
+```
+
+当前计划标题：
+
+```text
+LED Phase 4 Implementation Plan
+```
+
+---
+
+# 10. LED Phase 4 冻结设计
+
+最终职责链：
+
+```text
+APP / Control           Phase 10
+    ↓ semantic event
+Indicator Task          Phase 9
+    ↓
+Indicator Service       Phase 4
+    ↓
+Platform LED            Phase 4
+    ↓
+Platform GPIO           existing
+    ↓
+STM32 GPIO Impl         existing
+```
+
+Phase 4 不实现正式 APP Control FSM，不永久创建 Indicator Task。
+
+## 10.1 Platform LED
+
+定位：
+
+```text
+lightweight LED actuator abstraction
+caller-owned static object
+no malloc/free
+```
+
+第一版不使用：
+
+```text
+platform_device_t
+runtime device type
+registry
+manager
+ops table
+new impl_led layer
+```
+
+原因：LED 当前没有复杂生命周期、统一设备注册、运行时查找等真实需求。
+
+`platform_led_t` 与 GPIO 一对一，直接拥有自己的 `platform_gpio_t` 存储。
+
+公共能力：
+
+```text
+platform_led_init
+platform_led_on
+platform_led_off
+platform_led_toggle
+platform_led_deinit
+```
+
+## 10.2 BSP / 有效电平
+
+Status LED GPIO 继续复用：
+
+```text
+platform_bsp_gpio_construct_status_led()
+```
+
+具体 PC13 / GPIOC / HAL Pin 不重复进入 `00_Config`。
+
+静态有效电平进入：
 
 ```text
 00_Config/project_config.h
 ```
 
-冻结计划：
-
-```c
-#define PROJECT_SOFT_I2C_HALF_PERIOD_US    (5U)
-#define PROJECT_SOFT_I2C_SCL_TIMEOUT_US    (100U)
-```
-
-不把 timing 放进 `platform_i2c_t` Context。
-
-协议固定行为不进入 Config：
+计划配置：
 
 ```text
-7-bit address
-MSB first
-9 recovery clocks maximum
-last read byte NACK
+PROJECT_STATUS_LED_ACTIVE_LEVEL = LOW
 ```
+
+由 BSP LED construction 将 GPIO Binding + active level 组合为 Status LED 对象。
+
+Service / APP 不知道 LOW/HIGH 极性。
+
+## 10.3 Indicator Service
+
+事件：
+
+```text
+SERVICE_INDICATOR_EVENT_STOPPED
+SERVICE_INDICATOR_EVENT_RUNNING
+SERVICE_INDICATOR_EVENT_ONCE_SUCCESS
+```
+
+公共能力：
+
+```text
+service_indicator_init
+service_indicator_handle_event
+service_indicator_deinit
+```
+
+行为：
+
+```text
+STOPPED      -> OFF
+RUNNING      -> ON
+ONCE_SUCCESS -> blink 3 times -> OFF
+```
+
+Indicator Service 不维护 APP `RUNNING / STOPPED` 真实状态，不决定 UART TX 是否成功。
+
+## 10.4 闪烁时序
+
+静态配置：
+
+```text
+blink count   = 3
+blink ON ms   = 100
+blink OFF ms  = 100
+```
+
+统一放：
+
+```text
+00_Config/project_config.h
+```
+
+延时统一使用：
+
+```text
+platform_time_delay_ms()
+```
+
+不使用：
+
+```text
+HAL_Delay()
+osDelay()
+vTaskDelay()
+```
+
+最终存在独立 Indicator Task，因此三闪可以使用 Task blocking delay；只阻塞 Indicator Task，不阻塞 UART / Acquisition 等其他 Task。
+
+`platform_time_get_ms()` 不作为第一版三闪的必要实现方案。
 
 ---
 
-# 13. Transaction / 错误合同
+# 11. Indicator Task 冻结方向
 
-Write：
-
-```text
-START
-Address + W
-ACK
-TX bytes + ACK
-STOP
-```
-
-Read：
+最终系统明确采用独立：
 
 ```text
-START
-Address + R
-ACK
-RX bytes
-intermediate ACK
-last byte NACK
-STOP
+Indicator Task
 ```
 
-WriteRead：
+职责：
 
 ```text
-START
-Address + W
-TX
-Repeated START
-Address + R
-RX
-STOP
+consume indicator events
+serialize LED behavior
+execute blink timing
+isolate LED delay from APP / UART / acquisition contexts
 ```
 
-地址由上层传 7-bit address，I2C 层内部生成 R/W bit。
-
-错误复用 `platform_error_t`：
+以下细节仍留到 Phase 9：
 
 ```text
-invalid param       -> PLATFORM_ERR_INVALID_PARAM
-not initialized     -> PLATFORM_ERR_NOT_INITIALIZED
-address NACK        -> PLATFORM_ERR_NOT_FOUND
-data/protocol error -> PLATFORM_ERR_IO
-SCL timeout         -> PLATFORM_ERR_TIMEOUT
-bus non-idle        -> PLATFORM_ERR_BUSY
+permanent Task creation
+priority
+stack size
+queue / notification mechanism
+event buffering / overwrite policy
 ```
 
-transaction 已开始后失败：
-
-```text
-preserve original error
-best-effort STOP / release
-return original error
-```
+Button 是否独立 Task 尚未冻结。
 
 ---
 
-# 14. Init / Recovery / Deinit
+# 12. LED Phase 4 验证方案
 
-Init：
-
-```text
-validate
-store SCL/SDA
-configure both OD Output / No Pull / initial HIGH
-release both
-check physical Idle
-```
-
-Idle：
+Host Test：
 
 ```text
-SCL HIGH
-SDA HIGH
+Platform LED object / lifecycle / active-level mapping
+Indicator Service event semantics
+three-blink count / timing request / final OFF
+error propagation
+Platform GPIO regressions
 ```
 
-初始化时：
+Target Smoke：
 
 ```text
-SCL HIGH + SDA LOW
-    -> allow one bus recovery
+FreeRTOS scheduler started
+Task Context
+platform_time_delay_ms()
 ```
 
-Recovery：
+推荐顺序：
 
 ```text
-release SDA
-up to 9 SCL pulses
-stop early if SDA releases
-finally generate STOP
-verify Idle
+STOPPED / OFF   ~1 s
+RUNNING / ON    ~2 s
+STOPPED / OFF   ~1 s
+ONCE_SUCCESS    3 x (100 ms ON + 100 ms OFF)
+FINAL OFF
 ```
 
-正常 transaction 如果总线异常，不自动反复 recovery；返回错误给调用者。
-
-Deinit：
+观察工具：
 
 ```text
-release SCL/SDA
-platform_gpio_deinit()
-clear initialized
+LED visual observation        PRIMARY
+RTT / EasyLogger              PRIMARY
+PC Serial Assistant           communication regression observation
+Logic Analyzer                NOT REQUIRED
 ```
 
-I2C 不销毁 caller-owned GPIO 对象存储。
+临时 Smoke 完成后必须完整移除并恢复正常固件路径，再执行一次 Keil Full Rebuild。
 
 ---
 
-# 15. Phase 3 验证方案
+# 13. Device Model 当前决策
 
-Phase 3 不允许只凭 Host Test / Keil Build 关闭。
+不要求所有“硬件相关模块”都机械使用统一 Device 类型。
 
-验证分层：
-
-```text
-Host Test
-    -> protocol logic / GPIO interaction sequence
-
-Keil Full Rebuild
-    -> STM32 / DWT / integration
-
-Target Board
-    -> Serial Assistant
-    -> RTT / EasyLogger
-    -> Logic Analyzer
-```
-
-目标板三路观察冻结为：
-
-## 15.1 串口助手
-
-观察低频测试阶段 / 最终结果，例如：
+当前分类：
 
 ```text
-I2C_SMOKE,START
-I2C_SMOKE,INIT,PASS
-I2C_SMOKE,TXRX,PASS
-I2C_SMOKE,PASS
+GPIO              -> lightweight resource, no platform_device_t
+LED               -> lightweight actuator, no platform_device_t
+Software I2C      -> communication capability, no platform_device_t
+UART              -> real device object, platform_device_t already used
+DHT20             -> future design should evaluate platform_device_t
+MPU6050           -> future design should evaluate platform_device_t
 ```
 
-失败：
-
-```text
-I2C_SMOKE,FAIL,<stage>,<platform_error>
-```
-
-## 15.2 RTT / EasyLogger
-
-观察：
-
-```text
-I2C init result
-bus recovery occurrence / failure
-address NACK
-timeout
-I/O failure
-smoke final result
-```
-
-不打印逐 bit / byte / ACK 正常日志。
-
-## 15.3 逻辑分析仪
-
-连接：
-
-```text
-PB6 -> SCL
-PB7 -> SDA
-GND -> common ground
-```
-
-必须观察：
-
-```text
-Idle HIGH
-START
-STOP
-Repeated START
-7-bit Address
-R/W
-ACK / NACK
-TX / RX Data
-MSB first
-last-read-byte NACK
-SCL high / low time
-actual clock in acceptable Standard-mode range
-```
-
-优先使用逻辑分析仪 I2C decoder。
-
-串口助手、RTT 与逻辑分析仪结果必须一致。
-
-目标板允许使用已连接 DHT20 / MPU6050 做原始 I2C transaction smoke verification，但 Phase 3 不建立正式 Sensor Driver，不猜测未经数据手册确认的破坏性命令。
+DHT20 / MPU6050 具有明确设备身份、配置、生命周期和数据语义，后续专项设计优先参考 UART 的 Device 模型，而不是照搬 LED 轻量对象。
 
 ---
 
-# 16. Phase 3 完成门槛
+# 14. 当前实施文件计划
 
-必须全部满足：
-
-```text
-Microsecond DWT implementation             PASS
-Platform I2C Host Test                     PASS
-Platform GPIO regressions                  PASS
-Coding Standard Review                     PASS
-Keil Full Rebuild                          PASS
-Serial Assistant target observation        PASS
-RTT target observation                     PASS
-Logic Analyzer START / STOP                PASS
-Logic Analyzer Address / ACK               PASS
-Logic Analyzer Repeated START              PASS
-Logic Analyzer Read / Write transaction    PASS
-Normal firmware path restored              PASS
-No Hardware I2C introduced                 PASS
-No HAL GPIO leakage into Platform I2C      PASS
-No Sensor business logic introduced        PASS
-No unnecessary mutex / async framework     PASS
-```
-
-若 Host / Keil 已通过但真实板测未完成：
+Phase 4 计划新增：
 
 ```text
-Phase 3 — IMPLEMENTED / TARGET BOARD VERIFICATION PENDING
+02_Service/service_indicator/
+├── service_indicator.h
+└── service_indicator.c
+
+03_Platform/platform_bsp/
+├── platform_led.h
+├── platform_led.c
+├── platform_bsp_led.h
+└── platform_bsp_led.c
+
+Tests/platform_led/
+Tests/platform_bsp_led/
+Tests/service_indicator/
 ```
 
-只有三路目标板观察全部通过后：
+计划修改：
 
 ```text
-Phase 3 — COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
+00_Config/project_config.h
+Keil project grouping as required
 ```
+
+只复用、不重构既有合同：
+
+```text
+Platform GPIO
+STM32 GPIO Impl
+Status LED GPIO Binding
+Platform Time
+Service Log
+```
+
+Phase 4 不增加正式 `01_APP` 业务代码。
 
 ---
 
-# 17. 当前后续路线
+# 15. 当前后续路线
 
 冻结顺序：
 
 ```text
-Phase 3  Software I2C          <- COMPLETED / TARGET SMOKE VERIFIED
-Phase 4  LED Module             <- NEXT (planning)
+Phase 3  Software I2C                   COMPLETED
+Phase 4  LED Module                     CURRENT / READY FOR CODEX
 Phase 5  Button Module
 Phase 6  DHT20 Environment Module
 Phase 7  MPU6050 Motion Module
@@ -789,11 +658,11 @@ Phase 10 Final APP Integration
 Final Integrated Board Test
 ```
 
-在清理 smoke 后完成一次 Keil Full Rebuild；随后停止继续扩展 I2C，进入 Phase 4 的 LED 专项设计与计划评审。
+Codex 执行 Phase 4 后必须停止，不自动进入 Phase 5。
 
 ---
 
-# 18. 当前暂缓范围
+# 16. 当前暂缓范围
 
 ```text
 SPI / LCD / GUI
