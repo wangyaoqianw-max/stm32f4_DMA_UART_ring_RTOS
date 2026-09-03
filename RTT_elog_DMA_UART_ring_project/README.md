@@ -1,6 +1,8 @@
 # STM32F4 DMA UART Ring RTOS
 
-当前阶段：`Phase 4 — IMPLEMENTED / TARGET BOARD VERIFICATION PENDING`
+当前阶段：`Phase 5 — Button Module (planning)`
+
+Phase 4 状态：`COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED`
 
 | 项目 | 当前状态 |
 | --- | --- |
@@ -10,6 +12,7 @@
 | Keil 构建 | 正常路径 Full Rebuild：0 errors；Phase 4 三源无警告 |
 | 目标板 LED | OFF / ON / 3 次闪烁 / 最终 OFF：PASS |
 | RTT | `start -> STOPPED -> RUNNING -> STOPPED -> ONCE_SUCCESS -> pass`：PASS |
-| UART 串口回归 | PENDING：尚无独立 PC Serial Assistant 证据 |
+| UART 串口回归 | PASS：用户确认 Phase 4 本次计划全部完成，现有通信基线正常 |
+| Smoke 清理 | PASS：临时 FreeRTOS smoke 已从正常固件、`freertos.c` 和 Keil 工程移除 |
 
-临时 FreeRTOS smoke 已从正常固件、`freertos.c` 和 Keil 工程移除。剩余人工验证仅需使用既有 PC Serial Assistant 流程确认 UART 通信未受影响；不得为此新增 smoke 专用协议。
+下一阶段进入 `Phase 5 — Button Module` 专项设计。正式编码前先冻结 Button Platform/BSP、消抖、单击/双击/长按事件语义以及 Host/目标板验证方案，再更新 `00_Doc/04_Agent/implementation_plan.md`。
