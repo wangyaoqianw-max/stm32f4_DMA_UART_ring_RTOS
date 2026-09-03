@@ -413,7 +413,7 @@ Task Context
 platform_time_delay_ms()
 ```
 
-- [ ] **Step 1: Add an isolated temporary smoke path**
+- [x] **Step 1: Add an isolated temporary smoke path**
 
 Smoke sequence:
 
@@ -429,7 +429,7 @@ PASS / FAIL
 
 Do not use `HAL_Delay()`.
 
-- [ ] **Step 2: Add low-frequency RTT smoke observability**
+- [x] **Step 2: Add low-frequency RTT smoke observability**
 
 Log only major stages:
 
@@ -444,7 +444,7 @@ indicator smoke pass / fail
 
 Do not log every ON/OFF edge.
 
-- [ ] **Step 3: Keil Full Rebuild with smoke path**
+- [x] **Step 3: Keil Full Rebuild with smoke path**
 
 Expected: 0 errors.
 
