@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F411xE</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;../05_vendors/RTT;../05_vendors/easylogger/inc;../05_vendors/easylogger/plugins/file;../05_vendors/easylogger/plugins/flash;../04_Impl/impl_middleware/impl_log;../03_Platform/platform_middleware;../03_Platform/platform_common;../03_Platform/platform_os;../03_Platform/platform_mcu/uart;../03_Platform/platform_mcu/gpio;../03_Platform/platform_mcu/i2c;../03_Platform/platform_bsp;../04_Impl/impl_mcu;../04_Impl/impl_os/freertos;../04_Impl/impl_board;../02_Service/service_common;../02_Service/service_uart;../02_Service/service_log;../02_Service/service_indicator;../00_Config;../01_APP</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;../05_vendors/RTT;../05_vendors/easylogger/inc;../05_vendors/easylogger/plugins/file;../05_vendors/easylogger/plugins/flash;../04_Impl/impl_middleware/impl_log;../03_Platform/platform_middleware;../03_Platform/platform_common;../03_Platform/platform_os;../03_Platform/platform_mcu/uart;../03_Platform/platform_mcu/gpio;../03_Platform/platform_mcu/i2c;../03_Platform/platform_bsp;../03_Platform/platform_bsp/button;../04_Impl/impl_mcu;../04_Impl/impl_os/freertos;../04_Impl/impl_board;../02_Service/service_common;../02_Service/service_uart;../02_Service/service_log;../02_Service/service_indicator;../02_Service/service_button;../00_Config;../01_APP</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -696,6 +696,16 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>service/service_button</GroupName>
+          <Files>
+            <File>
+              <FileName>service_button.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\02_Service\service_button\service_button.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>platform/platform_common</GroupName>
           <Files>
             <File>
@@ -757,6 +767,21 @@
               <FileName>platform_bsp_led.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\03_Platform\platform_bsp\led\platform_bsp_led.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>platform/platform_bsp/button</GroupName>
+          <Files>
+            <File>
+              <FileName>platform_button.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\03_Platform\platform_bsp\button\platform_button.c</FilePath>
+            </File>
+            <File>
+              <FileName>platform_bsp_button.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\03_Platform\platform_bsp\button\platform_bsp_button.c</FilePath>
             </File>
           </Files>
         </Group>
