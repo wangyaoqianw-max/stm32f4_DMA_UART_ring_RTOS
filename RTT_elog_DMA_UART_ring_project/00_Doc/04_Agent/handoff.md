@@ -236,9 +236,7 @@ blink OFF = 100 ms
 当前状态：
 
 ```text
-DESIGN FROZEN
-IMPLEMENTATION PLAN READY
-IMPLEMENTATION PENDING
+COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
 正式能力链：
@@ -477,7 +475,7 @@ Phase 5 Smoke Task / Queue 只是验证 Harness，不得成为永久架构既成
 
 ```text
 Button Phase 5 Implementation Plan
-Status: READY FOR IMPLEMENTATION
+Status: COMPLETED
 ```
 
 计划已包含：
@@ -510,10 +508,22 @@ Formal design document     DONE
 Implementation plan        DONE
 ```
 
+Phase 5 验证证据：
+
+```text
+Host Test: Platform Button / BSP Button / Button Service 与既有回归 PASS
+Keil normal production rebuild: 0 Error(s), 20 Warning(s)
+Target board: user-confirmed PASS
+Serial Assistant: START / READY / SINGLE / DOUBLE / LONG
+RTT: START / READY / SINGLE / DOUBLE / LONG
+Temporary Button / Indicator Smoke Task、Queue、启动钩子和 Keil Test 组：REMOVED
+Coding Standard Review: PASS
+```
+
 下一步：
 
 ```text
-Execute 00_Doc/04_Agent/implementation_plan.md
+Stop after Phase 5. Do not start Phase 6 until a new design and implementation plan are approved.
 ```
 
 执行完成前不得开始：

@@ -80,7 +80,7 @@ Phase 3  Software I2C                            COMPLETED
     ↓
 Phase 4  LED Module                              COMPLETED
     ↓
-Phase 5  Button Module                           CURRENT / PLAN READY
+Phase 5  Button Module                           COMPLETED / HOST + KEIL + TARGET VERIFIED
     ↓
 Phase 6  DHT20 Environment Module
     ↓
@@ -225,7 +225,7 @@ COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```text
 00_Doc/04_Agent/implementation_plan.md
 Button Phase 5 Implementation Plan
-Status: READY FOR IMPLEMENTATION
+Status: COMPLETED
 ```
 
 当前状态：
@@ -235,7 +235,7 @@ REQUIREMENTS ALIGNED
 DESIGN FROZEN
 FORMAL DESIGN WRITTEN
 IMPLEMENTATION PLAN READY
-IMPLEMENTATION PENDING
+COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
 ## 8.1 正式能力链
@@ -582,17 +582,17 @@ LED = LOW active / 3 blinks / 100 ms ON / 100 ms OFF
 
 # 16. 当前下一步
 
-当前 Phase：
+当前完成状态：
 
 ```text
 Phase 5 — Button Module
-PLAN READY / IMPLEMENTATION PENDING
+COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
-直接执行：
+下一步：
 
 ```text
-00_Doc/04_Agent/implementation_plan.md
+Stop after Phase 5. Phase 6 requires a new frozen design and implementation plan.
 ```
 
 执行时必须停在 Phase 5 完成点，不得在同一轮继续 Phase 6。
