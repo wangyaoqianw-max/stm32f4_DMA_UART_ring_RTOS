@@ -30,6 +30,13 @@
 #define FAKE_INDICATOR_MAX_RECORDS (8U)
 //******************************** Defines *********************************//
 
+_Static_assert(PROJECT_INDICATOR_BLINK_COUNT == 3U,
+               "unexpected frozen indicator blink count");
+_Static_assert(PROJECT_INDICATOR_BLINK_ON_MS == 100U,
+               "unexpected frozen indicator on duration");
+_Static_assert(PROJECT_INDICATOR_BLINK_OFF_MS == 100U,
+               "unexpected frozen indicator off duration");
+
 //******************************** Types ***********************************//
 typedef struct
 {
@@ -111,7 +118,7 @@ static int test_handle_event_validates_service_lifecycle_and_event(void)
     TEST_ASSERT(PLATFORM_ERR_OK == service_indicator_init(&service, &led));
     TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == service_indicator_handle_event(
                 &service,
-                SERVICE_INDICATOR_EVENT_MAX));
+                (service_indicator_event_t)3));
 
     return 0;
 }
