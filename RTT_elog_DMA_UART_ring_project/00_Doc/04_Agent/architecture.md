@@ -2,8 +2,8 @@
 
 > 文档类型：Architecture Contract  
 > 状态：Baseline  
-> 版本：V2.0  
-> 更新时间：2026-09-01  
+> 版本：V2.1  
+> 更新时间：2026-09-03  
 > 适用工程：`stm32f4_DMA_UART_ring_RTOS`
 
 ---
@@ -72,7 +72,16 @@ PC -> UART RX -> RingBuffer -> Command Parser
                       APP Control FSM
                       STOPPED / RUNNING
                        |            |
-                       |            +-------> LED
+                       |            +-------> Indicator Event
+                       |                         |
+                       |                         v
+                       |                  Indicator Task
+                       |                         |
+                       |                         v
+                       |                 Indicator Service
+                       |                         |
+                       |                         v
+                       |                    Platform LED
                        |
                        v
                  Acquisition Flow
@@ -177,11 +186,28 @@ Service Common / RingBuffer composition
 最终功能允许新增的典型能力：
 
 ```text
+Indicator Service
 Button Service
 Environment Service
 Motion Service
 Command Parser（也可由 APP Communication 内聚，需专项设计确认）
 ```
+
+Indicator Service 的职责是：
+
+```text
+STOPPED semantic event      -> LED OFF
+RUNNING semantic event      -> LED ON
+ONCE_SUCCESS semantic event -> blink 3 times -> OFF
+```
+
+Indicator Service 不负责：
+
+- 维护 APP `RUNNING / STOPPED` 真实业务状态；
+- 判断 ONCE 是否允许执行；
+- 判断 UART 是否真正发送成功；
+- 创建最终 Indicator Task；
+- 直接依赖 STM32 HAL。
 
 Button Service 的职责是：
 
@@ -232,6 +258,7 @@ Platform UART
 Platform OS
 Platform Log
 Platform GPIO
+Platform I2C
 ```
 
 ## 6.1 Platform GPIO
@@ -273,17 +300,36 @@ Software I2C
 
 协议逻辑必须避免直接依赖 `HAL_GPIO_xxx`。
 
-Software I2C 的具体目录、对象模型、delay-us 注入方式和公共 API 必须在专项设计中冻结后再编码。
-
-架构只先冻结以下边界：
+当前第一阶段已冻结：
 
 - 依赖 Platform GPIO；
 - 提供 DHT20 / MPU6050 所需 I2C transaction 能力；
-- 使用微秒级 delay；
-- 不使用 RTOS tick delay 直接 bit-bang；
+- 使用 `platform_delay_us()` 微秒级 busy-wait；
+- Master-only / 7-bit / synchronous；
 - 不把传感器业务逻辑写入 I2C 层。
 
-## 6.3 Board / BSP
+## 6.3 Platform LED
+
+Platform LED 是 GPIO 之上的轻量执行器能力。
+
+第一阶段对象不接入 `platform_device_t` / runtime device type，不建立 registry / manager。
+
+职责：
+
+```text
+init
+on
+off
+toggle
+deinit
+active-level translation
+```
+
+Platform LED 不负责 RUNNING / STOPPED / ONCE_SUCCESS 等产品状态。
+
+LED 与底层 GPIO 为一对一关系，第一阶段 `platform_led_t` 直接拥有自己的 `platform_gpio_t` 存储。
+
+## 6.4 Board / BSP
 
 Board / BSP 表达具体板级设备语义，例如：
 
@@ -301,6 +347,8 @@ MPU6050
 - 具体 Soft I2C bus 绑定；
 - 具体传感器地址 / 板级连接；
 - 设备基础读写能力。
+
+Status LED 当前 GPIO 物理绑定继续复用既有 `platform_bsp_gpio_construct_status_led()`；有效电平作为产品编译期静态配置进入 `00_Config/project_config.h`，再由 BSP LED 构造阶段装配到 `platform_led_t`。
 
 BSP 不负责 APP 的 START / STOP / ONCE 业务状态机。
 
@@ -332,7 +380,15 @@ Impl 回答：
 - IRQ / DMA；
 - EasyLogger / RTT。
 
-当前下一阶段可能需要新增的具体实现是 GPIO STM32 Impl，但必须先经过对应专项设计 / 计划确认。
+LED Phase 4 不新增 `impl_led.c`。LED STM32 硬件落地继续复用：
+
+```text
+Platform LED
+ -> Platform GPIO
+ -> STM32 GPIO Impl
+```
+
+禁止为了层级对称增加无实际职责的 `impl_led_on() -> platform_gpio_write()` 透传层。
 
 Impl 不负责：
 
@@ -422,8 +478,7 @@ UART 下层只产生字节流和通信事件，不负责识别 `START` / `STOP` 
 ```text
 Sensor Data / Command Response
     -> APP / Communication
-    -> UART Service
-    -> Platform UART
+    -> UART Service / Platform UART
     -> STM32 UART Impl
     -> HAL / DMA
     -> USART1
@@ -494,9 +549,9 @@ UNLOCK BUS
 
 第一阶段原则：
 
-> Task 数量由真实并发职责决定，不由设备数量决定。
+> Task 数量由真实并发职责决定，不由设备数量机械决定。
 
-推荐逻辑职责：
+当前已确认的最终任务方向包括：
 
 ```text
 Communication Task
@@ -504,24 +559,28 @@ Communication Task
 - text command assembly / parsing
 - control event submission
 
-Acquisition / Control execution context
-- APP state handling
-- 5 s periodic acquisition
-- ONCE execution
+Acquisition Task
+- DHT20 + MPU6050 serialized acquisition
+- 5 s periodic acquisition/report execution
 
-Button processing context
-- polling / debounce / click recognition
+Indicator Task
+- consume indicator events
+- execute RUNNING / STOPPED / ONCE_SUCCESS indication
+- isolate blink delay from APP / UART / acquisition contexts
 ```
 
-具体采用 Thread、Queue、Notification、Timer 还是复用现有 Task，必须在对应专项设计中确定。
+Button 是否独立 Task 仍留待 Button 与 Phase 9 专项设计确认。
 
 禁止无必要创建：
 
 ```text
 DHT20 Task
 MPU6050 Task
-LED Task
 ```
+
+Indicator Task 已有明确并发职责，不属于“按设备机械拆 Task”。
+
+具体 Thread、Queue、Notification、Timer、优先级、栈大小和事件缓存策略仍由 Phase 9 冻结。
 
 ---
 
@@ -568,11 +627,14 @@ RUNNING -> ON
 ONCE successful TX -> blink 3 times -> OFF
 ```
 
-分层：
+冻结分层：
 
 ```text
 APP decides semantic state
-    -> LED / BSP capability
+    -> Indicator Event
+    -> Indicator Task
+    -> Indicator Service
+    -> Platform LED
     -> Platform GPIO
     -> GPIO Impl
 ```
@@ -582,6 +644,8 @@ APP 不知道 LED 是高电平还是低电平点亮。
 连续 RUNNING 期间 5 s UART 发送不改变 LED 常亮状态。
 
 LED 三闪不能在 ISR 内通过阻塞 delay 完成。
+
+由于最终采用独立 Indicator Task，三闪允许在该 Task Context 内使用 `platform_time_delay_ms()` 顺序延时；不得直接调用 `HAL_Delay()`、`osDelay()` 或 `vTaskDelay()` 绕过 Platform OS。
 
 ---
 
@@ -610,6 +674,7 @@ ERROR = 初始化或关键通信失败
 
 - UART byte trace；
 - I2C bit / ACK trace；
+- LED 每个亮灭边沿 trace；
 - ISR 高频打印。
 
 Platform / Impl 主要负责返回错误和事件。关键初始化信息可由 APP / Service 根据返回值统一记录，不要求所有底层层级直接调用日志 API。
@@ -633,8 +698,10 @@ Acquisition period = 5000 ms
 Button debounce
 Button double-click window
 Button long-press = 3000 ms
+Status LED active level
 LED one-shot blink count = 3
-LED blink interval
+LED blink on time = 100 ms
+LED blink off time = 100 ms
 ```
 
 放入 `00_Config`，具体宏名在专项设计中确认。
@@ -657,19 +724,20 @@ APP Communication Phase 1
 Platform OS
 Service Log / Platform Log / RTT
 Platform GPIO Phase 1 public contract
+STM32 GPIO Impl + board GPIO binding
+Software I2C Phase 1
+LED Phase 1 frozen design
 ```
 
 当前需求已冻结、但专项设计尚需逐项完成：
 
 ```text
-STM32 GPIO Impl + board binding
-LED / KEY BSP
 Button event service
-Software I2C
 DHT20
 MPU6050
+UART application communication
+Final RTOS event delivery details
 APP final acquisition/control FSM
-UART command parser integration
 5 s report integration
 final board verification
 ```
@@ -700,6 +768,9 @@ Bluetooth
 UART 基线继续冻结。
 GPIO 是底层通用能力。
 Software I2C 建立在 GPIO 之上。
+Platform LED 建立在 GPIO 之上。
+Indicator Service 表达提示灯语义。
+Indicator Task 隔离提示灯事件与阻塞闪烁。
 Sensor 驱动建立在 I2C 之上。
 Button / UART 只产生控制输入。
 APP FSM 是唯一业务状态源。
