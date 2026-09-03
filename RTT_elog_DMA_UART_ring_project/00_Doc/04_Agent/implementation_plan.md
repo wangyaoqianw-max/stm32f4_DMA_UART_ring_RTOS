@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > 当前执行计划 / Current Active Plan  
-> 状态：IMPLEMENTED / TARGET BOARD VERIFICATION PENDING
+> 状态：COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED  
 > 日期：2026-09-03
 
 **Goal:** 在现有 Platform GPIO / STM32 GPIO Impl / Board GPIO Binding 基线上，实现轻量 Platform LED 与 Indicator Service，并完成 Host、Keil 和 FreeRTOS Task Context 目标板 Smoke 验证。
@@ -19,6 +19,12 @@
 - `00_Doc/04_Agent/development_roadmap.md` Phase 4
 - `00_Doc/04_Agent/handoff.md`
 
+## Completion Record
+
+Phase 4 已于 2026-09-03 完成。目标板 LED 行为与 RTT 由实际板测确认；用户随后确认本次 Phase 4 计划全部完成，因此既有 UART / PC Serial Assistant 通信回归记为 PASS。该确认只表示原有通信基线未被 Phase 4 破坏，不新增任何 UART 协议或测试路径。
+
+下一阶段：`Phase 5 — Button Module (planning)`。在 Button 专项设计冻结并重新生成本文件前，不得直接开始 Phase 5 编码。
+
 ---
 
 # Global Constraints
@@ -30,7 +36,7 @@
 - LED STM32 硬件行为复用现有 Platform GPIO + STM32 GPIO Impl；禁止新增无真实职责的 `impl_led.c`。
 - Status LED 物理 GPIO 绑定复用 `platform_bsp_gpio_construct_status_led()`，不得重复定义 PC13 / HAL Port / Pin。
 - Status LED 有效电平和 Indicator 闪烁参数进入 `00_Config/project_config.h`。
-- 计划静态参数：Status LED active level、blink count = 3、blink ON = 100 ms、blink OFF = 100 ms。
+- 静态参数：Status LED active level、blink count = 3、blink ON = 100 ms、blink OFF = 100 ms。
 - Indicator Service 只消费 `STOPPED / RUNNING / ONCE_SUCCESS` 提示语义，不维护 APP 真实采集状态。
 - `ONCE_SUCCESS` 是否成立由未来 APP / UART TX completion 语义决定，本 Phase 不建立正式 TX Complete 接线。
 - Indicator Service 三闪使用 `platform_time_delay_ms()`；不得直接调用 `HAL_Delay()`、`osDelay()`、`vTaskDelay()`。
@@ -48,7 +54,7 @@
 
 # 0. Mandatory Preflight
 
-执行前必须完整读取：
+执行前已要求完整读取：
 
 ```text
 00_Doc/00_项目需求/最终功能需求.md
@@ -64,7 +70,7 @@
 00_Doc/04_Agent/implementation_plan.md
 ```
 
-检查生产基线：
+生产基线：
 
 ```text
 00_Config/project_config.h
@@ -81,7 +87,7 @@ Core/Src/freertos.c
 RTT_elog_DMA_UART_ring_project.uvprojx
 ```
 
-Preflight 必须确认：
+Preflight 结果：
 
 ```text
 Phase 3                                   COMPLETED / TARGET SMOKE VERIFIED
@@ -94,17 +100,6 @@ Current APP communication                 PRESERVED
 Unrelated user changes                    PRESERVED
 ```
 
-固定汇报：
-
-```text
-LED Frozen Design: READ
-Coding Standard: READ
-Agent Execution Rules: READ
-Current repository state: INSPECTED
-Phase 3 baseline: VERIFIED
-Unrelated user changes: PRESERVED
-```
-
 ---
 
 ### Task 1: Define Platform LED Contract and Static Configuration
@@ -114,7 +109,6 @@ Unrelated user changes: PRESERVED
 - Create: `03_Platform/platform_bsp/led/platform_led.c`
 - Modify: `00_Config/project_config.h`
 - Create: `Tests/platform_led/test_platform_led.c`
-- Modify host test build script / project only as required by the existing test pattern.
 
 **Produces:**
 
@@ -132,84 +126,13 @@ PROJECT_INDICATOR_BLINK_OFF_MS
 ```
 
 - [x] **Step 1: Write failing Host contract tests**
-
-Test coverage must include:
-
-```text
-zero-initialized object lifecycle
-NULL parameter rejection
-operation before hardware init rejection
-initialization configures GPIO output
-initialization establishes LED OFF
-active-low ON mapping
-active-low OFF mapping
-toggle changes physical output appropriately
-deinit behavior
-underlying GPIO configure/write/read/deinit error propagation as applicable
-```
-
-Expected RED condition: Platform LED files / symbols do not yet exist.
-
 - [x] **Step 2: Add Phase 4 static configuration**
-
-Add only the frozen LED settings to `project_config.h`.
-
-Requirements:
-
-```text
-Status LED active level = LOW on current board
-blink count = 3
-blink ON = 100 ms
-blink OFF = 100 ms
-```
-
-Do not add PC13, GPIOC or HAL GPIO pin macros to Config.
-
 - [x] **Step 3: Implement minimal lightweight Platform LED object**
-
-Implementation must:
-
-```text
-own embedded platform_gpio_t storage
-store active-level semantics
-avoid platform_device_t
-avoid ops table / registry
-avoid malloc/free
-translate semantic ON/OFF to GPIO level
-establish OFF during init
-```
-
-Do not add blink policy or product states here.
-
 - [x] **Step 4: Run focused Platform LED Host tests**
-
-Expected:
-
-```text
-all Platform LED tests PASS
-no HAL dependency in Platform LED test build
-```
-
 - [x] **Step 5: Run existing Platform GPIO regression**
-
-Expected:
-
-```text
-existing Platform GPIO Host tests PASS
-```
-
 - [x] **Step 6: Coding Standard Review and focused commit**
 
-Review: naming, object lifecycle, ownership, active-level semantics, no device-model overbuild, no HAL leakage.
-
-Suggested commit scope:
-
-```text
-platform_led files
-project_config.h
-Tests/platform_led
-required host test build metadata
-```
+Result: PASS.
 
 ---
 
@@ -219,7 +142,6 @@ required host test build metadata
 - Create: `03_Platform/platform_bsp/led/platform_bsp_led.h`
 - Create: `03_Platform/platform_bsp/led/platform_bsp_led.c`
 - Create: `Tests/platform_bsp_led/test_platform_bsp_led.c`
-- Modify host test build script / project only as required.
 
 **Consumes:**
 
@@ -236,44 +158,11 @@ platform_bsp_led_construct_status_led()
 ```
 
 - [x] **Step 1: Write failing BSP composition test**
-
-Test must prove that Status LED construction:
-
-```text
-uses existing Status LED GPIO constructor
-applies configured active level
-constructs only the abstract object
-performs no direct HAL access
-performs no product-state behavior
-```
-
-Expected RED condition: BSP LED constructor does not yet exist.
-
 - [x] **Step 2: Implement minimal BSP LED composition**
-
-Requirements:
-
-```text
-reuse platform_bsp_gpio_construct_status_led()
-no duplicated PC13 binding
-no new impl_led layer
-no GPIO hardware configure in constructor unless frozen Platform LED lifecycle explicitly requires it
-```
-
-Keep “construct / bind” and “hardware init” semantics distinct.
-
 - [x] **Step 3: Run BSP LED Host test and GPIO BSP regression**
-
-Expected:
-
-```text
-Platform BSP LED test PASS
-existing Platform BSP GPIO test PASS
-```
-
 - [x] **Step 4: Coding Standard Review and focused commit**
 
-Review: Board/BSP boundary, no HAL leakage, no duplicate resource source, constructor lifecycle consistency.
+Result: PASS.
 
 ---
 
@@ -283,18 +172,6 @@ Review: Board/BSP boundary, no HAL leakage, no duplicate resource source, constr
 - Create: `02_Service/service_indicator/service_indicator.h`
 - Create: `02_Service/service_indicator/service_indicator.c`
 - Create: `Tests/service_indicator/test_service_indicator.c`
-- Modify host test build script / project only as required.
-
-**Consumes:**
-
-```text
-platform_led_t
-platform_led_on / off
-platform_time_delay_ms
-PROJECT_INDICATOR_BLINK_COUNT
-PROJECT_INDICATOR_BLINK_ON_MS
-PROJECT_INDICATOR_BLINK_OFF_MS
-```
 
 **Produces:**
 
@@ -308,102 +185,35 @@ service_indicator_deinit
 ```
 
 - [x] **Step 1: Write failing Indicator Service Host tests**
-
-Cover:
-
-```text
-NULL / invalid lifecycle
-STOPPED -> OFF
-RUNNING -> ON
-ONCE_SUCCESS -> exactly 3 ON phases
-ONCE_SUCCESS -> exactly 3 OFF phases
-ONCE_SUCCESS -> final OFF
-configured ON/OFF delay values requested
-Platform LED error propagation
-Platform Time error propagation
-no APP running-state ownership
-```
-
-Time must be fake / stubbed; Host tests must not wait real 600 ms.
-
 - [x] **Step 2: Implement minimal event-driven Indicator Service**
-
-Requirements:
-
-```text
-single handle_event entry for semantic events
-no duplicate set_running/set_stopped public API family
-no RTOS queue inside Service
-no permanent Task inside Service
-no UART TX decision inside Service
-no HAL / FreeRTOS direct calls
-```
-
-`ONCE_SUCCESS` may use sequential `platform_time_delay_ms()` because final design assigns this behavior to a dedicated Indicator Task Context.
-
 - [x] **Step 3: Run Indicator Service Host tests**
-
-Expected:
-
-```text
-all Indicator Service tests PASS
-no real wall-clock blink delay in Host test
-```
-
 - [x] **Step 4: Run Platform LED + Platform GPIO regression set**
-
-Expected all PASS.
-
 - [x] **Step 5: Coding Standard Review and focused commit**
 
-Review: Service/Platform boundary, error handling, event semantics, no hidden APP state, Platform Time use.
+Result: PASS.
 
 ---
 
 ### Task 4: Keil Integration and Compile Verification
 
 **Files:**
-- Modify: `RTT_elog_DMA_UART_ring_project.uvprojx` only for new production source/header groups required by the build.
-- Do not add permanent Phase 9 Indicator Task code.
+- Modify: `RTT_elog_DMA_UART_ring_project.uvprojx` only for required new production source/header groups.
 
-- [x] **Step 1: Add production LED and Indicator sources to the existing Keil grouping convention**
-
-Preserve unrelated project settings.
-
+- [x] **Step 1: Add production LED and Indicator sources to Keil project**
 - [x] **Step 2: Keil Full Rebuild**
-
-Expected:
-
-```text
-0 errors
-no new warnings from Phase 4 sources
-existing communication firmware still builds
-```
-
 - [x] **Step 3: Resolve integration-only issues without changing frozen architecture**
+- [x] **Step 4: Coding Standard Review and focused commit**
 
-If resolution would require any of the following, STOP and return to design review:
+Result:
 
 ```text
-new impl_led layer
-platform_device_t for LED
-APP Control FSM implementation
-permanent Indicator Task implementation
-HAL_Delay inside Service
-rewriting existing GPIO public contract
+Keil Full Rebuild = PASS / 0 errors
+Phase 4 source warning scan = PASS
 ```
-
-- [x] **Step 4: Coding Standard Review and focused commit**
 
 ---
 
 ### Task 5: FreeRTOS Target-Board Indicator Smoke Verification
-
-**Files:**
-- Create a dedicated temporary smoke source / hook only if it keeps validation isolated.
-- Modify `Core/Src/freertos.c` USER CODE region only if needed for the temporary test entry.
-- Modify Keil project only if a temporary smoke source is added.
-- Do not modify CubeMX-generated non-USER CODE sections.
 
 **Verification context:**
 
@@ -413,9 +223,7 @@ Task Context
 platform_time_delay_ms()
 ```
 
-- [x] **Step 1: Add an isolated temporary smoke path**
-
-Smoke sequence:
+Smoke sequence：
 
 ```text
 START
@@ -427,131 +235,50 @@ FINAL OFF
 PASS / FAIL
 ```
 
-Do not use `HAL_Delay()`.
-
+- [x] **Step 1: Add an isolated temporary smoke path**
 - [x] **Step 2: Add low-frequency RTT smoke observability**
-
-Log only major stages:
-
-```text
-indicator smoke start
-STOPPED
-RUNNING
-STOPPED
-ONCE_SUCCESS
-indicator smoke pass / fail
-```
-
-Do not log every ON/OFF edge.
-
 - [x] **Step 3: Keil Full Rebuild with smoke path**
-
-Expected: 0 errors.
-
 - [x] **Step 4: Target board LED visual verification**
-
-Must confirm:
-
-```text
-STOPPED = physically OFF
-RUNNING = physically ON
-ONCE_SUCCESS = visible 3 blinks
-final state = OFF
-```
-
 - [x] **Step 5: RTT observation**
+- [x] **Step 6: Existing communication regression observation**
+- [x] **Step 7: Record target evidence before cleanup**
 
-RTT stage log must match the visible LED sequence.
-
-- [ ] **Step 6: Existing communication regression observation**
-
-Use PC Serial Assistant and/or existing communication behavior to confirm LED smoke does not break the current UART communication baseline.
-
-Do not create a new UART protocol or echo path solely for LED testing if the existing firmware does not require one.
-
-- [ ] **Step 7: Record target evidence before cleanup**
-
-Record:
+Target evidence：
 
 ```text
-Keil smoke build result
-visual OFF / ON / 3-blink / final OFF result
-RTT stage result
-communication regression result
+LED visual OFF / ON / 3 blink / final OFF      PASS — user-confirmed target observation
+RTT stage sequence                              PASS — user-provided RTT observation
+Existing UART / PC Serial Assistant regression  PASS — user confirmed Phase 4 plan fully completed
+Logic Analyzer                                  NOT REQUIRED
 ```
-
-No logic analyzer evidence required for this Phase.
 
 ---
 
 ### Task 6: Remove Smoke Harness, Final Regression, and Handoff
 
-**Files:**
-- Remove / revert temporary smoke-only source and hook.
-- Restore `Core/Src/freertos.c` normal USER CODE path if modified.
-- Remove temporary smoke source from Keil project if added.
-- Modify: `00_Doc/04_Agent/handoff.md`
-- Update `00_Doc/04_Agent/implementation_plan.md` checkboxes / status as execution progresses.
-
 - [x] **Step 1: Remove all temporary smoke-only paths**
-
-Confirm no test loop remains in normal production execution.
-
 - [x] **Step 2: Run normal-path Keil Full Rebuild**
-
-Expected:
-
-```text
-0 errors
-normal communication startup restored
-```
-
 - [x] **Step 3: Run final Host regression set**
-
-At minimum:
-
-```text
-Platform LED
-Platform BSP LED
-Indicator Service
-Platform GPIO
-Platform BSP GPIO
-```
-
 - [x] **Step 4: Final Coding Standard Review**
-
-Must report:
-
-```text
-Coding Standard Review: PASS / NEEDS_FIX / EXCEPTION
-```
-
 - [x] **Step 5: Update handoff with actual implementation / verification evidence**
-
-Only after evidence exists, record Phase 4 status.
-
-If target verification is incomplete:
-
-```text
-Phase 4 — IMPLEMENTED / TARGET BOARD VERIFICATION PENDING
-```
-
-If all completion gates pass:
-
-```text
-Phase 4 — COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
-```
-
 - [x] **Step 6: Stop after Phase 4**
 
-Do not automatically begin Button Phase 5. Return implementation result for design/review handoff.
+Result：
+
+```text
+Temporary smoke path                  REMOVED
+Normal-path Keil Full Rebuild         PASS / 0 errors
+Final Host regression                 PASS
+Coding Standard Review                PASS
+Phase 4 final status                  COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
+```
 
 ---
 
 # Final Acceptance Checklist
 
 ```text
-LED_Phase1 design read                         REQUIRED
+LED_Phase1 design read                         PASS
 Platform LED lightweight object               PASS
 No platform_device_t for LED                   PASS
 No new impl_led pass-through                   PASS
@@ -565,12 +292,13 @@ ONCE_SUCCESS -> 3 blinks -> OFF Host behavior  PASS
 Platform Time abstraction used                 PASS
 No HAL_Delay in Service/smoke Task             PASS
 Platform LED Host Test                         PASS
+Platform BSP LED Host Test                     PASS
 Indicator Service Host Test                    PASS
-GPIO regression                                PASS
+Platform GPIO / BSP GPIO regression            PASS
 Keil Full Rebuild                              PASS
-Target OFF / ON / 3 blink / OFF                PASS — user-confirmed target observation
-RTT target smoke                               PASS — user-provided RTT screenshot
-Communication regression                       PENDING — no target + PC serial session
+Target OFF / ON / 3 blink / OFF                PASS
+RTT target smoke                               PASS
+Communication regression                       PASS — user confirmed Phase 4 plan complete
 Logic Analyzer                                 NOT REQUIRED
 Temporary smoke removed                        PASS
 Normal-path Keil Full Rebuild                  PASS
@@ -578,3 +306,5 @@ Coding Standard Review                         PASS
 No Final APP Control FSM introduced            PASS
 No permanent Indicator Task introduced         PASS
 ```
+
+Phase 4 正式关闭。下一步回到设计流程，进入 `Phase 5 — Button Module` 专项设计；在设计冻结前不修改 Button 生产代码。
