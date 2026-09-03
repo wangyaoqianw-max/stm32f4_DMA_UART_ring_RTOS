@@ -275,6 +275,7 @@ static int test_second_valid_press_held_long_emits_only_long(void)
     TEST_ASSERT(PLATFORM_ERR_OK == service_button_process(&service, PLATFORM_BUTTON_STATE_PRESSED, 100U, &event));
     TEST_ASSERT(PLATFORM_ERR_OK == service_button_process(&service, PLATFORM_BUTTON_STATE_PRESSED, 130U, &event));
     TEST_ASSERT(SERVICE_BUTTON_GESTURE_SECOND_PRESS == service.gestureState);
+    TEST_ASSERT(SERVICE_BUTTON_EVENT_NONE == event);
     TEST_ASSERT(PLATFORM_ERR_OK == service_button_process(&service, PLATFORM_BUTTON_STATE_PRESSED, 3129U, &event));
     TEST_ASSERT(SERVICE_BUTTON_EVENT_NONE == event);
     TEST_ASSERT(PLATFORM_ERR_OK == service_button_process(&service, PLATFORM_BUTTON_STATE_PRESSED, 3130U, &event));
