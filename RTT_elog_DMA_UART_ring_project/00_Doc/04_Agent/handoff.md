@@ -92,6 +92,7 @@ CubeMX GPIO Configuration           PASS
 Board / GPIO Context Binding        COMPLETED / HOST VERIFIED
 Target Board GPIO Verification      PASS
 Software I2C Phase 3                COMPLETED / HOST + KEIL + DHT20 TARGET SMOKE VERIFIED
+LED Module Phase 4                  COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
 真实板测已确认：
@@ -102,6 +103,9 @@ PA0 User Key                          PASS
 PB6 Open-Drain Pull-Low / Release     PASS
 PB7 Open-Drain Pull-Low / Release     PASS
 PB7 Physical Readback                 PASS
+LED OFF / ON / 3 blink / final OFF    PASS
+Indicator RTT stage sequence           PASS
+Existing UART communication regression PASS
 ```
 
 ---
@@ -327,19 +331,7 @@ Keil Full Rebuild (normal path)        0 errors
 
 ---
 
-# 9. 当前 Active Phase
-
-当前阶段：
-
-```text
-Phase 4 — LED Module
-```
-
-状态：
-
-```text
-Phase 4 — IMPLEMENTED / TARGET BOARD VERIFICATION PENDING
-```
+# 9. LED Phase 4 完成记录
 
 专项设计：
 
@@ -347,37 +339,29 @@ Phase 4 — IMPLEMENTED / TARGET BOARD VERIFICATION PENDING
 00_Doc/02_架构设计/LED_Phase1设计.md
 ```
 
-当前唯一执行计划：
+最终状态：
 
 ```text
-00_Doc/04_Agent/implementation_plan.md
-```
-
-当前计划标题：
-
-```text
-LED Phase 4 Implementation Plan
+Phase 4 — COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
 实施与验证证据（2026-09-03）：
 
 ```text
 Platform LED / BSP LED / Indicator Service       IMPLEMENTED
-Temporary FreeRTOS indicator smoke path           REMOVED
 Final Host regression (5 suites, -Werror)         PASS
 Normal-path Keil Full Rebuild                      PASS: 0 errors, 20 pre-existing warnings
 Phase 4 source warning scan                        PASS: service_indicator.c / platform_led.c /
                                                    platform_bsp_led.c have no warnings
-Target LED visual verification                     PASS — user confirmed OFF / ON / 3 blinks / final OFF
-Target RTT stage observation                       PASS — user screenshot: start / STOPPED / RUNNING /
-                                                   STOPPED / ONCE_SUCCESS / indicator smoke pass
-Target + PC Serial Assistant communication check   PENDING — no independent current evidence
+Target LED visual verification                     PASS — OFF / ON / 3 blinks / final OFF
+Target RTT stage observation                       PASS — start / STOPPED / RUNNING /
+                                                   STOPPED / ONCE_SUCCESS / pass
+Target + PC Serial Assistant communication check   PASS — user confirmed Phase 4 plan completed
+Temporary FreeRTOS indicator smoke path            REMOVED
+Coding Standard Review                             PASS
 ```
 
-剩余验证（当前正常固件已按要求移除 smoke，Phase 4 仍等待 UART 通信回归）：
-
-1. 使用既有 PC Serial Assistant 流程回归 UART 通信；不得新增 smoke 专用协议。
-2. 记录该通信观察结果；只有具备独立证据时才将 communication regression 标为 PASS。
+串口回归 PASS 的证据来源为开发者对“本次 Phase 4 计划全部完成”的明确确认，不额外虚构串口截图或新协议证据。
 
 ---
 
@@ -422,8 +406,6 @@ ops table
 new impl_led layer
 ```
 
-原因：LED 当前没有复杂生命周期、统一设备注册、运行时查找等真实需求。
-
 `platform_led_t` 与 GPIO 一对一，直接拥有自己的 `platform_gpio_t` 存储。
 
 公共能力：
@@ -446,13 +428,7 @@ platform_bsp_gpio_construct_status_led()
 
 具体 PC13 / GPIOC / HAL Pin 不重复进入 `00_Config`。
 
-静态有效电平进入：
-
-```text
-00_Config/project_config.h
-```
-
-计划配置：
+静态有效电平：
 
 ```text
 PROJECT_STATUS_LED_ACTIVE_LEVEL = LOW
@@ -500,29 +476,13 @@ blink ON ms   = 100
 blink OFF ms  = 100
 ```
 
-统一放：
-
-```text
-00_Config/project_config.h
-```
-
 延时统一使用：
 
 ```text
 platform_time_delay_ms()
 ```
 
-不使用：
-
-```text
-HAL_Delay()
-osDelay()
-vTaskDelay()
-```
-
 最终存在独立 Indicator Task，因此三闪可以使用 Task blocking delay；只阻塞 Indicator Task，不阻塞 UART / Acquisition 等其他 Task。
-
-`platform_time_get_ms()` 不作为第一版三闪的必要实现方案。
 
 ---
 
@@ -553,56 +513,13 @@ queue / notification mechanism
 event buffering / overwrite policy
 ```
 
-Button 是否独立 Task 尚未冻结。
+Button 是否独立 Task 尚未冻结，留到 Phase 5 / Phase 9 根据真实职责决定。
 
 ---
 
-# 12. LED Phase 4 验证方案
+# 12. Device Model 当前决策
 
-Host Test：
-
-```text
-Platform LED object / lifecycle / active-level mapping
-Indicator Service event semantics
-three-blink count / timing request / final OFF
-error propagation
-Platform GPIO regressions
-```
-
-Target Smoke：
-
-```text
-FreeRTOS scheduler started
-Task Context
-platform_time_delay_ms()
-```
-
-推荐顺序：
-
-```text
-STOPPED / OFF   ~1 s
-RUNNING / ON    ~2 s
-STOPPED / OFF   ~1 s
-ONCE_SUCCESS    3 x (100 ms ON + 100 ms OFF)
-FINAL OFF
-```
-
-观察工具：
-
-```text
-LED visual observation        PRIMARY
-RTT / EasyLogger              PRIMARY
-PC Serial Assistant           communication regression observation
-Logic Analyzer                NOT REQUIRED
-```
-
-临时 Smoke 完成后必须完整移除并恢复正常固件路径，再执行一次 Keil Full Rebuild。
-
----
-
-# 13. Device Model 当前决策
-
-不要求所有“硬件相关模块”都机械使用统一 Device 类型。
+不要求所有硬件相关模块机械使用统一 Device 类型。
 
 当前分类：
 
@@ -619,56 +536,90 @@ DHT20 / MPU6050 具有明确设备身份、配置、生命周期和数据语义�
 
 ---
 
-# 14. 当前实施文件计划
+# 13. 当前 Active Phase
 
-Phase 4 计划新增：
-
-```text
-02_Service/service_indicator/
-├── service_indicator.h
-└── service_indicator.c
-
-03_Platform/platform_bsp/
-└── led/
-    ├── platform_led.h
-    ├── platform_led.c
-    ├── platform_bsp_led.h
-    └── platform_bsp_led.c
-
-Tests/platform_led/
-Tests/platform_bsp_led/
-Tests/service_indicator/
-```
-
-计划修改：
+当前阶段：
 
 ```text
-00_Config/project_config.h
-Keil project grouping as required
+Phase 5 — Button Module (planning)
 ```
 
-只复用、不重构既有合同：
+Phase 5 目前只进入专项设计，不直接编码。
+
+已知硬件基线：
 
 ```text
-Platform GPIO
-STM32 GPIO Impl
-Status LED GPIO Binding
-Platform Time
-Service Log
+PA0 -> User Key
+Platform BSP GPIO constructor -> platform_bsp_gpio_construct_user_key()
+Target Board GPIO input verification -> PASS
 ```
 
-Phase 4 不增加正式 `01_APP` 业务代码。
+已冻结最终按键业务映射：
+
+```text
+Button single -> START
+Button double -> SAMPLE_ONCE
+Button long   -> STOP
+```
+
+但 Phase 5 尚需专项设计冻结：
+
+```text
+KEY Platform / BSP capability boundary
+active-level configuration
+polling / sampling interface
+debounce algorithm and timing
+double-click window
+long-press threshold = 3000 ms
+Button Service Context / event contract
+single vs double confirmation timing
+Host Test strategy
+FreeRTOS target-board smoke strategy
+whether Phase 5 itself needs a temporary task context
+```
+
+永久 Button Task / priority / stack / final event transport 仍优先留到 Phase 9，除非 Phase 5 设计证明必须提前冻结。
+
+---
+
+# 14. 当前执行计划状态
+
+当前文件：
+
+```text
+00_Doc/04_Agent/implementation_plan.md
+```
+
+目前保存：
+
+```text
+LED Phase 4 Implementation Plan — COMPLETED
+```
+
+不要直接把该计划用于 Button 编码。
+
+Phase 5 推荐流程：
+
+```text
+Inspect current KEY / GPIO baseline
+    ↓
+Discuss Button design point-by-point
+    ↓
+Freeze Button Phase 1 design document
+    ↓
+Replace / update implementation_plan.md with Phase 5 plan
+    ↓
+Codex implementation
+```
 
 ---
 
 # 15. 当前后续路线
 
-冻结顺序：
-
 ```text
 Phase 3  Software I2C                   COMPLETED
-Phase 4  LED Module                     CURRENT / READY FOR CODEX
-Phase 5  Button Module
+Phase 4  LED Module                     COMPLETED
+Phase 5  Button Module                  CURRENT / PLANNING
 Phase 6  DHT20 Environment Module
 Phase 7  MPU6050 Motion Module
 Phase 8  UART Application Communication
@@ -676,8 +627,6 @@ Phase 9  RTOS Task / Event Design
 Phase 10 Final APP Integration
 Final Integrated Board Test
 ```
-
-Codex 执行 Phase 4 后必须停止，不自动进入 Phase 5。
 
 ---
 
