@@ -235,7 +235,7 @@ platform_bsp_gpio_construct_status_led()
 platform_bsp_led_construct_status_led()
 ```
 
-- [ ] **Step 1: Write failing BSP composition test**
+- [x] **Step 1: Write failing BSP composition test**
 
 Test must prove that Status LED construction:
 
@@ -249,7 +249,7 @@ performs no product-state behavior
 
 Expected RED condition: BSP LED constructor does not yet exist.
 
-- [ ] **Step 2: Implement minimal BSP LED composition**
+- [x] **Step 2: Implement minimal BSP LED composition**
 
 Requirements:
 
@@ -262,7 +262,7 @@ no GPIO hardware configure in constructor unless frozen Platform LED lifecycle e
 
 Keep “construct / bind” and “hardware init” semantics distinct.
 
-- [ ] **Step 3: Run BSP LED Host test and GPIO BSP regression**
+- [x] **Step 3: Run BSP LED Host test and GPIO BSP regression**
 
 Expected:
 
@@ -271,7 +271,7 @@ Platform BSP LED test PASS
 existing Platform BSP GPIO test PASS
 ```
 
-- [ ] **Step 4: Coding Standard Review and focused commit**
+- [x] **Step 4: Coding Standard Review and focused commit**
 
 Review: Board/BSP boundary, no HAL leakage, no duplicate resource source, constructor lifecycle consistency.
 
