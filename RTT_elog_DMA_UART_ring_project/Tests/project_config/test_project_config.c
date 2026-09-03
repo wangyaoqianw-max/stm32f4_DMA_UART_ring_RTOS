@@ -39,6 +39,18 @@ _Static_assert(PROJECT_COMM_WAIT_TIMEOUT_MS == 1000U,
                "unexpected communication wait timeout");
 _Static_assert(PROJECT_COMM_ERROR_IDLE_DELAY_MS == 1000U,
                "unexpected communication error idle delay");
+_Static_assert(PROJECT_USER_KEY_ACTIVE_LEVEL == PLATFORM_GPIO_LEVEL_LOW,
+               "unexpected user key active level");
+_Static_assert(PROJECT_USER_KEY_PULL == PLATFORM_GPIO_PULL_UP,
+               "unexpected user key pull");
+_Static_assert(PROJECT_BUTTON_SAMPLE_PERIOD_MS == 10U,
+               "unexpected button sample period");
+_Static_assert(PROJECT_BUTTON_DEBOUNCE_MS == 30U,
+               "unexpected button debounce duration");
+_Static_assert(PROJECT_BUTTON_DOUBLE_CLICK_MS == 300U,
+               "unexpected button double click duration");
+_Static_assert(PROJECT_BUTTON_LONG_PRESS_MS == 3000U,
+               "unexpected button long press duration");
 _Static_assert(PROJECT_STATUS_LED_ACTIVE_LEVEL == PLATFORM_GPIO_LEVEL_LOW,
                "unexpected status led active level");
 _Static_assert(PROJECT_INDICATOR_BLINK_COUNT == 3U,

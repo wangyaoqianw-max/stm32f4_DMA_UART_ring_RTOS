@@ -41,6 +41,13 @@
 #define PROJECT_SOFT_I2C_HALF_PERIOD_US              (5U)
 #define PROJECT_SOFT_I2C_SCL_TIMEOUT_US              (100U)
 
+#define PROJECT_USER_KEY_ACTIVE_LEVEL                PLATFORM_GPIO_LEVEL_LOW
+#define PROJECT_USER_KEY_PULL                        PLATFORM_GPIO_PULL_UP
+#define PROJECT_BUTTON_SAMPLE_PERIOD_MS              (10U)
+#define PROJECT_BUTTON_DEBOUNCE_MS                   (30U)
+#define PROJECT_BUTTON_DOUBLE_CLICK_MS               (300U)
+#define PROJECT_BUTTON_LONG_PRESS_MS                 (3000U)
+
 #define PROJECT_STATUS_LED_ACTIVE_LEVEL               PLATFORM_GPIO_LEVEL_LOW
 #define PROJECT_INDICATOR_BLINK_COUNT                 (3U)
 #define PROJECT_INDICATOR_BLINK_ON_MS                 (100U)
