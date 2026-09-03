@@ -4,7 +4,7 @@
  * All Rights Reserved.
  *
  * @file test_project_config.c
- * @brief 验证产品通信静态配置
+ * @brief 验证产品级静态配置
  * @author Codex
  * @date 2026-08-30
  * @version V1.0
@@ -39,6 +39,14 @@ _Static_assert(PROJECT_COMM_WAIT_TIMEOUT_MS == 1000U,
                "unexpected communication wait timeout");
 _Static_assert(PROJECT_COMM_ERROR_IDLE_DELAY_MS == 1000U,
                "unexpected communication error idle delay");
+_Static_assert(PROJECT_STATUS_LED_ACTIVE_LEVEL == PLATFORM_GPIO_LEVEL_LOW,
+               "unexpected status led active level");
+_Static_assert(PROJECT_INDICATOR_BLINK_COUNT == 3U,
+               "unexpected indicator blink count");
+_Static_assert(PROJECT_INDICATOR_BLINK_ON_MS == 100U,
+               "unexpected indicator blink on duration");
+_Static_assert(PROJECT_INDICATOR_BLINK_OFF_MS == 100U,
+               "unexpected indicator blink off duration");
 
 int main(void)
 {

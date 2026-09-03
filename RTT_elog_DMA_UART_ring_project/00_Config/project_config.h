@@ -4,7 +4,7 @@
  * All Rights Reserved.
  *
  * @file project_config.h
- * @brief 定义产品级通信静态配置。
+ * @brief 定义产品级静态配置。
  * @author Codex
  * @date 2026-08-30
  * @version V1.0
@@ -15,6 +15,7 @@
 #define PROJECT_CONFIG_H
 
 //******************************** Includes *********************************//
+#include "platform_gpio_types.h"
 #include "platform_thread.h"
 #include "platform_uart_types.h"
 //******************************** Includes *********************************//
@@ -39,6 +40,11 @@
 
 #define PROJECT_SOFT_I2C_HALF_PERIOD_US              (5U)
 #define PROJECT_SOFT_I2C_SCL_TIMEOUT_US              (100U)
+
+#define PROJECT_STATUS_LED_ACTIVE_LEVEL               PLATFORM_GPIO_LEVEL_LOW
+#define PROJECT_INDICATOR_BLINK_COUNT                 (3U)
+#define PROJECT_INDICATOR_BLINK_ON_MS                 (100U)
+#define PROJECT_INDICATOR_BLINK_OFF_MS                (100U)
 //******************************** Defines *********************************//
 
 #endif
