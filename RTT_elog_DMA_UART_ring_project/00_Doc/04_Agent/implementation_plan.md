@@ -307,7 +307,7 @@ service_indicator_handle_event
 service_indicator_deinit
 ```
 
-- [ ] **Step 1: Write failing Indicator Service Host tests**
+- [x] **Step 1: Write failing Indicator Service Host tests**
 
 Cover:
 
@@ -326,7 +326,7 @@ no APP running-state ownership
 
 Time must be fake / stubbed; Host tests must not wait real 600 ms.
 
-- [ ] **Step 2: Implement minimal event-driven Indicator Service**
+- [x] **Step 2: Implement minimal event-driven Indicator Service**
 
 Requirements:
 
@@ -341,7 +341,7 @@ no HAL / FreeRTOS direct calls
 
 `ONCE_SUCCESS` may use sequential `platform_time_delay_ms()` because final design assigns this behavior to a dedicated Indicator Task Context.
 
-- [ ] **Step 3: Run Indicator Service Host tests**
+- [x] **Step 3: Run Indicator Service Host tests**
 
 Expected:
 
@@ -350,11 +350,11 @@ all Indicator Service tests PASS
 no real wall-clock blink delay in Host test
 ```
 
-- [ ] **Step 4: Run Platform LED + Platform GPIO regression set**
+- [x] **Step 4: Run Platform LED + Platform GPIO regression set**
 
 Expected all PASS.
 
-- [ ] **Step 5: Coding Standard Review and focused commit**
+- [x] **Step 5: Coding Standard Review and focused commit**
 
 Review: Service/Platform boundary, error handling, event semantics, no hidden APP state, Platform Time use.
 
