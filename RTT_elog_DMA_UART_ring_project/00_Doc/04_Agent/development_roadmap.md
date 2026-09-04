@@ -41,18 +41,19 @@ Software I2C                                  VERIFIED
 LED / Indicator Module                        VERIFIED
 Button / Button Service                       VERIFIED
 DHT20 hardware connectivity                   VERIFIED
-MPU6050 hardware connectivity                 VERIFIED
 DHT20 production module                       VERIFIED
+MPU6050 hardware connectivity                 VERIFIED
+MPU6050 production module                     VERIFIED
 ```
 
-DHT20 与 MPU6050 已通过真实共享 Software I2C 总线连通性板测，当前硬件连接风险已排除；DHT20 production module 已完成并通过 Host、Keil、RTT 与逻辑分析仪验证。
+DHT20 与 MPU6050 已在真实共享 Software I2C 总线上完成 production 级目标板验证；两者当前均为可复用 Platform Sensor 能力。
 
 最终闭环仍缺：
 
 ```text
-MPU6050 production module
 UART application commands / report
 Permanent RTOS task / event organization
+Unified Acquisition Service / Task
 Final APP Control FSM
 Integrated target-board verification
 ```
@@ -68,8 +69,8 @@ Phase 3  Software I2C                            COMPLETED
 Phase 4  LED Module                              COMPLETED
 Phase 5  Button Module                           COMPLETED / HOST + KEIL + TARGET VERIFIED
 Phase 6  DHT20 Environment Module                COMPLETED / HOST + KEIL + TARGET VERIFIED
-Phase 7  MPU6050 Motion Module                   NEXT / DESIGN PENDING
-Phase 8  UART Application Communication
+Phase 7  MPU6050 Motion Module                   COMPLETED / HOST + KEIL + TARGET VERIFIED
+Phase 8  UART Application Communication          NEXT / DESIGN PENDING
 Phase 9  RTOS Task / Event Design
 Phase 10 Final APP Integration
 Final Integrated Board Test
@@ -148,19 +149,10 @@ Phase 5：`COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED`。
 
 # 5. Phase 6 — DHT20 Environment Module
 
-当前阶段已完成专项设计、production 实现、Host 回归、Keil 编译，以及 RTT 与逻辑分析仪实板验证。
-
-专项设计：
+正式专项设计：
 
 ```text
 00_Doc/02_架构设计/DHT20_Phase1设计.md
-```
-
-当前执行计划：
-
-```text
-00_Doc/04_Agent/implementation_plan.md
-DHT20 Phase 6 Implementation Plan
 ```
 
 正式链：
@@ -173,120 +165,134 @@ Future APP / Acquisition Service
     -> STM32 GPIO Impl
 ```
 
-第一版冻结边界：
+第一版边界：
 
 ```text
-Platform-only DHT20 device capability
+Platform-only DHT20 capability
 no service_dht20
 no impl_dht20
 no platform_device_t
 no malloc/free
-no private DHT20 task
-no DHT20-owned mutex
+no private task / mutex
 shared platform_i2c_t is non-owned reference
 ```
 
-必须实现：
+核心能力：
 
 ```text
 platform_dht20_init()
 platform_dht20_read()
 platform_dht20_deinit()
-status / Busy handling
-frame CRC8
-OTP CRC_flag validation
-CalibrationEnable validation
+Busy / CRC / Calibration validation
 20-bit raw RH/T parsing
 float physical conversion
 atomic measurement output
 ```
 
-协议关键点：
-
-```text
-7-bit address = 0x38
-measure command = AC 33 00
-STOP after command
-wait >= 80 ms
-new START read 7 bytes
-final CRC byte followed by master NACK
-```
-
-产品统一采集 / 上报周期调整为：
+产品统一采集 / 上报周期：
 
 ```text
 PROJECT_ACQUISITION_PERIOD_MS = 2000U
 ```
 
-该周期属于产品配置，不属于 DHT20 协议常量。DHT20 规格书也建议约每 2 秒测量一次以限制自热影响。
-
-验证策略：
-
-```text
-Keil production build
-RTT / EasyLogger observation
-Logic analyzer on PB6/PB7
-continuous ~2 s repeated target read
-```
-
-逻辑分析仪至少确认：
-
-```text
-START -> 0x70 ACK -> AC ACK -> 33 ACK -> 00 ACK -> STOP
->= 80 ms
-START -> 0x71 ACK -> 7-byte read -> final NACK -> STOP
-```
-
-不要求 Fake I2C / Host protocol harness；已有底层能力直接走完整真实链路验证。
-
-当前验证状态：
+验证状态：
 
 ```text
 Host regression                    27 / 27 PASS
-Keil temporary Smoke compile       PASS / 0 errors
-Keil final production rebuild      PASS / 0 errors
-Keil attached target Smoke rebuild PASS / 0 errors
-DHT20 new warning                  0
+Keil production                    PASS
 RTT target observation             PASS
 Logic analyzer PB6/PB7             PASS
 continuous ~2 s target read        PASS
+Temporary Smoke                    REMOVED
+Production startup                 RESTORED
 ```
 
-目标板验证结果：RTT 初始化与连续读取均返回 0，温湿度数据连续合理；逻辑分析仪确认 `AC 33 00` 写事务、约 80 ms 等待、7-byte 读事务末字节 NACK，以及约 2 s 连续采集。临时 Smoke 已清理，production 启动路径已恢复。
+Phase 6：`COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED`。
 
 ---
 
 # 6. Phase 7 — MPU6050 Motion Module
 
-下一阶段先进入专项设计，不直接开始 production 编码。
-
-第一阶段只做：
+正式专项设计：
 
 ```text
-WHO_AM_I
-initialization
-Accel X / Y / Z
-Gyro X / Y / Z
-raw / physical-unit conversion as designed
+00_Doc/02_架构设计/MPU6050_Phase1设计.md
 ```
 
-不做 Roll / Pitch / Yaw、DMP、Kalman、Complementary Filter 和高频姿态融合。
-
-硬件连通性已提前确认，但 production module 仍必须遵循：
+正式能力链：
 
 ```text
-Inspect current MPU6050 reference + shared Software I2C baseline
- -> Discuss Platform / Service boundary
- -> Freeze MPU6050 design
- -> Replace implementation_plan.md with Phase 7 plan
- -> Codex implementation
+Future APP / Acquisition Service
+    -> Platform MPU6050
+    -> Platform Software I2C
+    -> Platform GPIO
+    -> STM32 GPIO Impl
 ```
 
-在 Phase 7 设计与计划冻结前，不直接写 MPU6050 production 代码。
+第一版边界：
+
+```text
+Platform-only MPU6050 capability
+no service_mpu6050
+no impl_mpu6050
+no platform_device_t
+no registry / manager
+no private task / mutex
+no FIFO / DMP / DATA_RDY interrupt
+no attitude algorithm
+shared platform_i2c_t is non-owned reference
+```
+
+核心能力：
+
+```text
+platform_mpu6050_init()
+platform_mpu6050_read()
+platform_mpu6050_deinit()
+WHO_AM_I fixed expectation = 0x68
+I2C 7-bit address = 0x68 / 0x69 according to AD0
+wake + fixed register configuration
+one 14-byte burst read from 0x3B
+signed raw parsing
+raw -> g / dps conversion
+atomic measurement output
+```
+
+固定首版配置：
+
+```text
+PWR_MGMT_1   = 0x01
+CONFIG       = 0x03
+SMPLRT_DIV   = 0x04
+GYRO_CONFIG  = 0x00   -> ±250 dps
+ACCEL_CONFIG = 0x00   -> ±2 g
+```
+
+内部约 200 Hz output rate 不等于 APP 采集周期；产品周期继续使用 `PROJECT_ACQUISITION_PERIOD_MS = 2000U`。
+
+验证状态：
+
+```text
+Host regression                        28 / 28 PASS
+Keil production Full Rebuild           0 errors / historical warnings only
+MPU6050 production warning             0 new warnings
+RTT / EasyLogger target smoke          PASS
+Logic analyzer initialization          PASS
+0x3B 14-byte burst + final NACK         PASS
+static / translate / flip / rotate     PASS
+disconnect / NACK negative smoke       PASS
+Temporary Smoke                        REMOVED
+Production startup                     RESTORED
+Architecture review                    PASS
+```
+
+Phase 7：`COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED`。
 
 ---
 
 # 7. Phase 8 — UART Application Communication
+
+当前下一阶段。进入 production 编码前必须先专项设计。
 
 复用现有：
 
@@ -294,7 +300,7 @@ Inspect current MPU6050 reference + shared Software I2C baseline
 UART DMA RX -> UART Service -> RingBuffer -> Communication Task
 ```
 
-命令：
+计划应用命令：
 
 ```text
 START
@@ -304,7 +310,15 @@ STATUS
 HELP
 ```
 
-不得建立第二套 UART RX 路径。
+计划业务输出：
+
+```text
+DHT20 environment data
+MPU6050 six-axis data
+system status / command response
+```
+
+不得建立第二套 UART RX 路径，不得把应用命令语义塞入 UART Service。
 
 ---
 
@@ -320,7 +334,7 @@ Indicator Task
 
 永久 Button processing context、priority、stack、Button -> APP IPC、Indicator event delivery 等在本 Phase 冻结。
 
-后续统一 Acquisition Service / Acquisition Task 串行调用 DHT20 + MPU6050；不按设备数量机械创建独立 Task。
+统一 Acquisition Service / Acquisition Task 串行调用 DHT20 + MPU6050；不按设备数量机械创建独立 Task。
 
 ---
 
@@ -353,20 +367,21 @@ RUNNING 第一阶段统一采集 / 上报周期为 2000 ms。
 ```text
 Phase 5 Button      CLOSED
 Phase 6 DHT20       CLOSED / HOST + KEIL + TARGET VERIFIED
-Phase 7 MPU6050     NEXT / DESIGN PENDING
+Phase 7 MPU6050     CLOSED / HOST + KEIL + TARGET VERIFIED
+Phase 8 UART App    NEXT / DESIGN PENDING
 ```
 
-流程：
+当前流程：
 
 ```text
-Phase 6 implementation complete
+Phase 7 complete
  -> Host regression PASS
  -> Keil production build PASS
- -> RTT target smoke PASS
- -> Logic analyzer verification PASS
+ -> RTT / Logic Analyzer target verification PASS
+ -> physical / negative smoke PASS
  -> temporary smoke removed
  -> production startup restored
- -> Phase 7 design discussion next
+ -> Phase 8 design discussion next
 ```
 
-Phase 6 已关闭；当前不得直接进入 Phase 7 production implementation。
+Phase 7 已关闭；当前不得直接进入 Phase 8 production implementation，先完成 UART Application Communication 专项设计。
