@@ -1,7 +1,7 @@
 # Final Acquisition System Development Roadmap
 
 > 文档类型：Development Phase Roadmap  
-> 状态：Baseline  
+> 状态：Final Baseline  
 > 日期：2026-09-04  
 > 适用工程：`stm32f4_DMA_UART_ring_RTOS`
 
@@ -19,10 +19,9 @@
 ```
 
 详细业务需求：`00_Doc/00_项目需求/最终功能需求.md`  
+最终 Phase 9 设计：`00_Doc/02_架构设计/Final_RTOS_Application_Integration_Phase9设计.md`  
 长期架构：`00_Doc/04_Agent/architecture.md`  
 当前施工计划：`00_Doc/04_Agent/implementation_plan.md`
-
-每个 Phase 必须先专项设计，再生成 / 替换当前 implementation plan。
 
 ---
 
@@ -32,7 +31,6 @@
 UART Platform blocking capability             VERIFIED
 UART DMA RX + IDLE / HT / TC                  VERIFIED
 UART Service RX + SPSC RingBuffer              VERIFIED
-APP Communication Phase 1                     VERIFIED
 Platform OS                                   VERIFIED
 Service Log + EasyLogger + RTT                 VERIFIED
 Platform GPIO + STM32 Impl + Board Binding     VERIFIED
@@ -43,29 +41,20 @@ DHT20 hardware + production module             VERIFIED
 MPU6050 hardware + production module           VERIFIED
 ```
 
-UART TX 当前必须区分：
+UART TX 当前：
 
 ```text
-blocking TX path                               EXISTS / VERIFIED baseline
+blocking TX baseline                           VERIFIED
 USART1 TX DMA CubeMX configuration             READY
 STM32 Platform async TX implementation         IMPLEMENTED / HOST + KEIL VERIFIED
 UART Service TX transaction                    IMPLEMENTED / HOST + KEIL VERIFIED
+APP Communication CRLF protocol                IMPLEMENTED / HOST + KEIL VERIFIED
 TX DMA target verification                     DEFERRED TO PHASE 9
-```
-
-最终闭环仍缺：
-
-```text
-UART application commands / report
-Permanent RTOS task / event organization
-Unified Acquisition Service / Task
-Final APP Control FSM
-Integrated target-board verification
 ```
 
 ---
 
-# 3. 总体阶段
+# 3. 最终阶段路线
 
 ```text
 Phase 1  GPIO STM32 Impl                         COMPLETED
@@ -77,10 +66,16 @@ Phase 6  DHT20 Environment Module                COMPLETED / HOST + KEIL + TARGE
 Phase 7  MPU6050 Motion Module                   COMPLETED / HOST + KEIL + TARGET VERIFIED
 Phase 8  UART Application Communication          IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
                                                   TARGET VERIFICATION DEFERRED TO PHASE 9
-Phase 9  RTOS Task / Event Design
-Phase 10 Final APP Integration
+Phase 9  Final RTOS Application Integration      DESIGN FROZEN / READY FOR CODEX
 Final Integrated Board Test
+Project Core Complete
 ```
+
+原“Phase 9 RTOS Task / Event Design”与“Phase 10 Final APP Integration”已合并。
+
+不再保留独立 Phase 10。
+
+理由：最终 Task、IPC、APP FSM、Acquisition Service、2 s scheduling、UART report、ONCE completion 和 Indicator 业务链已经作为一个不可分割的最终运行闭环冻结。继续人为拆成两个 Phase 会造成状态真值、IPC 合同和目标板验收重复切割。
 
 ---
 
@@ -107,236 +102,170 @@ Phase 6：Platform DHT20，shared Software I2C non-owning reference，Host + Kei
 
 Phase 7：Platform MPU6050，WHO_AM_I / wake / fixed config / 14-byte burst / raw + g/dps，Host + Keil + RTT + logic analyzer + physical sanity + negative smoke verified。
 
+Phase 8：USART1 TX DMA production path、UART Service Task-facing TX transaction、strict CRLF parser、APP Control event outlet 已实现并通过 Host + Keil；目标板 TX DMA 验证合并进入最终 Phase 9 综合测试。
+
 ---
 
-# 5. Phase 8 — UART Application Communication
+# 5. Phase 9 — Final RTOS Application Integration
 
-正式专项设计：
+正式设计：
 
 ```text
-00_Doc/02_架构设计/UART_Application_Communication_Phase8设计.md
+00_Doc/02_架构设计/Final_RTOS_Application_Integration_Phase9设计.md
 ```
 
 当前执行计划：
 
 ```text
 00_Doc/04_Agent/implementation_plan.md
-UART Application Communication Phase 8 Implementation Plan
-Status: IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
-TARGET VERIFICATION DEFERRED TO PHASE 9
+Phase 9 Final RTOS Application Integration Implementation Plan
 ```
 
-Phase 8 分为三块：
+本 Phase 是最终软件实现阶段。
+
+## 5.1 四任务模型
 
 ```text
-8A — Reusable UART TX DMA
-8B — UART Service TX transaction
-8C — APP Communication CRLF protocol / control event outlet
+Communication Task   2048 B   ABOVE_NORMAL
+Control Task         1024 B   ABOVE_NORMAL
+Acquisition Task     1536 B   NORMAL
+Indicator Task        768 B   BELOW_NORMAL
 ```
 
-## 5.1 RX 保持现有稳定链
+资源值故意偏宽松：先让完整系统稳定运行，最终板测后根据 stack high-water mark / Queue peak occupancy 再优化。
+
+CubeMX `defaultTask` 不计入产品任务；实现阶段只在 USER CODE 中让其首次运行后 `osThreadExit()`。
+
+## 5.2 Control / FSM
 
 ```text
-USART1 RX
- -> DMA2_Stream2 Circular
- -> IDLE / HT / TC
- -> STM32 UART Impl
- -> Platform UART RX_DATA
- -> UART Service
- -> SPSC RingBuffer
- -> Communication Task
+Button 10 ms polling + Button Service
+UART control request
+        ↓
+Control Task
+        ↓
+unique APP Control FSM
+STOPPED / RUNNING
 ```
 
-不得建立第二套 UART RX 路径，不给当前 SPSC 增加普通 Mutex。
+Button 与 UART 使用同一状态真值。
 
-## 5.2 TX DMA 补齐
-
-CubeMX 已于 2026-09-04 由人工开启：
+## 5.3 APP IPC
 
 ```text
-USART1_TX
-DMA2_Stream7
-Channel 4
-Memory -> Peripheral
-Mode = Normal
-IRQ priority = 5
+Control Queue                 depth 8
+Acquisition Command Queue     depth 4
+Communication Outbound Queue  depth 8
+Indicator Queue               depth 4
 ```
 
-Phase 8 production 已实现：
+全部 bounded + value-copy；不使用临时 stack 指针。
+
+第一版不增加 I2C mutex、Queue Set、Event Group 或第五个产品 Task。
+
+## 5.4 Unified Acquisition
 
 ```text
-Platform UART write_async
- -> STM32 HAL_UART_Transmit_DMA
- -> TX_COMPLETE / cancel / error
- -> UART Service synchronous Task-facing write
-```
-
-本次 Keil production build 已通过；独立目标板验证延期到 Phase 9。
-
-## 5.3 UART Service
-
-```text
-RX = long-lived DMA stream + RingBuffer
-TX = one-shot DMA transaction
-```
-
-第一版：
-
-```text
-one active TX transaction only
-no TX RingBuffer
-no TX Queue
-no TX worker Task
-no public Service async TX API
-```
-
-`service_uart_write()` 对 Task 表现为同步完成，但内部使用 DMA + notify wait；返回后 DMA 不得继续访问 caller buffer。
-
-## 5.4 Command protocol
-
-严格命令：
-
-```text
-START\r\n
-STOP\r\n
-ONCE\r\n
-STATUS\r\n
-HELP\r\n
-```
-
-规则：
-
-```text
-strict CRLF
-uppercase only
-case-sensitive
-no trim
-no arguments
-fixed-size caller/static storage
-```
-
-必须处理 fragmented / coalesced arbitrary byte chunks。
-
-## 5.5 APP Control Event outlet
-
-统一事件：
-
-```text
-APP_CTRL_START
-APP_CTRL_STOP
-APP_CTRL_SAMPLE_ONCE
-APP_CTRL_GET_STATUS
-```
-
-Phase 8 只冻结逻辑 handler 出口，不冻结 Queue / Task / direct-call 机制。
-
-```text
-HELP -> Communication local
-START/STOP/ONCE/STATUS -> APP Control event outlet
-```
-
-Communication 不维护 STOPPED / RUNNING。
-
-## 5.6 Product TX ownership
-
-冻结：
-
-```text
-Communication Task = sole USART1 product TX requester
-```
-
-未来 Acquisition Task 只交付 acquisition result，不直接调用 UART TX。
-
-正式通道：
-
-```text
-USART1 = product control + product data
-RTT    = diagnostics
-```
-
-现有 `printf/fputc -> HAL_UART_Transmit(&huart1)` 旁路在 Phase 8 production implementation 中退出正式运行路径。
-
-## 5.7 Phase 8 不实现
-
-```text
-APP Control FSM
-permanent Control Queue / Task
-Acquisition Service / Task
-Button permanent IPC
-Indicator permanent IPC
-2 s integrated report scheduling
-final ONCE business transaction
-```
-
----
-
-# 6. Phase 9 — RTOS Task / Event Design
-
-已确认方向：
-
-```text
-Communication Task
 Acquisition Task
+ -> Unified Acquisition Service
+ -> DHT20
+ -> MPU6050
+ -> shared Software I2C
+```
+
+Service all-or-nothing；两个传感器均成功才提交完整结果。即使 DHT20 失败，也继续尝试 MPU6050 用于诊断。
+
+Acquisition Task 是唯一 sensor / Software I2C runtime accessor。
+
+## 5.5 周期调度
+
+```text
+START -> immediate first sample
+then every 2000 ms by absolute deadline
+no catch-up burst after overrun
+STOP -> no future periodic publish
+```
+
+同步 sensor transaction 不强制中途取消；STOP 到达 active transaction 时允许安全收尾，但必须在发布 periodic result 前观察 pending STOP 并丢弃 stale result。
+
+## 5.6 UART / Communication
+
+Communication Task 保持：
+
+```text
+UART Service ownerThread
+sole USART1 product TX requester
+```
+
+新增 outbound Queue consumer。第一版使用 20 ms communication wait timeout 解决 UART notify 与普通 APP Queue 多源等待，不新增 Queue Set。
+
+## 5.7 ONCE
+
+```text
+STOPPED DOUBLE / UART ONCE
+ -> Unified Acquisition success
+ -> complete UART report TX success
+ -> Control completion
+ -> Indicator ONCE_SUCCESS
+ -> blink 3 times
+```
+
+任一 sensor 或 UART TX 失败，不执行成功闪烁。
+
+ONCE 执行期间业务状态仍为 STOPPED；UART START/STOP/ONCE 返回 `ERR BUSY`，STATUS 返回 STOPPED。
+
+---
+
+# 6. Phase 9 完成门槛
+
+必须全部完成：
+
+```text
+Unified Acquisition Service
+Control Task + sole APP FSM
+Acquisition Task + absolute 2 s scheduling
 Indicator Task
+Communication outbound integration
+4 APP Queues
+app_system final composition
+CubeMX defaultTask self-exit
+Host regression
+Keil production rebuild
+USART1 TX DMA target verification
+Final integrated board acceptance
+resource high-water / queue observation
+Coding Standard Review
+Architecture Review
 ```
 
-本 Phase 冻结：
+最终目标板场景：
 
 ```text
-permanent Button execution context
-Button -> APP control IPC
-APP control event consumer execution context
-Acquisition result -> Communication IPC
-Indicator event delivery
-priority / stack / buffering / overflow policy
-Unified Acquisition Service / Acquisition Task
+boot STOPPED / LED OFF / UART RX active
+Button SINGLE -> RUNNING / LED ON / immediate report / 2 s reports
+Button LONG -> STOPPED / LED OFF / no future reports
+Button DOUBLE in STOPPED -> one report / TX success / 3 blinks
+UART START/STOP/ONCE/STATUS/HELP correct
+Button + UART one state truth
+DHT20 + MPU6050 shared Soft I2C stable
+RX remains active during TX DMA
+ONCE failure never success-blinks
+RTT exposes relevant failures
 ```
-
-统一 Acquisition Service 串行调用 DHT20 + MPU6050；不按设备数量机械创建独立 Task。
 
 ---
 
-# 7. Phase 10 — Final APP Integration
-
-APP 唯一业务状态：
-
-```text
-STOPPED
-RUNNING
-```
-
-最终闭环：
-
-```text
-Button / UART
- -> APP Control FSM
- -> Acquisition / Indicator / Communication
-```
-
-RUNNING 统一采集 / 上报周期：
-
-```text
-PROJECT_ACQUISITION_PERIOD_MS = 2000U
-```
-
-Phase 10 负责最终 state-dependent UART response、ONCE 完整业务结果和系统状态转换。
-
----
-
-# 8. 当前下一步
-
-```text
-Phase 5 Button      CLOSED
-Phase 6 DHT20       CLOSED / TARGET VERIFIED
-Phase 7 MPU6050     CLOSED / TARGET VERIFIED
-Phase 8 UART App    IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
-                    TARGET VERIFICATION DEFERRED TO PHASE 9
-```
-
-当前停止点：
+# 7. 当前下一步
 
 ```text
 Phase 8 implementation completed
- -> Host regression and Keil production build verified
- -> target-board validation deferred to Phase 9 RTOS Task / Event / IPC integration
+ -> Phase 9 design frozen
+ -> Phase 9 implementation plan ready
+ -> Codex executes Phase 9 Task 0 onward
+ -> Final Integrated Board Test
+ -> Project Core Complete
 ```
+
+当前不再进行新的架构阶段设计。
+
+第一版不讨论低功耗；Tickless Idle、Button EXTI wake、SPI/LCD、Flash、Bluetooth、姿态融合均为后续独立扩展。
