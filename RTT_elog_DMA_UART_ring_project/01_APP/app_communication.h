@@ -16,6 +16,8 @@
 
 //******************************** Includes *********************************//
 #include "app_control_types.h"
+#include "app_ipc_types.h"
+#include "platform_queue.h"
 #include "project_config.h"
 #include "service_uart.h"
 //******************************** Includes *********************************//
@@ -52,6 +54,10 @@ typedef struct
     app_control_event_handler_t controlHandler;
     /** controlHandler 的调用者持有上下文。 */
     void *controlContext;
+    /** Control 与 Acquisition 生产的业务输出 Queue。 */
+    platform_queue_t *outboundQueue;
+    /** ONCE TX completion 回传到唯一 Control FSM 的 Queue。 */
+    platform_queue_t *controlQueue;
 } app_communication_config_t;
 
 /**
@@ -103,6 +109,18 @@ typedef struct
     uint32_t localResponseCount;
     /** 发出 Communication-local 响应失败数量。 */
     uint32_t localResponseFailureCount;
+    /** 已消费的业务输出消息数量。 */
+    uint32_t outboundMessageCount;
+    /** 成功发送的业务控制响应数量。 */
+    uint32_t controlResponseCount;
+    /** 业务控制响应发送失败数量。 */
+    uint32_t controlResponseFailureCount;
+    /** 成功发送的完整双行传感器报告数量。 */
+    uint32_t reportCount;
+    /** 完整双行传感器报告发送失败数量。 */
+    uint32_t reportFailureCount;
+    /** ONCE TX 结果回传 Control Queue 失败数量。 */
+    uint32_t onceCompletionSubmitFailureCount;
 } app_communication_statistics_t;
 
 /**
@@ -155,6 +173,12 @@ platform_error_t app_communication_start(app_communication_t *communication);
  * @return PLATFORM_ERR_OK 成功或正常空闲；其他值表示不可恢复错误
  */
 platform_error_t app_communication_process(app_communication_t *communication, uint32_t timeoutMs);
+/**
+ * @brief 非阻塞消费当前全部 Communication Outbound Queue 消息。
+ * @param[in,out] communication : 正在运行且已绑定 APP Queue 的对象。
+ * @return platform_error_t : Queue 合同错误或非法消息错误；单笔 TX 失败会计数并保持任务存活。
+ */
+platform_error_t app_communication_drain_outbound(app_communication_t *communication);
 /**
  * @brief 获取通信 APP 当前状态快照
  * @param[in] communication : 已初始化的通信 APP 对象

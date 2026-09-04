@@ -17,11 +17,14 @@
 #include "service_log.h"
 #include "platform_time.h"
 
+#include <stdio.h>
 #include <string.h>
 //******************************** Includes *********************************//
 
 //******************************** Defines **********************************//
 #define LOG_TAG                                "app_comm"
+#define APP_COMM_ENV_REPORT_BUFFER_SIZE        (64U)
+#define APP_COMM_IMU_REPORT_BUFFER_SIZE        (128U)
 //******************************** Defines **********************************//
 
 //******************************** Types ***********************************//
@@ -40,6 +43,14 @@ typedef enum
 static const uint8_t g_helpResponse[] = "HELP START STOP ONCE STATUS HELP\r\n";
 static const uint8_t g_unknownCommandResponse[] = "ERR UNKNOWN_COMMAND\r\n";
 static const uint8_t g_commandTooLongResponse[] = "ERR COMMAND_TOO_LONG\r\n";
+static const uint8_t g_okStartResponse[] = "OK START\r\n";
+static const uint8_t g_okStopResponse[] = "OK STOP\r\n";
+static const uint8_t g_alreadyRunningResponse[] = "ERR ALREADY_RUNNING\r\n";
+static const uint8_t g_alreadyStoppedResponse[] = "ERR ALREADY_STOPPED\r\n";
+static const uint8_t g_busyResponse[] = "ERR BUSY\r\n";
+static const uint8_t g_acquisitionFailedResponse[] = "ERR ACQUISITION_FAILED\r\n";
+static const uint8_t g_statusRunningResponse[] = "STATUS RUNNING\r\n";
+static const uint8_t g_statusStoppedResponse[] = "STATUS STOPPED\r\n";
 //******************************** Constants *******************************//
 
 //******************************** Functions *********************************//
@@ -105,6 +116,15 @@ static void app_communication_submit_control_event(app_communication_t *communic
 
     if (communication->config.controlHandler == NULL) {
         communication->statistics.controlEventSubmitFailureCount++;
+        result = service_uart_write(communication->config.service,
+                                    g_busyResponse,
+                                    sizeof(g_busyResponse) - 1U,
+                                    PROJECT_COMM_UART_DEFAULT_TIMEOUT_MS);
+        if (result == PLATFORM_ERR_OK) {
+            communication->statistics.controlResponseCount++;
+        } else {
+            communication->statistics.controlResponseFailureCount++;
+        }
         return;
     }
 
@@ -113,6 +133,210 @@ static void app_communication_submit_control_event(app_communication_t *communic
         communication->statistics.controlEventSubmittedCount++;
     } else {
         communication->statistics.controlEventSubmitFailureCount++;
+        result = service_uart_write(communication->config.service,
+                                    g_busyResponse,
+                                    sizeof(g_busyResponse) - 1U,
+                                    PROJECT_COMM_UART_DEFAULT_TIMEOUT_MS);
+        if (result == PLATFORM_ERR_OK) {
+            communication->statistics.controlResponseCount++;
+        } else {
+            communication->statistics.controlResponseFailureCount++;
+        }
+    }
+}
+
+static platform_error_t app_communication_get_control_response(
+    app_control_response_t response,
+    const uint8_t **data,
+    platform_size_t *dataLength)
+{
+    switch (response) {
+        case APP_CONTROL_RESPONSE_OK_START:
+            *data = g_okStartResponse;
+            *dataLength = sizeof(g_okStartResponse) - 1U;
+            return PLATFORM_ERR_OK;
+
+        case APP_CONTROL_RESPONSE_OK_STOP:
+            *data = g_okStopResponse;
+            *dataLength = sizeof(g_okStopResponse) - 1U;
+            return PLATFORM_ERR_OK;
+
+        case APP_CONTROL_RESPONSE_ALREADY_RUNNING:
+            *data = g_alreadyRunningResponse;
+            *dataLength = sizeof(g_alreadyRunningResponse) - 1U;
+            return PLATFORM_ERR_OK;
+
+        case APP_CONTROL_RESPONSE_ALREADY_STOPPED:
+            *data = g_alreadyStoppedResponse;
+            *dataLength = sizeof(g_alreadyStoppedResponse) - 1U;
+            return PLATFORM_ERR_OK;
+
+        case APP_CONTROL_RESPONSE_BUSY:
+            *data = g_busyResponse;
+            *dataLength = sizeof(g_busyResponse) - 1U;
+            return PLATFORM_ERR_OK;
+
+        case APP_CONTROL_RESPONSE_ACQUISITION_FAILED:
+            *data = g_acquisitionFailedResponse;
+            *dataLength = sizeof(g_acquisitionFailedResponse) - 1U;
+            return PLATFORM_ERR_OK;
+
+        case APP_CONTROL_RESPONSE_STATUS_RUNNING:
+            *data = g_statusRunningResponse;
+            *dataLength = sizeof(g_statusRunningResponse) - 1U;
+            return PLATFORM_ERR_OK;
+
+        case APP_CONTROL_RESPONSE_STATUS_STOPPED:
+            *data = g_statusStoppedResponse;
+            *dataLength = sizeof(g_statusStoppedResponse) - 1U;
+            return PLATFORM_ERR_OK;
+
+        default:
+            return PLATFORM_ERR_INVALID_PARAM;
+    }
+}
+
+static platform_error_t app_communication_send_control_response(
+    app_communication_t *communication,
+    app_control_response_t response)
+{
+    const uint8_t *data = NULL;
+    platform_size_t dataLength = 0U;
+    platform_error_t result = app_communication_get_control_response(
+        response, &data, &dataLength);
+
+    if (result == PLATFORM_ERR_OK) {
+        result = service_uart_write(communication->config.service,
+                                    data,
+                                    dataLength,
+                                    PROJECT_COMM_UART_DEFAULT_TIMEOUT_MS);
+    }
+    if (result == PLATFORM_ERR_OK) {
+        communication->statistics.controlResponseCount++;
+    } else {
+        communication->statistics.controlResponseFailureCount++;
+    }
+    return result;
+}
+
+static platform_error_t app_communication_format_report(
+    const app_acquisition_data_t *data,
+    uint8_t *environmentBuffer,
+    platform_size_t environmentBufferSize,
+    platform_size_t *environmentLength,
+    uint8_t *motionBuffer,
+    platform_size_t motionBufferSize,
+    platform_size_t *motionLength)
+{
+    int writtenLength = snprintf(
+        (char *)environmentBuffer,
+        environmentBufferSize,
+        "ENV,T=%.2f,H=%.2f\r\n",
+        (double)data->environment.temperatureC,
+        (double)data->environment.humidityPercent);
+
+    if ((writtenLength < 0) || ((platform_size_t)writtenLength >= environmentBufferSize)) {
+        return PLATFORM_ERR_OVERFLOW;
+    }
+    *environmentLength = (platform_size_t)writtenLength;
+
+    writtenLength = snprintf(
+        (char *)motionBuffer,
+        motionBufferSize,
+        "IMU,AX=%.3f,AY=%.3f,AZ=%.3f,GX=%.2f,GY=%.2f,GZ=%.2f\r\n",
+        (double)data->motion.accelXG,
+        (double)data->motion.accelYG,
+        (double)data->motion.accelZG,
+        (double)data->motion.gyroXDps,
+        (double)data->motion.gyroYDps,
+        (double)data->motion.gyroZDps);
+    if ((writtenLength < 0) || ((platform_size_t)writtenLength >= motionBufferSize)) {
+        return PLATFORM_ERR_OVERFLOW;
+    }
+    *motionLength = (platform_size_t)writtenLength;
+
+    return PLATFORM_ERR_OK;
+}
+
+static platform_error_t app_communication_send_report(
+    app_communication_t *communication,
+    const app_acquisition_data_t *data)
+{
+    uint8_t environmentBuffer[APP_COMM_ENV_REPORT_BUFFER_SIZE] = {0};
+    uint8_t motionBuffer[APP_COMM_IMU_REPORT_BUFFER_SIZE] = {0};
+    platform_size_t environmentLength = 0U;
+    platform_size_t motionLength = 0U;
+    platform_error_t result = app_communication_format_report(
+        data,
+        environmentBuffer,
+        sizeof(environmentBuffer),
+        &environmentLength,
+        motionBuffer,
+        sizeof(motionBuffer),
+        &motionLength);
+
+    if (result == PLATFORM_ERR_OK) {
+        result = service_uart_write(communication->config.service,
+                                    environmentBuffer,
+                                    environmentLength,
+                                    PROJECT_COMM_UART_DEFAULT_TIMEOUT_MS);
+    }
+    if (result == PLATFORM_ERR_OK) {
+        result = service_uart_write(communication->config.service,
+                                    motionBuffer,
+                                    motionLength,
+                                    PROJECT_COMM_UART_DEFAULT_TIMEOUT_MS);
+    }
+    if (result == PLATFORM_ERR_OK) {
+        communication->statistics.reportCount++;
+    } else {
+        communication->statistics.reportFailureCount++;
+    }
+    return result;
+}
+
+static void app_communication_submit_once_result(
+    app_communication_t *communication,
+    platform_error_t txResult)
+{
+    app_control_message_t message = {
+        .type = APP_CONTROL_MESSAGE_ONCE_TX_RESULT,
+        .payload.result = txResult
+    };
+
+    if (platform_queue_send(
+            communication->config.controlQueue,
+            &message,
+            PLATFORM_OS_NO_WAIT) != PLATFORM_ERR_OK) {
+        communication->statistics.onceCompletionSubmitFailureCount++;
+    }
+}
+
+static platform_error_t app_communication_handle_outbound(
+    app_communication_t *communication,
+    const app_communication_outbound_message_t *message)
+{
+    platform_error_t result;
+
+    switch (message->type) {
+        case APP_COMM_OUTBOUND_CONTROL_RESPONSE:
+            (void)app_communication_send_control_response(
+                communication, message->payload.controlResponse);
+            return PLATFORM_ERR_OK;
+
+        case APP_COMM_OUTBOUND_PERIODIC_REPORT:
+            (void)app_communication_send_report(
+                communication, &message->payload.acquisition);
+            return PLATFORM_ERR_OK;
+
+        case APP_COMM_OUTBOUND_ONCE_REPORT:
+            result = app_communication_send_report(
+                communication, &message->payload.acquisition);
+            app_communication_submit_once_result(communication, result);
+            return PLATFORM_ERR_OK;
+
+        default:
+            return PLATFORM_ERR_INVALID_PARAM;
     }
 }
 
@@ -453,6 +677,42 @@ platform_error_t app_communication_process(app_communication_t *communication, u
     return PLATFORM_ERR_OK;
 }
 
+platform_error_t app_communication_drain_outbound(app_communication_t *communication)
+{
+    app_communication_outbound_message_t message = {0};
+    platform_error_t result;
+
+    if (communication == NULL) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+    if (communication->context.state != APP_COMMUNICATION_STATE_RUNNING) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+    if ((communication->config.outboundQueue == NULL) ||
+        (communication->config.controlQueue == NULL)) {
+        return PLATFORM_ERR_NOT_INITIALIZED;
+    }
+
+    for (;;) {
+        result = platform_queue_receive(
+            communication->config.outboundQueue,
+            &message,
+            PLATFORM_OS_NO_WAIT);
+        if ((result == PLATFORM_ERR_EMPTY) || (result == PLATFORM_ERR_TIMEOUT)) {
+            return PLATFORM_ERR_OK;
+        }
+        if (result != PLATFORM_ERR_OK) {
+            return result;
+        }
+
+        communication->statistics.outboundMessageCount++;
+        result = app_communication_handle_outbound(communication, &message);
+        if (result != PLATFORM_ERR_OK) {
+            return result;
+        }
+    }
+}
+
 void app_communication_task_entry(void *argument)
 {
     app_communication_t *communication = (app_communication_t *)argument;
@@ -466,7 +726,14 @@ void app_communication_task_entry(void *argument)
 
     result = app_communication_start(communication);
     while (result == PLATFORM_ERR_OK) {
-        result = app_communication_process(communication, PROJECT_COMM_WAIT_TIMEOUT_MS);
+        result = app_communication_drain_outbound(communication);
+        if (result == PLATFORM_ERR_OK) {
+            result = app_communication_process(
+                communication, PROJECT_COMM_WAIT_TIMEOUT_MS);
+        }
+        if (result == PLATFORM_ERR_OK) {
+            result = app_communication_drain_outbound(communication);
+        }
     }
 
     SERVICE_LOG_E("communication fatal error: %d", (int)communication->context.lastError);
