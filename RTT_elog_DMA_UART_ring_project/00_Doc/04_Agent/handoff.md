@@ -90,7 +90,8 @@ PROJECT_ACQUISITION_PERIOD_MS = 2000U
 
 ```text
 Phase 8 — UART Application Communication
-STATUS: DESIGN FROZEN / PLAN READY / NOT STARTED
+STATUS: IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
+TARGET VERIFICATION DEFERRED TO PHASE 9
 ```
 
 正式专项设计：
@@ -106,7 +107,7 @@ STATUS: DESIGN FROZEN / PLAN READY / NOT STARTED
 UART Application Communication Phase 8 Implementation Plan
 ```
 
-本次只同步了文档，没有修改任何 production source / header / CubeMX 配置。
+本次已完成 STM32 UART TX DMA、UART Service 同步 TX transaction、Communication CRLF 命令解析与 APP Control event outlet。Phase 9 才接入正式 APP Control consumer / Task / IPC。
 
 ---
 
@@ -133,9 +134,10 @@ blocking Platform TX                    EXISTS
 Platform public write_async()           EXISTS
 Platform TX_COMPLETE event type         EXISTS
 CubeMX USART1 TX DMA                    READY
-STM32 Impl async TX                     NOT IMPLEMENTED
-UART Service TX                         NOT IMPLEMENTED
-TX DMA production path                  NOT YET VERIFIED
+STM32 Impl async TX                     IMPLEMENTED / HOST + KEIL VERIFIED
+UART Service TX                         IMPLEMENTED / HOST + KEIL VERIFIED
+APP Communication CRLF protocol         IMPLEMENTED / HOST + KEIL VERIFIED
+TX DMA target verification               DEFERRED TO PHASE 9
 ```
 
 2026-09-04 人工已在 CubeMX 开启 USART1 TX DMA：
@@ -477,7 +479,8 @@ binary protocol / JSON / CLI shell
 # 15. 后续路线
 
 ```text
-Phase 8  UART Application Communication   DESIGN FROZEN / PLAN READY / NOT STARTED
+Phase 8  UART Application Communication   IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
+                                           TARGET VERIFICATION DEFERRED TO PHASE 9
 Phase 9  RTOS Task / Event Design
 Phase 10 Final APP Integration
 Final Integrated Board Test
@@ -513,12 +516,17 @@ ONCE TX success -> Indicator 3 blinks
 # 16. 当前停止点
 
 ```text
-Phase 8 design documentation synchronized
-implementation_plan ready
-NO production code changes performed in this documentation-sync turn
+Phase 8 implementation and documentation synchronized
+Host regression PASS
+Keil production rebuild PASS: 0 Error(s), 14 existing non-Phase-8 warnings
+Coding Standard Review PASS
+Architecture Review PASS
+Independent target-board smoke NOT RUN
 ```
 
-下一次若开始编码，执行 Agent 必须先读取：
+下一步进入 Phase 9：将目标板验证与正式 RTOS Task / Event / IPC 链路一起执行。不得把 Phase 8 标记为 TARGET VERIFIED。
+
+后续编码前，执行 Agent 必须先读取：
 
 ```text
 00_Doc/02_架构设计/UART_Application_Communication_Phase8设计.md

@@ -296,7 +296,8 @@ IRQ priority = 5
 
 ```text
 hardware/generated configuration = READY
-production async TX path         = Phase 8 implementation pending
+production async TX path         = IMPLEMENTED / HOST + KEIL VERIFIED
+target verification              = DEFERRED TO PHASE 9
 ```
 
 冻结正式链：
@@ -501,7 +502,7 @@ USART1 -> product control + product data
 RTT    -> initialization / state / diagnostics / errors
 ```
 
-Phase 8 production implementation 将退出旧正式旁路：
+Phase 8 production implementation 已退出旧正式旁路：
 
 ```text
 printf / fputc -> HAL_UART_Transmit(&huart1)
@@ -612,7 +613,8 @@ Phase 4 LED            COMPLETED
 Phase 5 Button         COMPLETED / TARGET VERIFIED
 Phase 6 DHT20          COMPLETED / TARGET VERIFIED
 Phase 7 MPU6050        COMPLETED / TARGET VERIFIED
-Phase 8 UART App       DESIGN FROZEN / PLAN READY / NOT STARTED
+Phase 8 UART App       IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
+                        TARGET VERIFICATION DEFERRED TO PHASE 9
 ```
 
 Phase 8 正式设计：

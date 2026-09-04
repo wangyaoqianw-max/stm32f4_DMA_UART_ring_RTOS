@@ -92,7 +92,8 @@ platform_error_t app_communication_init(
     return PLATFORM_ERR_OK;
 }
 
-platform_error_t platform_thread_create(platform_thread_t *thread, const platform_thread_config_t *config)
+platform_error_t platform_thread_create(platform_thread_t *thread,
+                                        const platform_thread_config_t *config)
 {
     (void)thread;
     TEST_ASSERT(1024U == config->stackSizeBytes);

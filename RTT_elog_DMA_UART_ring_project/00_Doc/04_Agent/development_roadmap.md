@@ -48,9 +48,9 @@ UART TX 当前必须区分：
 ```text
 blocking TX path                               EXISTS / VERIFIED baseline
 USART1 TX DMA CubeMX configuration             READY
-STM32 Platform async TX implementation         PENDING Phase 8
-UART Service TX transaction                    PENDING Phase 8
-TX DMA production path                         NOT YET VERIFIED
+STM32 Platform async TX implementation         IMPLEMENTED / HOST + KEIL VERIFIED
+UART Service TX transaction                    IMPLEMENTED / HOST + KEIL VERIFIED
+TX DMA target verification                     DEFERRED TO PHASE 9
 ```
 
 最终闭环仍缺：
@@ -75,7 +75,8 @@ Phase 4  LED Module                              COMPLETED
 Phase 5  Button Module                           COMPLETED / HOST + KEIL + TARGET VERIFIED
 Phase 6  DHT20 Environment Module                COMPLETED / HOST + KEIL + TARGET VERIFIED
 Phase 7  MPU6050 Motion Module                   COMPLETED / HOST + KEIL + TARGET VERIFIED
-Phase 8  UART Application Communication          DESIGN FROZEN / PLAN READY / NOT STARTED
+Phase 8  UART Application Communication          IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
+                                                  TARGET VERIFICATION DEFERRED TO PHASE 9
 Phase 9  RTOS Task / Event Design
 Phase 10 Final APP Integration
 Final Integrated Board Test
@@ -121,7 +122,8 @@ Phase 7：Platform MPU6050，WHO_AM_I / wake / fixed config / 14-byte burst / ra
 ```text
 00_Doc/04_Agent/implementation_plan.md
 UART Application Communication Phase 8 Implementation Plan
-Status: READY FOR IMPLEMENTATION / NOT STARTED
+Status: IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
+TARGET VERIFICATION DEFERRED TO PHASE 9
 ```
 
 Phase 8 分为三块：
@@ -160,7 +162,7 @@ Mode = Normal
 IRQ priority = 5
 ```
 
-Phase 8 production 实现目标：
+Phase 8 production 已实现：
 
 ```text
 Platform UART write_async
@@ -169,7 +171,7 @@ Platform UART write_async
  -> UART Service synchronous Task-facing write
 ```
 
-注意：硬件配置 READY 不等于 TX DMA production path VERIFIED。
+本次 Keil production build 已通过；独立目标板验证延期到 Phase 9。
 
 ## 5.3 UART Service
 
@@ -327,13 +329,14 @@ Phase 10 负责最终 state-dependent UART response、ONCE 完整业务结果和
 Phase 5 Button      CLOSED
 Phase 6 DHT20       CLOSED / TARGET VERIFIED
 Phase 7 MPU6050     CLOSED / TARGET VERIFIED
-Phase 8 UART App    DESIGN FROZEN / PLAN READY / NOT STARTED
+Phase 8 UART App    IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
+                    TARGET VERIFICATION DEFERRED TO PHASE 9
 ```
 
 当前停止点：
 
 ```text
-Phase 8 design synchronized
- -> no production source modified by documentation sync
- -> next action, when explicitly requested: execute Phase 8 implementation_plan
+Phase 8 implementation completed
+ -> Host regression and Keil production build verified
+ -> target-board validation deferred to Phase 9 RTOS Task / Event / IPC integration
 ```

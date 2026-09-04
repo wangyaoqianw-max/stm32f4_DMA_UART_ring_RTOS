@@ -431,7 +431,8 @@ platform_error_t app_communication_process(app_communication_t *communication, u
         result = service_uart_stop(communication->config.service);
         if (result != PLATFORM_ERR_OK) {
             result = service_uart_get_status(communication->config.service, &serviceStatus);
-            if ((result != PLATFORM_ERR_OK) || (serviceStatus.state != SERVICE_UART_STATE_STOPPED)) {
+            if ((result != PLATFORM_ERR_OK) ||
+                (serviceStatus.state != SERVICE_UART_STATE_STOPPED)) {
                 return app_communication_set_error(communication, result);
             }
         }

@@ -111,7 +111,9 @@ platform_error_t service_uart_stop(service_uart_t *service)
     return g_fakeRuntime.serviceStopResult;
 }
 
-platform_error_t service_uart_wait_event(service_uart_t *service, uint32_t timeoutMs, uint32_t *events)
+platform_error_t service_uart_wait_event(service_uart_t *service,
+                                         uint32_t timeoutMs,
+                                         uint32_t *events)
 {
     (void)service;
     (void)timeoutMs;
@@ -185,7 +187,8 @@ static void fake_runtime_queue_rx(const char *data)
     g_fakeRuntime.events = SERVICE_UART_EVENT_RX_AVAILABLE;
 }
 
-platform_error_t service_uart_get_status(const service_uart_t *service, service_uart_status_t *status)
+platform_error_t service_uart_get_status(const service_uart_t *service,
+                                         service_uart_status_t *status)
 {
     (void)service;
     g_fakeRuntime.getStatusCallCount++;
@@ -239,7 +242,8 @@ static int test_init_and_getters(void)
     config.service = NULL;
     TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == app_communication_init(&communication, &config));
     config.service = &service;
-    TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED == app_communication_get_status(&communication, &status));
+    TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED ==
+                app_communication_get_status(&communication, &status));
     TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED ==
                 app_communication_get_statistics(&communication, &statistics));
     TEST_ASSERT(PLATFORM_ERR_OK == app_communication_init(&communication, &config));
@@ -248,7 +252,8 @@ static int test_init_and_getters(void)
     TEST_ASSERT(&service == communication.config.service);
     TEST_ASSERT(PLATFORM_ERR_OK == communication.context.lastError);
     TEST_ASSERT(0U == communication.statistics.processedChunkCount);
-    TEST_ASSERT(PLATFORM_ERR_ALREADY_INITIALIZED == app_communication_init(&communication, &config));
+    TEST_ASSERT(PLATFORM_ERR_ALREADY_INITIALIZED ==
+                app_communication_init(&communication, &config));
     TEST_ASSERT(PLATFORM_ERR_OK == app_communication_get_status(&communication, &status));
     TEST_ASSERT(APP_COMMUNICATION_STATE_INITIALIZED == status.state);
     TEST_ASSERT(PLATFORM_ERR_OK == app_communication_get_statistics(&communication, &statistics));

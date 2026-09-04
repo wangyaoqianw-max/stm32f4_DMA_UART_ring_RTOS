@@ -1,7 +1,8 @@
 # UART Application Communication Phase 8 Implementation Plan
 
 > 当前执行计划 / Current Active Plan  
-> 状态：READY FOR IMPLEMENTATION / NOT STARTED  
+> 状态：IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
+> TARGET VERIFICATION DEFERRED TO PHASE 9
 > 日期：2026-09-04
 
 **Goal:** 在保持现有 UART DMA RX + RingBuffer 稳定链路的基础上，补齐可复用 USART1 TX DMA 能力，并让 `app_communication` 完成严格 CRLF 文本命令解析、Communication-local 响应和统一 APP Control Event 出口。
@@ -45,11 +46,11 @@ TX: DMA2_Stream7 / Channel 4 / Memory->Peripheral / Normal / IRQ 5
 ```text
 Platform public write_async()                 EXISTS
 Platform TX_COMPLETE event type              EXISTS
-STM32 Impl writeAsync Ops                    NULL / NOT IMPLEMENTED
-STM32 HAL TxCplt -> Platform event            NOT IMPLEMENTED
-Platform cancel TX/BOTH                       NOT IMPLEMENTED in STM32 Impl
-UART Service TX                               NOT IMPLEMENTED
-APP Communication command parser              NOT IMPLEMENTED
+STM32 Impl writeAsync Ops                    IMPLEMENTED
+STM32 HAL TxCplt -> Platform event           IMPLEMENTED
+Platform cancel TX/BOTH                      IMPLEMENTED in STM32 Impl
+UART Service TX                              IMPLEMENTED
+APP Communication command parser             IMPLEMENTED
 ```
 
 不得把 TX DMA 配置 READY 误标为 production TX DMA VERIFIED。
@@ -545,7 +546,7 @@ no dynamic allocation
 
 ---
 
-# 18. Task 17 — Keil / Target Smoke
+# 18. Task 17 — Keil / Target Validation Scope
 
 Keil：
 
@@ -554,7 +555,7 @@ Keil：
 no new Phase 8 production warnings
 ```
 
-目标板 PC 串口助手：
+本次不执行独立目标板 smoke。以下验证明确延期至 Phase 9，与正式 RTOS Task / Event / IPC 链路一起执行：
 
 ```text
 HELP response uses TX DMA
@@ -578,19 +579,21 @@ RTT 只记录必要 init / complete command / error 摘要，不逐 byte / DMA s
 
 # 19. Task 18 — Cleanup / Final Documentation
 
-目标板验证后：
+在本次 Host + Keil 验证后：
 
 ```text
-remove temporary Phase 8 smoke harness
-restore normal production startup
-Keil production rebuild
 update implementation_plan execution record
 update handoff
 update roadmap Phase 8 status
 Coding Standard Review recorded
 ```
 
-只有真实 Host + Keil + target evidence 后，Phase 8 才能标记 COMPLETED。
+本阶段最终状态必须为：
+
+```text
+IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
+TARGET VERIFICATION DEFERRED TO PHASE 9
+```
 
 ---
 
@@ -610,5 +613,21 @@ ONCE integrated LED feedback
 当前计划状态：
 
 ```text
-READY FOR IMPLEMENTATION / NOT STARTED
+IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
+TARGET VERIFICATION DEFERRED TO PHASE 9
 ```
+
+---
+
+# 21. Execution Record
+
+```text
+Host regression: PASS
+Keil production rebuild: 0 Error(s), 14 existing non-Phase-8 warnings
+Phase 8 changed production sources: no Keil warnings
+Coding Standard Review: PASS
+Architecture Review: PASS
+Independent target-board smoke: NOT RUN
+```
+
+Phase 9 需将目标板串口 smoke 与正式 RTOS Task / Event / IPC 链路一并执行；不得把本次结果写为 TARGET VERIFIED。
