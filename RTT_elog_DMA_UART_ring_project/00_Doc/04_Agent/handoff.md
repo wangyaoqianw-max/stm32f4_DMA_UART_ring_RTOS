@@ -1,9 +1,8 @@
 # 工程长期记忆与交接说明
 
-更新时间：2026-09-03
+更新时间：2026-09-04
 
 > 本文件是 AI Agent 与人工开发者恢复工程上下文时的长期入口。
-> 只保存长期目标、稳定架构合同、已验证基线、当前 Phase、当前计划状态和下一步。
 > 详细业务需求以 `00_Doc/00_项目需求/最终功能需求.md` 为准。
 > 架构合同以 `00_Doc/04_Agent/architecture.md` 为准。
 > 阶段路线以 `00_Doc/04_Agent/development_roadmap.md` 为准。
@@ -32,9 +31,7 @@ Input      : PA0 User Key
 Indicator  : PC13 Status LED
 ```
 
-最终目标：
-
-> 在已验证 UART DMA + RingBuffer + FreeRTOS + 五层架构基础上，完成按键控制、Software I2C、DHT20、MPU6050、LED 状态反馈、UART 文本命令和 APP Control FSM，形成完整数据采集系统。
+最终目标：在已验证 UART DMA + RingBuffer + FreeRTOS + 五层架构基础上，完成按键控制、Software I2C、DHT20、MPU6050、LED 状态反馈、UART 文本命令和 APP Control FSM，形成完整数据采集系统。
 
 ---
 
@@ -76,12 +73,14 @@ UART Service                             VERIFIED
 SPSC RingBuffer                          VERIFIED
 APP Communication Phase 1                VERIFIED
 Platform OS                              VERIFIED
-Service Log / EasyLogger / RTT            VERIFIED
-Platform GPIO / STM32 GPIO Impl           VERIFIED
-Board GPIO Binding                        VERIFIED
-Software I2C                              VERIFIED
-LED / Indicator Module                    VERIFIED
-Button Module Phase 5                     VERIFIED
+Service Log / EasyLogger / RTT           VERIFIED
+Platform GPIO / STM32 GPIO Impl          VERIFIED
+Board GPIO Binding                       VERIFIED
+Software I2C                             VERIFIED
+LED / Indicator Module                   VERIFIED
+Button Module Phase 5                    VERIFIED
+DHT20 hardware connectivity              VERIFIED
+MPU6050 hardware connectivity            VERIFIED
 ```
 
 当前真实板级资源：
@@ -95,52 +94,35 @@ PA9  -> USART1_TX
 PA10 -> USART1_RX
 ```
 
----
-
-# 4. Button Phase 5 最终状态
-
-状态：
+2026-09-04 临时硬件连通性板测确认：
 
 ```text
-COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
+DHT20  7-bit 0x38 -> ACK / usable
+MPU6050 shared Software I2C -> usable
+RTT observation -> PASS
 ```
 
-正式专项设计：
+该临时板测仅用于排除硬件风险，不代表 DHT20/MPU6050 production driver 已完成。
+
+---
+
+# 4. 已关闭阶段
+
+```text
+Phase 1  GPIO STM32 Impl                       COMPLETED
+Phase 2  Board Resource + CubeMX              COMPLETED
+Phase 3  Software I2C                         COMPLETED
+Phase 4  LED Module                           COMPLETED
+Phase 5  Button Module                        COMPLETED / HOST + KEIL + TARGET VERIFIED
+```
+
+Button 正式专项设计：
 
 ```text
 00_Doc/02_架构设计/Button_Phase1设计.md
 ```
 
-生产代码：
-
-```text
-03_Platform/platform_bsp/button/platform_button.h
-03_Platform/platform_bsp/button/platform_button.c
-03_Platform/platform_bsp/button/platform_bsp_button.h
-03_Platform/platform_bsp/button/platform_bsp_button.c
-
-02_Service/service_button/service_button.h
-02_Service/service_button/service_button.c
-
-00_Config/project_config.h
-MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx
-```
-
-保留 Host Test：
-
-```text
-Tests/platform_button/
-Tests/platform_bsp_button/
-Tests/service_button/
-```
-
-临时 `Tests/button_smoke`、临时 Button / Indicator Smoke Task、Queue、`freertos.c` 启动钩子及 Keil Test 组已经移除；正常 `freertos.c` 已恢复生产启动路径。
-
----
-
-# 5. Button 冻结合同
-
-正式能力链：
+Button 冻结链：
 
 ```text
 PA0 HIGH / LOW
@@ -154,175 +136,259 @@ Button Service -> SINGLE / DOUBLE / LONG
 Future APP -> START / SAMPLE_ONCE / STOP
 ```
 
-Platform Button：
-
-```text
-caller-owned lightweight object
-owns one platform_gpio_t
-activeLevel + pull + initialized
-no malloc/free
-no platform_device_t
-no registry / manager
-no impl_button
-```
-
-配置：
-
-```text
-PROJECT_USER_KEY_ACTIVE_LEVEL = PLATFORM_GPIO_LEVEL_LOW
-PROJECT_USER_KEY_PULL         = PLATFORM_GPIO_PULL_UP
-PROJECT_BUTTON_SAMPLE_PERIOD_MS = 10 ms
-PROJECT_BUTTON_DEBOUNCE_MS      = 30 ms
-PROJECT_BUTTON_DOUBLE_CLICK_MS  = 300 ms
-PROJECT_BUTTON_LONG_PRESS_MS    = 3000 ms
-```
-
-Button Service：
-
-```text
-input  = PRESSED / RELEASED + uint32_t nowMs
-output = NONE / SINGLE / DOUBLE / LONG
-```
-
-冻结行为：
-
-```text
-time-based debounce, no sample counter
-SINGLE waits until double window expires
-second stable PRESS <= 300 ms -> DOUBLE candidate
-LONG at >= 3000 ms, exactly once
-LONG release -> no SINGLE
-second press held long -> LONG only
-uint32_t wraparound-safe elapsed time
-```
-
-Button Service 不读取 GPIO、不获取 RTOS tick、不维护 APP RUNNING / STOPPED、不直接控制 LED / Sensor。
+临时 Button/Indicator smoke harness 已清理；正常生产启动路径已恢复。
 
 ---
 
-# 6. Phase 5 验证证据
+# 5. Phase 6 — DHT20 冻结设计
 
-已记录证据：
-
-```text
-Platform Button Host Test               PASS
-Platform BSP Button Host Test           PASS
-Button Service Host Test                PASS
-Existing regression                     PASS
-Keil normal production rebuild          PASS — 0 Error(s), 20 existing Warning(s)
-Button production-source warning        NONE
-Target board                             PASS — user confirmed
-Serial Assistant                        START / READY / SINGLE / DOUBLE / LONG observed
-RTT                                     START / READY / SINGLE / DOUBLE / LONG observed
-LED Smoke mapping                       PASS
-Temporary smoke cleanup                 PASS
-Coding Standard Review                  PASS
-No Phase 6 implementation started       PASS
-```
-
-Smoke-only 映射曾用于 Phase 5 实板验证：
+状态：
 
 ```text
-SINGLE -> SERVICE_INDICATOR_EVENT_RUNNING      -> LED ON
-DOUBLE -> SERVICE_INDICATOR_EVENT_ONCE_SUCCESS -> 3 blinks -> OFF
-LONG   -> SERVICE_INDICATOR_EVENT_STOPPED      -> LED OFF
+DESIGN FROZEN / IMPLEMENTATION PLAN READY
 ```
 
-该映射已经随 Smoke Harness 清理，不属于正式业务合同。正式 DOUBLE 仍必须经过：
+正式设计：
 
 ```text
-APP SAMPLE_ONCE -> Sensor Acquisition -> UART TX success -> ONCE_SUCCESS
+00_Doc/02_架构设计/DHT20_Phase1设计.md
 ```
 
----
-
-# 7. ISR / Task 稳定约束
-
-ISR / HAL Callback 只允许：
-
-```text
-capture
-copy necessary data
-lightweight state update
-ISR-safe notify
-quick exit
-```
-
-禁止：
-
-```text
-blocking
-ordinary mutex
-malloc/free
-Button gesture FSM
-Software I2C transaction
-LED blink delay
-完整协议解析
-大量格式化日志
-```
-
-永久 Indicator Task 的存在方向已冻结；priority / stack / final event transport 留到 Phase 9。
-
-永久 Button processing context 仍未冻结。Phase 5 的 Smoke Task 仅是验证 Harness，不能作为永久 RTOS 架构依据。
-
----
-
-# 8. 当前执行计划状态
+当前执行计划：
 
 ```text
 00_Doc/04_Agent/implementation_plan.md
-Button Phase 5 Implementation Plan
-Status: COMPLETED
+DHT20 Phase 6 Implementation Plan
+Status: READY FOR CODEX EXECUTION
 ```
 
-该文件现在只作为 Phase 5 完成记录保留。
+正式能力链：
 
-进入 Phase 6 前，必须先完成 DHT20 专项设计，然后再用 Phase 6 的新计划替换 `implementation_plan.md`。
+```text
+Future APP / Acquisition Service
+            ↓
+      Platform DHT20
+            ↓
+      Platform I2C
+            ↓
+      Platform GPIO
+            ↓
+      STM32 GPIO Impl
+```
+
+第一版 DHT20 位于：
+
+```text
+03_Platform/platform_bsp/dht20/
+├── platform_dht20.h
+└── platform_dht20.c
+```
+
+不建立：
+
+```text
+service_dht20
+impl_dht20
+platform_device_t
+registry / manager
+malloc/free
+DHT20 private task
+DHT20-owned mutex
+Fake I2C / test-only Ops abstraction
+```
 
 ---
 
-# 9. 当前 Active Phase / 下一步
+# 6. DHT20 对象 / API 合同
 
-Phase 5 已关闭。
+对象：
 
-下一阶段：
+```text
+platform_dht20_t
+- platform_i2c_t *i2c
+- initialized
+```
+
+DHT20 只引用共享 `platform_i2c_t`，不拥有总线生命周期；`platform_dht20_deinit()` 绝不能调用 `platform_i2c_deinit()`，因为 MPU6050 共用该总线。
+
+一次采集数据：
+
+```text
+status
+rawHumidity
+rawTemperature
+humidityPercent
+ temperatureC
+```
+
+公共 API：
+
+```text
+platform_dht20_init()
+platform_dht20_read()
+platform_dht20_deinit()
+```
+
+`init()` 只检查并绑定已初始化 I2C，不发送隐藏探测/测量事务。
+
+---
+
+# 7. DHT20 协议合同
+
+Platform I2C 使用 7-bit 地址：
+
+```text
+DHT20 address = 0x38
+```
+
+不得把规格书 8-bit 地址 `0x70 / 0x71` 直接传给 Platform I2C。
+
+单次读取：
+
+```text
+platform_i2c_write(0x38, AC 33 00)
+ -> STOP
+ -> platform_time_delay_ms(80)
+ -> platform_i2c_read(0x38, frame, 7)
+ -> Busy
+ -> frame CRC8
+ -> OTP CRC_flag
+ -> CalibrationEnable
+ -> raw parse
+ -> float conversion
+ -> atomic measurement commit
+```
+
+不得用 `platform_i2c_write_read()` 代替，因为 DHT20 测量命令要求 STOP + >=80 ms + 新 START。
+
+错误语义：
+
+```text
+address NACK             -> PLATFORM_ERR_NOT_FOUND
+I2C transaction error    -> preserve underlying error
+Busy                     -> PLATFORM_ERR_BUSY
+frame CRC mismatch       -> PLATFORM_ERR_CHECKSUM
+OTP CRC_flag == 0        -> PLATFORM_ERR_CHECKSUM
+CalibrationEnable == 0   -> PLATFORM_ERR_INVALID_STATE
+```
+
+失败时不得修改调用者已有 measurement。
+
+---
+
+# 8. 产品采集周期更新
+
+最终第一阶段统一采集 / 上报周期由 5 s 调整为：
+
+```text
+2000 ms / 2 s
+```
+
+生产配置名称：
+
+```text
+PROJECT_ACQUISITION_PERIOD_MS = 2000U
+```
+
+该值是产品级静态配置，不是 DHT20 协议常量。
+
+DHT20 规格书也建议约每 2 秒测量一次，以降低频繁激活导致的自热影响。
+
+Phase 6 只加入该配置，不提前实现最终 Acquisition Task。
+
+---
+
+# 9. Phase 6 验证合同
+
+不建立额外 Fake I2C 测试框架，直接验证真实完整链路。
+
+验证组合：
+
+```text
+Keil production build
++
+RTT / EasyLogger
++
+Logic Analyzer on PB6/PB7
+```
+
+RTT 观察：
+
+```text
+DHT20 init result
+status
+raw RH / T
+converted RH / T
+read errors
+```
+
+逻辑分析仪确认：
+
+```text
+START
+0x70 + ACK
+AC + ACK
+33 + ACK
+00 + ACK
+STOP
+
+>= 80 ms
+
+START
+0x71 + ACK
+7-byte read
+ACK first 6 bytes
+NACK final CRC byte
+STOP
+```
+
+再验证约 2 s 连续采集下事务稳定。
+
+临时 DHT20 smoke harness 验证完成后必须清理，再执行正常生产 Build。
+
+---
+
+# 10. 当前 Active Phase / 下一步
 
 ```text
 Phase 6 — DHT20 Environment Module
-STATUS: DESIGN / PLANNING NOT STARTED
+STATUS: READY FOR CODEX IMPLEMENTATION
 ```
 
-下一步流程：
+下一步：
 
 ```text
-Inspect current Software I2C + DHT20 reference baseline
+Codex execute implementation_plan.md
     ↓
-Discuss DHT20 device / Service boundary
+Keil build
     ↓
-Freeze DHT20 Phase design
+RTT target verification
     ↓
-Replace implementation_plan.md with Phase 6 plan
+Logic analyzer verification
     ↓
-Codex implementation
+remove temporary smoke harness
+    ↓
+normal-path rebuild
+    ↓
+update handoff / close Phase 6
 ```
 
-在新设计和计划冻结前，不直接开始 DHT20 生产代码。
+Phase 6 完成前不得自动进入 Phase 7。
 
 ---
 
-# 10. 后续路线
+# 11. 后续路线
 
 ```text
-Phase 3  Software I2C                   COMPLETED
-Phase 4  LED Module                     COMPLETED
-Phase 5  Button Module                  COMPLETED
-Phase 6  DHT20 Environment Module       NEXT / DESIGN PENDING
-Phase 7  MPU6050 Motion Module
+Phase 6  DHT20 Environment Module       ACTIVE / READY TO IMPLEMENT
+Phase 7  MPU6050 Motion Module          NEXT AFTER PHASE 6
 Phase 8  UART Application Communication
 Phase 9  RTOS Task / Event Design
 Phase 10 Final APP Integration
 Final Integrated Board Test
 ```
+
+后续计划建立统一 Acquisition Service 调用 DHT20 + MPU6050；不为单个 DHT20 建立空转发 Service。
 
 当前暂缓：
 
