@@ -2,7 +2,7 @@
 
 > 文档类型：Architecture Contract  
 > 状态：Baseline  
-> 版本：V2.4  
+> 版本：V2.5  
 > 更新时间：2026-09-04  
 > 适用工程：`stm32f4_DMA_UART_ring_RTOS`
 
@@ -74,6 +74,20 @@ PC -> UART RX -> RingBuffer -> Command Parser
                    +-- Software I2C
                            ↓
                      Platform GPIO
+
+Acquisition Result
+   ↓
+Communication Task
+   ↓
+UART Service
+   ↓
+Platform UART async TX
+   ↓
+STM32 UART Impl / DMA2_Stream7
+   ↓
+USART1 TX
+   ↓
+PC
 ```
 
 核心原则：
@@ -82,7 +96,9 @@ PC -> UART RX -> RingBuffer -> Command Parser
 APP Control FSM = 唯一业务状态源
 Button / UART   = 控制输入
 Sensor          = 数据来源
-UART            = 业务数据通道
+Communication   = UART 文本协议入口/出口
+UART Service    = 传输服务
+UART Platform   = 通用 UART 硬件能力
 RTT             = 诊断通道
 LED             = 用户状态反馈
 ```
@@ -104,22 +120,32 @@ LED 产品语义决策
 UART 数据上报编排
 ```
 
+APP Communication 负责：
+
+```text
+UART byte stream -> strict CRLF line
+START / STOP / ONCE / STATUS / HELP command parsing
+protocol-local HELP / invalid / overflow response
+APP_CTRL_* event conversion
+future APP control result -> UART text
+future acquisition result -> business report text
+```
+
+APP Communication 不负责：
+
+```text
+STOPPED / RUNNING truth
+Sensor access
+LED control
+permanent RTOS IPC policy
+```
+
 Button Service 只负责：
 
 ```text
 PRESSED / RELEASED + nowMs
  -> debounce
  -> SINGLE / DOUBLE / LONG
-```
-
-Button Service 不负责：
-
-```text
-GPIO active level
-APP RUNNING / STOPPED
-START / STOP / ONCE 决策
-LED / Sensor 控制
-Task / Queue ownership
 ```
 
 Indicator Service 只负责：
@@ -130,7 +156,16 @@ RUNNING      -> LED ON
 ONCE_SUCCESS -> blink 3 times -> OFF
 ```
 
-UART Service 继续只负责通信数据流、RingBuffer 和 UART 生命周期，不解释应用命令业务。
+UART Service 负责：
+
+```text
+RX stream / RingBuffer / data-loss detection
+UART transport lifecycle
+TX DMA transaction lifecycle
+timeout / cancel / transport statistics
+```
+
+UART Service 不解释应用命令，不控制 LED、DHT20、MPU6050 或 APP 状态。
 
 后续统一 Acquisition Service 负责组合 DHT20 + MPU6050 的采集能力；不为单个传感器建立空转发 Service。
 
@@ -173,8 +208,6 @@ no impl_led
 
 ## Platform Button
 
-Phase 5 已实现并验证：
-
 ```text
 lightweight input device
 caller-owned
@@ -186,22 +219,7 @@ no registry / manager
 no impl_button
 ```
 
-User Key：
-
-```text
-PA0
-Input / Pull-Up / no EXTI
-released = HIGH
-pressed  = LOW
-PROJECT_USER_KEY_ACTIVE_LEVEL = PLATFORM_GPIO_LEVEL_LOW
-PROJECT_USER_KEY_PULL         = PLATFORM_GPIO_PULL_UP
-```
-
-Platform Button 不做 debounce / single / double / long。
-
 ## Platform DHT20
-
-Phase 6 已实现并验证：
 
 ```text
 caller-owned lightweight sensor context
@@ -209,14 +227,9 @@ non-owning reference to shared platform_i2c_t
 init / read / deinit
 raw + converted RH/T data
 atomic measurement output
-no service_dht20
-no impl_dht20
-no private task / mutex
 ```
 
 ## Platform MPU6050
-
-Phase 7 已实现并验证：
 
 ```text
 caller-owned lightweight sensor context
@@ -227,87 +240,24 @@ init = identity verify + wake + fixed configuration
 read = one 14-byte burst from 0x3B
 raw + g / dps six-axis output
 atomic measurement output
-no service_mpu6050
-no impl_mpu6050
-no platform_device_t
-no private task / mutex
-```
-
-Phase 7 固定配置：
-
-```text
-PWR_MGMT_1   0x6B = 0x01
-CONFIG       0x1A = 0x03
-SMPLRT_DIV   0x19 = 0x04
-GYRO_CONFIG  0x1B = 0x00   -> ±250 dps
-ACCEL_CONFIG 0x1C = 0x00   -> ±2 g
 ```
 
 ---
 
-# 5. Button Service 冻结合同
+# 5. UART / RingBuffer / DMA Contract
 
-配置：
-
-```text
-sample period = 10 ms
-debounce      = 30 ms
-double window = 300 ms
-long press    = 3000 ms
-```
-
-输入 / 输出：
+## 5.1 RX stable path
 
 ```text
-input  = platform_button_state_t + uint32_t nowMs
-output = NONE / SINGLE / DOUBLE / LONG
-```
-
-算法规则：
-
-```text
-Debounce = stable elapsed time, not N samples
-SINGLE = first stable release + double-window timeout
-DOUBLE = second stable PRESS starts within <= 300 ms, then second stable release
-LONG = stable PRESS >= 3000 ms, emit exactly once
-LONG release = no SINGLE
-second press LONG = LONG only
-```
-
-时间判断统一使用 wraparound-safe elapsed arithmetic：
-
-```c
-(uint32_t)(nowMs - startMs)
-```
-
-Button 第一阶段采用 polling，不启用 EXTI。
-
-Phase 5 实现状态：
-
-```text
-Platform Button / BSP Button              IMPLEMENTED / VERIFIED
-Button Service                            IMPLEMENTED / VERIFIED
-Host Tests                                PASS
-Keil                                      PASS
-Target FreeRTOS Smoke                     PASS
-Temporary Smoke path                      REMOVED
-```
-
----
-
-# 6. UART / RingBuffer 稳定合同
-
-RX：
-
-```text
-USART1
- -> DMA Circular + IDLE / HT / TC
+USART1 RX
+ -> DMA2_Stream2 Circular
+ -> IDLE / HT / TC
  -> STM32 UART Impl
- -> Platform UART Event
+ -> Platform UART RX_DATA
  -> UART Service
  -> SPSC RingBuffer
  -> Platform Notify From ISR
- -> APP Communication Task
+ -> Communication Task
 ```
 
 RingBuffer：
@@ -324,14 +274,246 @@ no silent overwrite
 
 ```text
 Producer = UART Service RX callback
-Consumer = APP Communication Task
+Consumer = Communication Task
 ```
 
-不得给当前 SPSC 路径增加普通 Mutex。
+不得给当前 SPSC RX 路径增加普通 Mutex。
+
+## 5.2 TX DMA target contract
+
+CubeMX hardware configuration：
+
+```text
+USART1_TX
+DMA2_Stream7
+Channel 4
+Memory -> Peripheral
+Mode = Normal
+IRQ priority = 5
+```
+
+当前状态：
+
+```text
+hardware/generated configuration = READY
+production async TX path         = Phase 8 implementation pending
+```
+
+冻结正式链：
+
+```text
+Communication Task
+ -> UART Service service_uart_write()
+ -> Platform UART write_async()
+ -> STM32 UART Impl
+ -> HAL_UART_Transmit_DMA()
+ -> DMA2_Stream7 Normal
+ -> HAL_UART_TxCpltCallback()
+ -> PLATFORM_UART_EVENT_TX_COMPLETE
+ -> UART Service wakes owner Task
+```
+
+RX / TX transaction 状态独立：
+
+```text
+rxActive
+ txActive
+```
+
+允许 RX + TX 同时 active；第二个同方向 transaction 返回 BUSY。
+
+## 5.3 Platform TX buffer ownership
+
+`platform_uart_write_async()` 成功后直到 TX_COMPLETE / TX CANCELED / terminal TX error：
+
+```text
+caller keeps buffer valid and unchanged
+```
+
+Impl 不复制、不释放 caller buffer。
+
+## 5.4 UART Service TX semantics
+
+第一版 Service 只向 Task 提供同步完成语义：
+
+```text
+service_uart_write(data, length, timeout)
+```
+
+内部使用 async DMA + notify wait。
+
+强保证：
+
+```text
+service_uart_write() returns
+=> DMA no longer accesses caller TX buffer
+```
+
+不增加：
+
+```text
+public Service async TX API
+TX RingBuffer
+TX Queue
+TX worker Task
+buffer pool
+```
+
+TX 单次 transaction failure 不自动破坏健康 RX session；RX / device fatal error 才进入 Service ERROR 路径。
+
+## 5.5 TX wait / timeout
+
+`service_uart_wait_event()` 继续用于 RX / Service observable event，不用于等待 TX completion。
+
+TX 使用内部专用 wait：
+
+```text
+Notify = wake hint
+TX Context = truth
+```
+
+必须用 `platform_time_get_ms()` 维持总 timeout deadline；无关 RX notification 不得延长 TX timeout。
 
 ---
 
-# 7. ISR / Task / 并发合同
+# 6. UART Application Protocol Contract
+
+命令：
+
+```text
+START\r\n
+STOP\r\n
+ONCE\r\n
+STATUS\r\n
+HELP\r\n
+```
+
+第一版 framing：
+
+```text
+strict CRLF
+uppercase only
+case-sensitive
+no trim
+no parameters
+no dynamic allocation
+```
+
+RingBuffer read boundary != command boundary，必须正确处理：
+
+```text
+fragmented command
+multiple commands in one chunk
+CRLF split across chunks
+```
+
+Line Context：
+
+```text
+commandLine[]
+commandLength
+pendingCr
+discardLine
+```
+
+建议产品配置：
+
+```text
+PROJECT_COMM_COMMAND_LINE_BUFFER_SIZE = 32U
+```
+
+超长或 malformed line 一旦确认非法，整行丢弃直到下一个 CRLF；不得从同行后半段重新识别合法命令。
+
+非法命令属于 protocol error，不进入 APP Communication fatal ERROR。
+
+---
+
+# 7. APP Control Contract
+
+唯一业务状态：
+
+```text
+STOPPED
+RUNNING
+```
+
+统一控制事件：
+
+```text
+APP_CTRL_START
+APP_CTRL_STOP
+APP_CTRL_SAMPLE_ONCE
+APP_CTRL_GET_STATUS
+```
+
+映射：
+
+```text
+Button SINGLE -> APP_CTRL_START
+Button DOUBLE -> APP_CTRL_SAMPLE_ONCE
+Button LONG   -> APP_CTRL_STOP
+UART START    -> APP_CTRL_START
+UART STOP     -> APP_CTRL_STOP
+UART ONCE     -> APP_CTRL_SAMPLE_ONCE
+UART STATUS   -> APP_CTRL_GET_STATUS
+```
+
+`HELP` 属于 Communication-local command，不进入 APP FSM。
+
+Phase 8 只冻结逻辑 control handler outlet；Queue / direct call / consumer Task 留到 Phase 9。
+
+handler submission result != business execution result。
+
+Button / UART 不得各自维护 running 标志。
+
+---
+
+# 8. USART1 Product TX Ownership
+
+第一阶段冻结：
+
+```text
+Communication Task = sole USART1 product TX requester
+```
+
+未来：
+
+```text
+Acquisition Task
+ -> acquisition result IPC
+ -> Communication Task
+ -> format report
+ -> service_uart_write()
+```
+
+Acquisition Task 不直接 TX。
+
+不使用普通 TX mutex 解决多个生产者；真正多来源消息先汇聚到 Communication Task。
+
+---
+
+# 9. USART1 / RTT Channel Isolation
+
+正式职责：
+
+```text
+USART1 -> product control + product data
+RTT    -> initialization / state / diagnostics / errors
+```
+
+Phase 8 production implementation 将退出旧正式旁路：
+
+```text
+printf / fputc -> HAL_UART_Transmit(&huart1)
+uartMutexHandle
+USART1_mutex_Init()
+```
+
+不得让 direct HAL blocking TX 与 UART Service DMA TX 同时成为正式 owner。
+
+---
+
+# 10. ISR / Task / 并发合同
 
 ISR / HAL Callback 只允许 capture、必要数据搬运、轻量状态和 ISR-safe notify。
 
@@ -355,19 +537,14 @@ Communication Task      CONFIRMED
 Acquisition Task        PLANNED
 Indicator Task          CONFIRMED
 Button context          NOT YET FROZEN
+APP Control consumer    NOT YET FROZEN
 ```
 
-Indicator Task 用于隔离三闪阻塞时序。
-
-Phase 5 目标板曾使用临时 Button Smoke Task + Indicator Smoke Task + Platform Queue；该 Harness 已删除，不构成永久 RTOS 架构。
-
-Phase 6 / 7 的 DHT20 / MPU6050 临时目标板 Smoke Harness 均已在验证完成后删除，不构成永久 RTOS 架构。
-
-永久 Button Task / priority / stack / IPC / event buffering 留到 Phase 9。
+Phase 9 冻结 permanent IPC / priority / stack / buffering。
 
 ---
 
-# 8. Software I2C 并发
+# 11. Software I2C 并发
 
 DHT20 与 MPU6050 共用软件 I2C。
 
@@ -381,50 +558,11 @@ one Acquisition context
 
 当前不增加 Mutex。
 
-只有出现真实多个并发访问者时才增加 Mutex，且互斥必须覆盖完整 transaction。
-
-DHT20 / MPU6050 均不得在 deinit 中关闭共享 `platform_i2c_t`。
+只有出现真实多个并发访问者时才增加 transaction-level Mutex。
 
 ---
 
-# 9. APP Control FSM 冻结方向
-
-唯一状态：
-
-```text
-STOPPED
-RUNNING
-```
-
-统一控制映射：
-
-```text
-Button SINGLE -> START
-Button DOUBLE -> SAMPLE_ONCE
-Button LONG   -> STOP
-UART START    -> START
-UART STOP     -> STOP
-UART ONCE     -> SAMPLE_ONCE
-UART STATUS   -> GET_STATUS
-```
-
-Button / UART 不得各自维护 running 标志。
-
-正式 DOUBLE 业务：
-
-```text
-DOUBLE
- -> APP SAMPLE_ONCE
- -> DHT20 + MPU6050 acquisition
- -> UART TX
- -> TX success
- -> ONCE_SUCCESS
- -> LED 3 blinks -> OFF
-```
-
----
-
-# 10. Config / Context / Data
+# 12. Config / Context / Data
 
 ```text
 Config  = 模块应怎样工作
@@ -432,26 +570,25 @@ Context = 模块当前怎样运行
 Data    = 模块当前有什么结果
 ```
 
-已冻结静态配置：
+UART Phase 8：
 
 ```text
-UART communication parameters
-Software I2C timing
-Status LED active level / blink timing
-User Key active level / pull
-Button sample / debounce / double / long timing
+command buffer size       -> Config
+line length / pending CR  -> Context
+parsed command            -> transient Data
+TX active / TX result     -> Service Context
+APP STOPPED / RUNNING     -> APP Control Context, NOT Communication Context
+```
+
+产品统一采集周期：
+
+```text
 PROJECT_ACQUISITION_PERIOD_MS = 2000U
 ```
 
-Button raw / stable / gesture / timestamps 属于 Context。
-
-DHT20 / MPU6050 readings 属于 Data。
-
-MPU6050 内部约 200 Hz output rate 属于设备内部配置，不等于 APP 的 2 s 产品采集周期。
-
 ---
 
-# 11. 日志合同
+# 13. 日志合同
 
 正式链：
 
@@ -463,26 +600,25 @@ APP / Service
  -> RTT
 ```
 
-禁止正常运行时逐 UART byte、逐 I2C bit / ACK、逐 LED edge、逐 Button 10 ms polling 刷日志。
-
-Sensor target smoke 可以通过 RTT / EasyLogger 输出必要的 init / measurement / error 摘要，但不得破坏 Software I2C 时序。
+禁止正常运行时逐 UART byte、逐 DMA step、逐 I2C bit / ACK、逐 Button polling 刷日志。
 
 ---
 
-# 12. 当前阶段状态
+# 14. Phase Status
 
 ```text
 Phase 3 Software I2C   COMPLETED
 Phase 4 LED            COMPLETED
-Phase 5 Button         COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
-Phase 6 DHT20          COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
-Phase 7 MPU6050        COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
+Phase 5 Button         COMPLETED / TARGET VERIFIED
+Phase 6 DHT20          COMPLETED / TARGET VERIFIED
+Phase 7 MPU6050        COMPLETED / TARGET VERIFIED
+Phase 8 UART App       DESIGN FROZEN / PLAN READY / NOT STARTED
 ```
 
-Phase 6 已完成 RTT、逻辑分析仪与约 2 s 连续实板验证。
+Phase 8 正式设计：
 
-Phase 7 已完成 Host 28/28、Keil production rebuild、RTT / EasyLogger、PB6/PB7 逻辑分析仪、14-byte burst、物理 sanity check 和断连/NACK negative smoke；临时 Smoke 已删除，production startup 已恢复。
-
-下一阶段为 Phase 8 UART Application Communication，进入前仍应先完成专项设计，不自动编码。
+```text
+00_Doc/02_架构设计/UART_Application_Communication_Phase8设计.md
+```
 
 当前明确不做：SPI / LCD / GUI、W25Q64、AT24C02、Bluetooth、姿态融合、Button EXTI、无需求驱动框架扩张。
