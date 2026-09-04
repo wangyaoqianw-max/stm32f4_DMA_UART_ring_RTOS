@@ -378,7 +378,11 @@ platform_error_t app_communication_process(app_communication_t *communication, u
 {
     platform_error_t result = PLATFORM_ERR_OK;
     uint32_t events = 0U;
-    service_uart_status_t serviceStatus = {0};
+    service_uart_status_t serviceStatus = {
+        .state = SERVICE_UART_STATE_UNINITIALIZED,
+        .lastError = PLATFORM_ERR_OK,
+        .dataLossOccurred = PLATFORM_FALSE
+    };
 
     if (communication == NULL) {
         return PLATFORM_ERR_INVALID_PARAM;
