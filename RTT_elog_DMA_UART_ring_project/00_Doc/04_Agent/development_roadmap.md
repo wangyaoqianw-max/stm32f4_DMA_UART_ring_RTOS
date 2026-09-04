@@ -42,14 +42,14 @@ LED / Indicator Module                        VERIFIED
 Button / Button Service                       VERIFIED
 DHT20 hardware connectivity                   VERIFIED
 MPU6050 hardware connectivity                 VERIFIED
+DHT20 production module                       VERIFIED
 ```
 
-DHT20 与 MPU6050 已通过真实共享 Software I2C 总线连通性板测，当前硬件连接风险已排除。
+DHT20 与 MPU6050 已通过真实共享 Software I2C 总线连通性板测，当前硬件连接风险已排除；DHT20 production module 已完成并通过 Host、Keil、RTT 与逻辑分析仪验证。
 
 最终闭环仍缺：
 
 ```text
-DHT20 production module
 MPU6050 production module
 UART application commands / report
 Permanent RTOS task / event organization
@@ -68,7 +68,7 @@ Phase 3  Software I2C                            COMPLETED
 Phase 4  LED Module                              COMPLETED
 Phase 5  Button Module                           COMPLETED / HOST + KEIL + TARGET VERIFIED
 Phase 6  DHT20 Environment Module                COMPLETED / HOST + KEIL + TARGET VERIFIED
-Phase 7  MPU6050 Motion Module                   NEXT AFTER PHASE 6
+Phase 7  MPU6050 Motion Module                   NEXT / DESIGN PENDING
 Phase 8  UART Application Communication
 Phase 9  RTOS Task / Event Design
 Phase 10 Final APP Integration
@@ -258,6 +258,8 @@ continuous ~2 s target read        PASS
 
 # 6. Phase 7 — MPU6050 Motion Module
 
+下一阶段先进入专项设计，不直接开始 production 编码。
+
 第一阶段只做：
 
 ```text
@@ -270,7 +272,17 @@ raw / physical-unit conversion as designed
 
 不做 Roll / Pitch / Yaw、DMP、Kalman、Complementary Filter 和高频姿态融合。
 
-硬件连通性已提前确认，但 production module 必须等待 Phase 6 关闭后再进入正式设计/实现。
+硬件连通性已提前确认，但 production module 仍必须遵循：
+
+```text
+Inspect current MPU6050 reference + shared Software I2C baseline
+ -> Discuss Platform / Service boundary
+ -> Freeze MPU6050 design
+ -> Replace implementation_plan.md with Phase 7 plan
+ -> Codex implementation
+```
+
+在 Phase 7 设计与计划冻结前，不直接写 MPU6050 production 代码。
 
 ---
 
@@ -341,6 +353,7 @@ RUNNING 第一阶段统一采集 / 上报周期为 2000 ms。
 ```text
 Phase 5 Button      CLOSED
 Phase 6 DHT20       CLOSED / HOST + KEIL + TARGET VERIFIED
+Phase 7 MPU6050     NEXT / DESIGN PENDING
 ```
 
 流程：
@@ -353,6 +366,7 @@ Phase 6 implementation complete
  -> Logic analyzer verification PASS
  -> temporary smoke removed
  -> production startup restored
+ -> Phase 7 design discussion next
 ```
 
-Phase 6 已关闭；本次提交停止于此，不实现 Phase 7。
+Phase 6 已关闭；当前不得直接进入 Phase 7 production implementation。
