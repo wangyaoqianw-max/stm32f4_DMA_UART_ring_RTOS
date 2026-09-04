@@ -73,17 +73,17 @@ static int test_lifecycle_validates_dependencies(void)
     platform_mpu6050_t mpu6050 = PLATFORM_MPU6050_INITIALIZER;
     service_acquisition_config_t config = {&dht20, &mpu6050};
 
-    TEST_ASSERT(PLATFORM_ERR_NULL_POINTER == service_acquisition_init(NULL, &config));
-    TEST_ASSERT(PLATFORM_ERR_NULL_POINTER == service_acquisition_init(&service, NULL));
-    TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED == service_acquisition_init(&service, &config));
+    TEST_ASSERT(service_acquisition_init(NULL, &config) == PLATFORM_ERR_NULL_POINTER);
+    TEST_ASSERT(service_acquisition_init(&service, NULL) == PLATFORM_ERR_NULL_POINTER);
+    TEST_ASSERT(service_acquisition_init(&service, &config) == PLATFORM_ERR_NOT_INITIALIZED);
     dht20.initialized = PLATFORM_TRUE;
     mpu6050.initialized = PLATFORM_TRUE;
-    TEST_ASSERT(PLATFORM_ERR_OK == service_acquisition_init(&service, &config));
-    TEST_ASSERT(PLATFORM_ERR_ALREADY_INITIALIZED == service_acquisition_init(&service, &config));
-    TEST_ASSERT(PLATFORM_ERR_OK == service_acquisition_deinit(&service));
-    TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED == service_acquisition_deinit(&service));
-    TEST_ASSERT(PLATFORM_TRUE == dht20.initialized);
-    TEST_ASSERT(PLATFORM_TRUE == mpu6050.initialized);
+    TEST_ASSERT(service_acquisition_init(&service, &config) == PLATFORM_ERR_OK);
+    TEST_ASSERT(service_acquisition_init(&service, &config) == PLATFORM_ERR_ALREADY_INITIALIZED);
+    TEST_ASSERT(service_acquisition_deinit(&service) == PLATFORM_ERR_OK);
+    TEST_ASSERT(service_acquisition_deinit(&service) == PLATFORM_ERR_NOT_INITIALIZED);
+    TEST_ASSERT(dht20.initialized == PLATFORM_TRUE);
+    TEST_ASSERT(mpu6050.initialized == PLATFORM_TRUE);
 
     return 0;
 }
@@ -97,19 +97,19 @@ static int test_both_success_commits_complete_result(void)
     service_acquisition_data_t data = {0};
 
     fake_runtime_reset();
-    TEST_ASSERT(PLATFORM_ERR_OK == service_acquisition_sample(&service, &data));
-    TEST_ASSERT(1U == g_fakeRuntime.dht20CallCount);
-    TEST_ASSERT(1U == g_fakeRuntime.mpu6050CallCount);
+    TEST_ASSERT(service_acquisition_sample(&service, &data) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.dht20CallCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.mpu6050CallCount == 1U);
     TEST_ASSERT(g_fakeRuntime.dht20Sequence < g_fakeRuntime.mpu6050Sequence);
-    TEST_ASSERT(25.5F == data.environment.temperatureC);
-    TEST_ASSERT(60.25F == data.environment.humidityPercent);
-    TEST_ASSERT(100 == data.motion.accelXRaw);
-    TEST_ASSERT(1.5F == data.motion.gyroZDps);
-    TEST_ASSERT(1U == service.statistics.requestCount);
-    TEST_ASSERT(1U == service.statistics.successCount);
-    TEST_ASSERT(0U == service.statistics.failureCount);
-    TEST_ASSERT(PLATFORM_ERR_OK == service.lastDht20Result);
-    TEST_ASSERT(PLATFORM_ERR_OK == service.lastMpu6050Result);
+    TEST_ASSERT(data.environment.temperatureC == 25.5F);
+    TEST_ASSERT(data.environment.humidityPercent == 60.25F);
+    TEST_ASSERT(data.motion.accelXRaw == 100);
+    TEST_ASSERT(data.motion.gyroZDps == 1.5F);
+    TEST_ASSERT(service.statistics.requestCount == 1U);
+    TEST_ASSERT(service.statistics.successCount == 1U);
+    TEST_ASSERT(service.statistics.failureCount == 0U);
+    TEST_ASSERT(service.lastDht20Result == PLATFORM_ERR_OK);
+    TEST_ASSERT(service.lastMpu6050Result == PLATFORM_ERR_OK);
 
     return 0;
 }
@@ -129,15 +129,15 @@ static int test_dht20_failure_still_attempts_mpu6050_and_preserves_output(void)
     data = original;
     g_fakeRuntime.dht20Result = PLATFORM_ERR_CHECKSUM;
 
-    TEST_ASSERT(PLATFORM_ERR_CHECKSUM == service_acquisition_sample(&service, &data));
-    TEST_ASSERT(1U == g_fakeRuntime.dht20CallCount);
-    TEST_ASSERT(1U == g_fakeRuntime.mpu6050CallCount);
-    TEST_ASSERT(0 == memcmp(&original, &data, sizeof(data)));
-    TEST_ASSERT(1U == service.statistics.failureCount);
-    TEST_ASSERT(1U == service.statistics.dht20FailureCount);
-    TEST_ASSERT(0U == service.statistics.mpu6050FailureCount);
-    TEST_ASSERT(PLATFORM_ERR_CHECKSUM == service.lastDht20Result);
-    TEST_ASSERT(PLATFORM_ERR_OK == service.lastMpu6050Result);
+    TEST_ASSERT(service_acquisition_sample(&service, &data) == PLATFORM_ERR_CHECKSUM);
+    TEST_ASSERT(g_fakeRuntime.dht20CallCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.mpu6050CallCount == 1U);
+    TEST_ASSERT(memcmp(&original, &data, sizeof(data)) == 0);
+    TEST_ASSERT(service.statistics.failureCount == 1U);
+    TEST_ASSERT(service.statistics.dht20FailureCount == 1U);
+    TEST_ASSERT(service.statistics.mpu6050FailureCount == 0U);
+    TEST_ASSERT(service.lastDht20Result == PLATFORM_ERR_CHECKSUM);
+    TEST_ASSERT(service.lastMpu6050Result == PLATFORM_ERR_OK);
 
     return 0;
 }
@@ -157,13 +157,13 @@ static int test_mpu6050_failure_preserves_output(void)
     data = original;
     g_fakeRuntime.mpu6050Result = PLATFORM_ERR_IO;
 
-    TEST_ASSERT(PLATFORM_ERR_IO == service_acquisition_sample(&service, &data));
-    TEST_ASSERT(1U == g_fakeRuntime.dht20CallCount);
-    TEST_ASSERT(1U == g_fakeRuntime.mpu6050CallCount);
-    TEST_ASSERT(0 == memcmp(&original, &data, sizeof(data)));
-    TEST_ASSERT(1U == service.statistics.failureCount);
-    TEST_ASSERT(0U == service.statistics.dht20FailureCount);
-    TEST_ASSERT(1U == service.statistics.mpu6050FailureCount);
+    TEST_ASSERT(service_acquisition_sample(&service, &data) == PLATFORM_ERR_IO);
+    TEST_ASSERT(g_fakeRuntime.dht20CallCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.mpu6050CallCount == 1U);
+    TEST_ASSERT(memcmp(&original, &data, sizeof(data)) == 0);
+    TEST_ASSERT(service.statistics.failureCount == 1U);
+    TEST_ASSERT(service.statistics.dht20FailureCount == 0U);
+    TEST_ASSERT(service.statistics.mpu6050FailureCount == 1U);
 
     return 0;
 }
@@ -184,17 +184,17 @@ static int test_both_failure_records_both_diagnostics(void)
     g_fakeRuntime.dht20Result = PLATFORM_ERR_TIMEOUT;
     g_fakeRuntime.mpu6050Result = PLATFORM_ERR_IO;
 
-    TEST_ASSERT(PLATFORM_ERR_TIMEOUT == service_acquisition_sample(&service, &data));
-    TEST_ASSERT(1U == g_fakeRuntime.dht20CallCount);
-    TEST_ASSERT(1U == g_fakeRuntime.mpu6050CallCount);
-    TEST_ASSERT(0 == memcmp(&original, &data, sizeof(data)));
-    TEST_ASSERT(1U == service.statistics.requestCount);
-    TEST_ASSERT(0U == service.statistics.successCount);
-    TEST_ASSERT(1U == service.statistics.failureCount);
-    TEST_ASSERT(1U == service.statistics.dht20FailureCount);
-    TEST_ASSERT(1U == service.statistics.mpu6050FailureCount);
-    TEST_ASSERT(PLATFORM_ERR_TIMEOUT == service.lastDht20Result);
-    TEST_ASSERT(PLATFORM_ERR_IO == service.lastMpu6050Result);
+    TEST_ASSERT(service_acquisition_sample(&service, &data) == PLATFORM_ERR_TIMEOUT);
+    TEST_ASSERT(g_fakeRuntime.dht20CallCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.mpu6050CallCount == 1U);
+    TEST_ASSERT(memcmp(&original, &data, sizeof(data)) == 0);
+    TEST_ASSERT(service.statistics.requestCount == 1U);
+    TEST_ASSERT(service.statistics.successCount == 0U);
+    TEST_ASSERT(service.statistics.failureCount == 1U);
+    TEST_ASSERT(service.statistics.dht20FailureCount == 1U);
+    TEST_ASSERT(service.statistics.mpu6050FailureCount == 1U);
+    TEST_ASSERT(service.lastDht20Result == PLATFORM_ERR_TIMEOUT);
+    TEST_ASSERT(service.lastMpu6050Result == PLATFORM_ERR_IO);
 
     return 0;
 }

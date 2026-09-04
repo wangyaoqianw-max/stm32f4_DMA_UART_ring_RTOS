@@ -116,16 +116,16 @@ static int test_boots_stopped_and_initializes_deadline(void)
     };
 
     fake_runtime_reset();
-    TEST_ASSERT(PLATFORM_ERR_NULL_POINTER == app_control_init(NULL, &config));
-    TEST_ASSERT(PLATFORM_ERR_NULL_POINTER == app_control_init(&control, NULL));
-    TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED == app_control_init(&control, &config));
+    TEST_ASSERT(app_control_init(NULL, &config) == PLATFORM_ERR_NULL_POINTER);
+    TEST_ASSERT(app_control_init(&control, NULL) == PLATFORM_ERR_NULL_POINTER);
+    TEST_ASSERT(app_control_init(&control, &config) == PLATFORM_ERR_NOT_INITIALIZED);
     button.initialized = PLATFORM_TRUE;
     buttonService.initialized = PLATFORM_TRUE;
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_init(&control, &config));
-    TEST_ASSERT(APP_CONTROL_STATE_STOPPED == control.context.state);
-    TEST_ASSERT(PLATFORM_FALSE == control.context.onceActive);
-    TEST_ASSERT(110U == control.context.nextButtonSampleDeadlineMs);
-    TEST_ASSERT(PLATFORM_ERR_ALREADY_INITIALIZED == app_control_init(&control, &config));
+    TEST_ASSERT(app_control_init(&control, &config) == PLATFORM_ERR_OK);
+    TEST_ASSERT(control.context.state == APP_CONTROL_STATE_STOPPED);
+    TEST_ASSERT(control.context.onceActive == PLATFORM_FALSE);
+    TEST_ASSERT(control.context.nextButtonSampleDeadlineMs == 110U);
+    TEST_ASSERT(app_control_init(&control, &config) == PLATFORM_ERR_ALREADY_INITIALIZED);
 
     return 0;
 }
@@ -140,52 +140,52 @@ static int test_uart_start_and_stop_share_one_state_machine(void)
     fake_runtime_reset();
     control = create_control(&button, &buttonService);
 
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_process_event(
-                &control, APP_CTRL_START, APP_CTRL_SOURCE_UART));
-    TEST_ASSERT(APP_CONTROL_STATE_RUNNING == control.context.state);
-    TEST_ASSERT(1U == g_fakeRuntime.acquisitionCount);
-    TEST_ASSERT(APP_ACQUISITION_COMMAND_START_PERIODIC ==
-                g_fakeRuntime.acquisitionMessages[0]);
-    TEST_ASSERT(1U == g_fakeRuntime.indicatorCount);
-    TEST_ASSERT(APP_INDICATOR_RUNNING == g_fakeRuntime.indicatorMessages[0]);
-    TEST_ASSERT(APP_CONTROL_RESPONSE_OK_START ==
-                g_fakeRuntime.communicationMessages[0].payload.controlResponse);
+    TEST_ASSERT(app_control_process_event(
+                &control, APP_CTRL_START, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
+    TEST_ASSERT(control.context.state == APP_CONTROL_STATE_RUNNING);
+    TEST_ASSERT(g_fakeRuntime.acquisitionCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.acquisitionMessages[0] ==
+                APP_ACQUISITION_COMMAND_START_PERIODIC);
+    TEST_ASSERT(g_fakeRuntime.indicatorCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.indicatorMessages[0] == APP_INDICATOR_RUNNING);
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[0].payload.controlResponse ==
+                APP_CONTROL_RESPONSE_OK_START);
 
     fake_clear_outputs();
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_process_event(
-                &control, APP_CTRL_GET_STATUS, APP_CTRL_SOURCE_UART));
-    TEST_ASSERT(APP_CONTROL_RESPONSE_STATUS_RUNNING ==
-                g_fakeRuntime.communicationMessages[0].payload.controlResponse);
+    TEST_ASSERT(app_control_process_event(
+                &control, APP_CTRL_GET_STATUS, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[0].payload.controlResponse ==
+                APP_CONTROL_RESPONSE_STATUS_RUNNING);
 
     fake_clear_outputs();
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_process_event(
-                &control, APP_CTRL_SAMPLE_ONCE, APP_CTRL_SOURCE_UART));
-    TEST_ASSERT(APP_CONTROL_RESPONSE_ALREADY_RUNNING ==
-                g_fakeRuntime.communicationMessages[0].payload.controlResponse);
+    TEST_ASSERT(app_control_process_event(
+                &control, APP_CTRL_SAMPLE_ONCE, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[0].payload.controlResponse ==
+                APP_CONTROL_RESPONSE_ALREADY_RUNNING);
 
     fake_clear_outputs();
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_process_event(
-                &control, APP_CTRL_START, APP_CTRL_SOURCE_UART));
-    TEST_ASSERT(APP_CONTROL_STATE_RUNNING == control.context.state);
-    TEST_ASSERT(0U == g_fakeRuntime.acquisitionCount);
-    TEST_ASSERT(APP_CONTROL_RESPONSE_ALREADY_RUNNING ==
-                g_fakeRuntime.communicationMessages[0].payload.controlResponse);
+    TEST_ASSERT(app_control_process_event(
+                &control, APP_CTRL_START, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
+    TEST_ASSERT(control.context.state == APP_CONTROL_STATE_RUNNING);
+    TEST_ASSERT(g_fakeRuntime.acquisitionCount == 0U);
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[0].payload.controlResponse ==
+                APP_CONTROL_RESPONSE_ALREADY_RUNNING);
 
     fake_clear_outputs();
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_process_event(
-                &control, APP_CTRL_STOP, APP_CTRL_SOURCE_UART));
-    TEST_ASSERT(APP_CONTROL_STATE_STOPPED == control.context.state);
-    TEST_ASSERT(APP_ACQUISITION_COMMAND_STOP_PERIODIC ==
-                g_fakeRuntime.acquisitionMessages[0]);
-    TEST_ASSERT(APP_INDICATOR_STOPPED == g_fakeRuntime.indicatorMessages[0]);
-    TEST_ASSERT(APP_CONTROL_RESPONSE_OK_STOP ==
-                g_fakeRuntime.communicationMessages[0].payload.controlResponse);
+    TEST_ASSERT(app_control_process_event(
+                &control, APP_CTRL_STOP, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
+    TEST_ASSERT(control.context.state == APP_CONTROL_STATE_STOPPED);
+    TEST_ASSERT(g_fakeRuntime.acquisitionMessages[0] ==
+                APP_ACQUISITION_COMMAND_STOP_PERIODIC);
+    TEST_ASSERT(g_fakeRuntime.indicatorMessages[0] == APP_INDICATOR_STOPPED);
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[0].payload.controlResponse ==
+                APP_CONTROL_RESPONSE_OK_STOP);
 
     fake_clear_outputs();
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_process_event(
-                &control, APP_CTRL_STOP, APP_CTRL_SOURCE_UART));
-    TEST_ASSERT(APP_CONTROL_RESPONSE_ALREADY_STOPPED ==
-                g_fakeRuntime.communicationMessages[0].payload.controlResponse);
+    TEST_ASSERT(app_control_process_event(
+                &control, APP_CTRL_STOP, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[0].payload.controlResponse ==
+                APP_CONTROL_RESPONSE_ALREADY_STOPPED);
 
     return 0;
 }
@@ -201,40 +201,40 @@ static int test_once_busy_status_and_failure_completion(void)
     fake_runtime_reset();
     control = create_control(&button, &buttonService);
 
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_process_event(
-                &control, APP_CTRL_SAMPLE_ONCE, APP_CTRL_SOURCE_UART));
-    TEST_ASSERT(APP_CONTROL_STATE_STOPPED == control.context.state);
-    TEST_ASSERT(PLATFORM_TRUE == control.context.onceActive);
-    TEST_ASSERT(APP_CTRL_SOURCE_UART == control.context.onceSource);
-    TEST_ASSERT(APP_ACQUISITION_COMMAND_SAMPLE_ONCE ==
-                g_fakeRuntime.acquisitionMessages[0]);
-    TEST_ASSERT(0U == g_fakeRuntime.communicationCount);
+    TEST_ASSERT(app_control_process_event(
+                &control, APP_CTRL_SAMPLE_ONCE, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
+    TEST_ASSERT(control.context.state == APP_CONTROL_STATE_STOPPED);
+    TEST_ASSERT(control.context.onceActive == PLATFORM_TRUE);
+    TEST_ASSERT(control.context.onceSource == APP_CTRL_SOURCE_UART);
+    TEST_ASSERT(g_fakeRuntime.acquisitionMessages[0] ==
+                APP_ACQUISITION_COMMAND_SAMPLE_ONCE);
+    TEST_ASSERT(g_fakeRuntime.communicationCount == 0U);
 
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_process_event(
-                &control, APP_CTRL_START, APP_CTRL_SOURCE_UART));
-    TEST_ASSERT(APP_CONTROL_RESPONSE_BUSY ==
-                g_fakeRuntime.communicationMessages[0].payload.controlResponse);
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_process_event(
-                &control, APP_CTRL_STOP, APP_CTRL_SOURCE_UART));
-    TEST_ASSERT(APP_CONTROL_RESPONSE_BUSY ==
-                g_fakeRuntime.communicationMessages[1].payload.controlResponse);
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_process_event(
-                &control, APP_CTRL_SAMPLE_ONCE, APP_CTRL_SOURCE_UART));
-    TEST_ASSERT(APP_CONTROL_RESPONSE_BUSY ==
-                g_fakeRuntime.communicationMessages[2].payload.controlResponse);
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_process_event(
-                &control, APP_CTRL_GET_STATUS, APP_CTRL_SOURCE_UART));
-    TEST_ASSERT(APP_CONTROL_RESPONSE_STATUS_STOPPED ==
-                g_fakeRuntime.communicationMessages[3].payload.controlResponse);
+    TEST_ASSERT(app_control_process_event(
+                &control, APP_CTRL_START, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[0].payload.controlResponse ==
+                APP_CONTROL_RESPONSE_BUSY);
+    TEST_ASSERT(app_control_process_event(
+                &control, APP_CTRL_STOP, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[1].payload.controlResponse ==
+                APP_CONTROL_RESPONSE_BUSY);
+    TEST_ASSERT(app_control_process_event(
+                &control, APP_CTRL_SAMPLE_ONCE, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[2].payload.controlResponse ==
+                APP_CONTROL_RESPONSE_BUSY);
+    TEST_ASSERT(app_control_process_event(
+                &control, APP_CTRL_GET_STATUS, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[3].payload.controlResponse ==
+                APP_CONTROL_RESPONSE_STATUS_STOPPED);
 
     fake_clear_outputs();
     completion.type = APP_CONTROL_MESSAGE_ONCE_ACQUISITION_FAILED;
     completion.payload.result = PLATFORM_ERR_IO;
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_process_message(&control, &completion));
-    TEST_ASSERT(PLATFORM_FALSE == control.context.onceActive);
-    TEST_ASSERT(APP_CONTROL_RESPONSE_ACQUISITION_FAILED ==
-                g_fakeRuntime.communicationMessages[0].payload.controlResponse);
-    TEST_ASSERT(0U == g_fakeRuntime.indicatorCount);
+    TEST_ASSERT(app_control_process_message(&control, &completion) == PLATFORM_ERR_OK);
+    TEST_ASSERT(control.context.onceActive == PLATFORM_FALSE);
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[0].payload.controlResponse ==
+                APP_CONTROL_RESPONSE_ACQUISITION_FAILED);
+    TEST_ASSERT(g_fakeRuntime.indicatorCount == 0U);
 
     return 0;
 }
@@ -250,10 +250,10 @@ static int test_queue_failure_is_observable_and_does_not_change_state(void)
     control = create_control(&button, &buttonService);
     g_fakeRuntime.queueSendResult = PLATFORM_ERR_FULL;
 
-    TEST_ASSERT(PLATFORM_ERR_FULL == app_control_process_event(
-                &control, APP_CTRL_START, APP_CTRL_SOURCE_UART));
-    TEST_ASSERT(APP_CONTROL_STATE_STOPPED == control.context.state);
-    TEST_ASSERT(1U == control.statistics.queueSubmitFailureCount);
+    TEST_ASSERT(app_control_process_event(
+                &control, APP_CTRL_START, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_FULL);
+    TEST_ASSERT(control.context.state == APP_CONTROL_STATE_STOPPED);
+    TEST_ASSERT(control.statistics.queueSubmitFailureCount == 1U);
 
     return 0;
 }
@@ -268,24 +268,24 @@ static int test_once_tx_completion_controls_success_indicator(void)
 
     fake_runtime_reset();
     control = create_control(&button, &buttonService);
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_process_event(
-                &control, APP_CTRL_SAMPLE_ONCE, APP_CTRL_SOURCE_BUTTON));
+    TEST_ASSERT(app_control_process_event(
+                &control, APP_CTRL_SAMPLE_ONCE, APP_CTRL_SOURCE_BUTTON) == PLATFORM_ERR_OK);
 
     fake_clear_outputs();
     completion.type = APP_CONTROL_MESSAGE_ONCE_TX_RESULT;
     completion.payload.result = PLATFORM_ERR_TIMEOUT;
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_process_message(&control, &completion));
-    TEST_ASSERT(PLATFORM_FALSE == control.context.onceActive);
-    TEST_ASSERT(0U == g_fakeRuntime.indicatorCount);
+    TEST_ASSERT(app_control_process_message(&control, &completion) == PLATFORM_ERR_OK);
+    TEST_ASSERT(control.context.onceActive == PLATFORM_FALSE);
+    TEST_ASSERT(g_fakeRuntime.indicatorCount == 0U);
 
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_process_event(
-                &control, APP_CTRL_SAMPLE_ONCE, APP_CTRL_SOURCE_BUTTON));
+    TEST_ASSERT(app_control_process_event(
+                &control, APP_CTRL_SAMPLE_ONCE, APP_CTRL_SOURCE_BUTTON) == PLATFORM_ERR_OK);
     fake_clear_outputs();
     completion.payload.result = PLATFORM_ERR_OK;
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_process_message(&control, &completion));
-    TEST_ASSERT(PLATFORM_FALSE == control.context.onceActive);
-    TEST_ASSERT(1U == g_fakeRuntime.indicatorCount);
-    TEST_ASSERT(APP_INDICATOR_ONCE_SUCCESS == g_fakeRuntime.indicatorMessages[0]);
+    TEST_ASSERT(app_control_process_message(&control, &completion) == PLATFORM_ERR_OK);
+    TEST_ASSERT(control.context.onceActive == PLATFORM_FALSE);
+    TEST_ASSERT(g_fakeRuntime.indicatorCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.indicatorMessages[0] == APP_INDICATOR_ONCE_SUCCESS);
 
     return 0;
 }
@@ -301,33 +301,33 @@ static int test_button_gestures_map_into_same_fsm(void)
     control = create_control(&button, &buttonService);
 
     g_fakeRuntime.buttonEvent = SERVICE_BUTTON_EVENT_SINGLE;
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_sample_button(&control, 110U));
-    TEST_ASSERT(APP_CONTROL_STATE_RUNNING == control.context.state);
-    TEST_ASSERT(APP_ACQUISITION_COMMAND_START_PERIODIC ==
-                g_fakeRuntime.acquisitionMessages[0]);
-    TEST_ASSERT(0U == g_fakeRuntime.communicationCount);
+    TEST_ASSERT(app_control_sample_button(&control, 110U) == PLATFORM_ERR_OK);
+    TEST_ASSERT(control.context.state == APP_CONTROL_STATE_RUNNING);
+    TEST_ASSERT(g_fakeRuntime.acquisitionMessages[0] ==
+                APP_ACQUISITION_COMMAND_START_PERIODIC);
+    TEST_ASSERT(g_fakeRuntime.communicationCount == 0U);
 
     fake_clear_outputs();
     g_fakeRuntime.buttonEvent = SERVICE_BUTTON_EVENT_LONG;
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_sample_button(&control, 120U));
-    TEST_ASSERT(APP_CONTROL_STATE_STOPPED == control.context.state);
-    TEST_ASSERT(APP_ACQUISITION_COMMAND_STOP_PERIODIC ==
-                g_fakeRuntime.acquisitionMessages[0]);
+    TEST_ASSERT(app_control_sample_button(&control, 120U) == PLATFORM_ERR_OK);
+    TEST_ASSERT(control.context.state == APP_CONTROL_STATE_STOPPED);
+    TEST_ASSERT(g_fakeRuntime.acquisitionMessages[0] ==
+                APP_ACQUISITION_COMMAND_STOP_PERIODIC);
 
     fake_clear_outputs();
     g_fakeRuntime.buttonEvent = SERVICE_BUTTON_EVENT_DOUBLE;
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_sample_button(&control, 130U));
-    TEST_ASSERT(PLATFORM_TRUE == control.context.onceActive);
-    TEST_ASSERT(APP_ACQUISITION_COMMAND_SAMPLE_ONCE ==
-                g_fakeRuntime.acquisitionMessages[0]);
+    TEST_ASSERT(app_control_sample_button(&control, 130U) == PLATFORM_ERR_OK);
+    TEST_ASSERT(control.context.onceActive == PLATFORM_TRUE);
+    TEST_ASSERT(g_fakeRuntime.acquisitionMessages[0] ==
+                APP_ACQUISITION_COMMAND_SAMPLE_ONCE);
 
     fake_clear_outputs();
     g_fakeRuntime.buttonEvent = SERVICE_BUTTON_EVENT_SINGLE;
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_sample_button(&control, 140U));
-    TEST_ASSERT(APP_CONTROL_STATE_STOPPED == control.context.state);
-    TEST_ASSERT(PLATFORM_TRUE == control.context.onceActive);
-    TEST_ASSERT(0U == g_fakeRuntime.acquisitionCount);
-    TEST_ASSERT(1U == control.statistics.ignoredButtonEventCount);
+    TEST_ASSERT(app_control_sample_button(&control, 140U) == PLATFORM_ERR_OK);
+    TEST_ASSERT(control.context.state == APP_CONTROL_STATE_STOPPED);
+    TEST_ASSERT(control.context.onceActive == PLATFORM_TRUE);
+    TEST_ASSERT(g_fakeRuntime.acquisitionCount == 0U);
+    TEST_ASSERT(control.statistics.ignoredButtonEventCount == 1U);
 
     return 0;
 }
@@ -344,12 +344,12 @@ static int test_run_once_uses_deadline_as_queue_timeout(void)
     g_fakeRuntime.nowMs = 110U;
     g_fakeRuntime.buttonEvent = SERVICE_BUTTON_EVENT_NONE;
 
-    TEST_ASSERT(PLATFORM_ERR_OK == app_control_run_once(&control));
-    TEST_ASSERT(1U == g_fakeRuntime.receiveCallCount);
-    TEST_ASSERT(0U == g_fakeRuntime.lastReceiveTimeoutMs);
-    TEST_ASSERT(1U == g_fakeRuntime.buttonReadCount);
-    TEST_ASSERT(1U == g_fakeRuntime.buttonProcessCount);
-    TEST_ASSERT(120U == control.context.nextButtonSampleDeadlineMs);
+    TEST_ASSERT(app_control_run_once(&control) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.receiveCallCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.lastReceiveTimeoutMs == 0U);
+    TEST_ASSERT(g_fakeRuntime.buttonReadCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.buttonProcessCount == 1U);
+    TEST_ASSERT(control.context.nextButtonSampleDeadlineMs == 120U);
 
     return 0;
 }
@@ -359,7 +359,7 @@ platform_error_t platform_queue_send(
     const void *item,
     uint32_t timeoutMs)
 {
-    TEST_ASSERT(PLATFORM_OS_NO_WAIT == timeoutMs);
+    TEST_ASSERT(timeoutMs == PLATFORM_OS_NO_WAIT);
     if (g_fakeRuntime.queueSendResult != PLATFORM_ERR_OK) {
         return g_fakeRuntime.queueSendResult;
     }

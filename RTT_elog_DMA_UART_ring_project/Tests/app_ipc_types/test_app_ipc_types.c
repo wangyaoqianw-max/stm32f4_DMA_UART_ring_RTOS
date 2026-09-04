@@ -39,14 +39,14 @@ int main(void)
     controlMessage.type = APP_CONTROL_MESSAGE_CONTROL_REQUEST;
     controlMessage.payload.request.event = APP_CTRL_START;
     controlMessage.payload.request.source = APP_CTRL_SOURCE_UART;
-    TEST_ASSERT(APP_CTRL_START == controlMessage.payload.request.event);
-    TEST_ASSERT(APP_CTRL_SOURCE_UART == controlMessage.payload.request.source);
+    TEST_ASSERT(controlMessage.payload.request.event == APP_CTRL_START);
+    TEST_ASSERT(controlMessage.payload.request.source == APP_CTRL_SOURCE_UART);
 
     outboundMessage.type = APP_COMM_OUTBOUND_ONCE_REPORT;
     outboundMessage.payload.acquisition.environment.temperatureC = 25.0F;
     outboundMessage.payload.acquisition.motion.accelZG = 1.0F;
-    TEST_ASSERT(25.0F == outboundMessage.payload.acquisition.environment.temperatureC);
-    TEST_ASSERT(1.0F == outboundMessage.payload.acquisition.motion.accelZG);
+    TEST_ASSERT(outboundMessage.payload.acquisition.environment.temperatureC == 25.0F);
+    TEST_ASSERT(outboundMessage.payload.acquisition.motion.accelZG == 1.0F);
 
     return 0;
 }
