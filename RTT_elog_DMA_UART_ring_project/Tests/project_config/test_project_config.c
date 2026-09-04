@@ -55,6 +55,8 @@ _Static_assert(PROJECT_BUTTON_LONG_PRESS_MS == 3000U,
                "unexpected button long press duration");
 _Static_assert(PROJECT_ACQUISITION_PERIOD_MS == 2000U,
                "unexpected acquisition period");
+_Static_assert(PROJECT_MPU6050_I2C_ADDRESS == 0x68U,
+               "unexpected MPU6050 address");
 _Static_assert(PROJECT_CONTROL_TASK_STACK_SIZE_BYTES == 1024U,
                "unexpected control task stack size");
 _Static_assert(PROJECT_CONTROL_TASK_PRIORITY == PLATFORM_THREAD_PRIORITY_ABOVE_NORMAL,
