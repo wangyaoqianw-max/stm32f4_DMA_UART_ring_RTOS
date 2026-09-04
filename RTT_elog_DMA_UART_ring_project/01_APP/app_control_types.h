@@ -32,6 +32,16 @@ typedef enum
 } app_ctrl_event_t;
 
 /**
+ * @brief APP 控制事件来源
+ */
+typedef enum
+{
+    APP_CTRL_SOURCE_BUTTON = 0,
+    APP_CTRL_SOURCE_UART,
+    APP_CTRL_SOURCE_MAX
+} app_ctrl_source_t;
+
+/**
  * @brief 向 APP Control 提交控制事件
  * @note 返回值只表示提交或投递结果，不表示业务执行结果。
  */

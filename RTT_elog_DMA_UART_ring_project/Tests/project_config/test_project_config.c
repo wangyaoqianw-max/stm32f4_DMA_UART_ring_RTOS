@@ -33,11 +33,11 @@ _Static_assert(PROJECT_COMM_READ_BUFFER_SIZE == 128U,
                "unexpected app read buffer size");
 _Static_assert(PROJECT_COMM_COMMAND_LINE_BUFFER_SIZE == 32U,
                "unexpected command line buffer size");
-_Static_assert(PROJECT_COMM_TASK_STACK_SIZE_BYTES == 1024U,
+_Static_assert(PROJECT_COMM_TASK_STACK_SIZE_BYTES == 2048U,
                "unexpected communication task stack size");
-_Static_assert(PROJECT_COMM_TASK_PRIORITY == PLATFORM_THREAD_PRIORITY_NORMAL,
+_Static_assert(PROJECT_COMM_TASK_PRIORITY == PLATFORM_THREAD_PRIORITY_ABOVE_NORMAL,
                "unexpected communication task priority");
-_Static_assert(PROJECT_COMM_WAIT_TIMEOUT_MS == 1000U,
+_Static_assert(PROJECT_COMM_WAIT_TIMEOUT_MS == 20U,
                "unexpected communication wait timeout");
 _Static_assert(PROJECT_COMM_ERROR_IDLE_DELAY_MS == 1000U,
                "unexpected communication error idle delay");
@@ -55,6 +55,26 @@ _Static_assert(PROJECT_BUTTON_LONG_PRESS_MS == 3000U,
                "unexpected button long press duration");
 _Static_assert(PROJECT_ACQUISITION_PERIOD_MS == 2000U,
                "unexpected acquisition period");
+_Static_assert(PROJECT_CONTROL_TASK_STACK_SIZE_BYTES == 1024U,
+               "unexpected control task stack size");
+_Static_assert(PROJECT_CONTROL_TASK_PRIORITY == PLATFORM_THREAD_PRIORITY_ABOVE_NORMAL,
+               "unexpected control task priority");
+_Static_assert(PROJECT_CONTROL_QUEUE_DEPTH == 8U,
+               "unexpected control queue depth");
+_Static_assert(PROJECT_ACQUISITION_TASK_STACK_SIZE_BYTES == 1536U,
+               "unexpected acquisition task stack size");
+_Static_assert(PROJECT_ACQUISITION_TASK_PRIORITY == PLATFORM_THREAD_PRIORITY_NORMAL,
+               "unexpected acquisition task priority");
+_Static_assert(PROJECT_ACQUISITION_QUEUE_DEPTH == 4U,
+               "unexpected acquisition queue depth");
+_Static_assert(PROJECT_INDICATOR_TASK_STACK_SIZE_BYTES == 768U,
+               "unexpected indicator task stack size");
+_Static_assert(PROJECT_INDICATOR_TASK_PRIORITY == PLATFORM_THREAD_PRIORITY_BELOW_NORMAL,
+               "unexpected indicator task priority");
+_Static_assert(PROJECT_INDICATOR_QUEUE_DEPTH == 4U,
+               "unexpected indicator queue depth");
+_Static_assert(PROJECT_COMM_OUTBOUND_QUEUE_DEPTH == 8U,
+               "unexpected communication outbound queue depth");
 _Static_assert(PROJECT_STATUS_LED_ACTIVE_LEVEL == PLATFORM_GPIO_LEVEL_LOW,
                "unexpected status led active level");
 _Static_assert(PROJECT_INDICATOR_BLINK_COUNT == 3U,

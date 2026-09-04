@@ -96,8 +96,8 @@ platform_error_t platform_thread_create(platform_thread_t *thread,
                                         const platform_thread_config_t *config)
 {
     (void)thread;
-    TEST_ASSERT(1024U == config->stackSizeBytes);
-    TEST_ASSERT(PLATFORM_THREAD_PRIORITY_NORMAL == config->priority);
+    TEST_ASSERT(2048U == config->stackSizeBytes);
+    TEST_ASSERT(PLATFORM_THREAD_PRIORITY_ABOVE_NORMAL == config->priority);
     g_fakeSystem.threadStep = ++g_fakeSystem.step;
     return PLATFORM_ERR_OK;
 }
