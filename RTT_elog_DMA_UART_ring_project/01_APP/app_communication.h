@@ -15,6 +15,8 @@
 #define APP_COMMUNICATION_H
 
 //******************************** Includes *********************************//
+#include "app_control_types.h"
+#include "project_config.h"
 #include "service_uart.h"
 //******************************** Includes *********************************//
 
@@ -46,6 +48,10 @@ typedef struct
     platform_uart_t *uart;
     /** APP 等待、读取和恢复的 UART Service。 */
     service_uart_t *service;
+    /** 向 APP Control 提交统一控制事件的可选出口。 */
+    app_control_event_handler_t controlHandler;
+    /** controlHandler 的调用者持有上下文。 */
+    void *controlContext;
 } app_communication_config_t;
 
 /**
@@ -57,6 +63,14 @@ typedef struct
     app_communication_state_t state;
     /** 最近一次导致 APP 错误状态的错误。 */
     platform_error_t lastError;
+    /** 未包含 CRLF 的当前命令行数据。 */
+    uint8_t commandLine[PROJECT_COMM_COMMAND_LINE_BUFFER_SIZE];
+    /** commandLine 中当前有效字节数。 */
+    platform_size_t commandLength;
+    /** 已收到 CR，等待 LF 确认严格行结束。 */
+    platform_bool_t pendingCr;
+    /** 当前行已损坏或过长，等待完整 CRLF 后恢复。 */
+    platform_bool_t discardLine;
 } app_communication_context_t;
 
 /**
@@ -75,6 +89,20 @@ typedef struct
     uint32_t uartErrorRecoveryCount;
     /** 进入 ERROR 的致命错误次数。 */
     uint32_t fatalErrorCount;
+    /** 接收到的完整合法命令数量。 */
+    uint32_t commandReceivedCount;
+    /** 非法 framing 或未知命令数量。 */
+    uint32_t commandInvalidCount;
+    /** 超过命令行缓冲区上限的行数量。 */
+    uint32_t commandOverflowCount;
+    /** 成功提交到 APP Control outlet 的事件数量。 */
+    uint32_t controlEventSubmittedCount;
+    /** APP Control outlet 缺失或提交失败数量。 */
+    uint32_t controlEventSubmitFailureCount;
+    /** 成功发出的 Communication-local 响应数量。 */
+    uint32_t localResponseCount;
+    /** 发出 Communication-local 响应失败数量。 */
+    uint32_t localResponseFailureCount;
 } app_communication_statistics_t;
 
 /**

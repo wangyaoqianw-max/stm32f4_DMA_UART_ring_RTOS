@@ -31,6 +31,8 @@ _Static_assert(PROJECT_COMM_RING_BUFFER_STORAGE_SIZE == 512U,
                "unexpected ring storage size");
 _Static_assert(PROJECT_COMM_READ_BUFFER_SIZE == 128U,
                "unexpected app read buffer size");
+_Static_assert(PROJECT_COMM_COMMAND_LINE_BUFFER_SIZE == 32U,
+               "unexpected command line buffer size");
 _Static_assert(PROJECT_COMM_TASK_STACK_SIZE_BYTES == 1024U,
                "unexpected communication task stack size");
 _Static_assert(PROJECT_COMM_TASK_PRIORITY == PLATFORM_THREAD_PRIORITY_NORMAL,

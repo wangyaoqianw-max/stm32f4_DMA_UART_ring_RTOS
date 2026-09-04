@@ -16,11 +16,31 @@
 #include "project_config.h"
 #include "service_log.h"
 #include "platform_time.h"
+
+#include <string.h>
 //******************************** Includes *********************************//
 
 //******************************** Defines **********************************//
 #define LOG_TAG                                "app_comm"
 //******************************** Defines **********************************//
+
+//******************************** Types ***********************************//
+typedef enum
+{
+    APP_COMMUNICATION_COMMAND_INVALID = 0,
+    APP_COMMUNICATION_COMMAND_START,
+    APP_COMMUNICATION_COMMAND_STOP,
+    APP_COMMUNICATION_COMMAND_ONCE,
+    APP_COMMUNICATION_COMMAND_STATUS,
+    APP_COMMUNICATION_COMMAND_HELP
+} app_communication_command_t;
+//******************************** Types ***********************************//
+
+//******************************** Constants *******************************//
+static const uint8_t g_helpResponse[] = "HELP START STOP ONCE STATUS HELP\r\n";
+static const uint8_t g_unknownCommandResponse[] = "ERR UNKNOWN_COMMAND\r\n";
+static const uint8_t g_commandTooLongResponse[] = "ERR COMMAND_TOO_LONG\r\n";
+//******************************** Constants *******************************//
 
 //******************************** Functions *********************************//
 static platform_error_t app_communication_set_error(
@@ -34,11 +54,189 @@ static platform_error_t app_communication_set_error(
     return error;
 }
 
+static void app_communication_send_local_response(app_communication_t *communication,
+                                                  const uint8_t *response,
+                                                  platform_size_t responseLength)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    result = service_uart_write(communication->config.service,
+                                response,
+                                responseLength,
+                                PROJECT_COMM_UART_DEFAULT_TIMEOUT_MS);
+    if (result == PLATFORM_ERR_OK) {
+        communication->statistics.localResponseCount++;
+    } else {
+        communication->statistics.localResponseFailureCount++;
+    }
+}
+
+static app_communication_command_t app_communication_parse_command(
+    const uint8_t *line,
+    platform_size_t lineLength)
+{
+    if ((lineLength == 5U) && (memcmp(line, "START", lineLength) == 0)) {
+        return APP_COMMUNICATION_COMMAND_START;
+    }
+
+    if ((lineLength == 4U) && (memcmp(line, "STOP", lineLength) == 0)) {
+        return APP_COMMUNICATION_COMMAND_STOP;
+    }
+
+    if ((lineLength == 4U) && (memcmp(line, "ONCE", lineLength) == 0)) {
+        return APP_COMMUNICATION_COMMAND_ONCE;
+    }
+
+    if ((lineLength == 6U) && (memcmp(line, "STATUS", lineLength) == 0)) {
+        return APP_COMMUNICATION_COMMAND_STATUS;
+    }
+
+    if ((lineLength == 4U) && (memcmp(line, "HELP", lineLength) == 0)) {
+        return APP_COMMUNICATION_COMMAND_HELP;
+    }
+
+    return APP_COMMUNICATION_COMMAND_INVALID;
+}
+
+static void app_communication_submit_control_event(app_communication_t *communication,
+                                                   app_ctrl_event_t event)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    if (communication->config.controlHandler == NULL) {
+        communication->statistics.controlEventSubmitFailureCount++;
+        return;
+    }
+
+    result = communication->config.controlHandler(communication->config.controlContext, event);
+    if (result == PLATFORM_ERR_OK) {
+        communication->statistics.controlEventSubmittedCount++;
+    } else {
+        communication->statistics.controlEventSubmitFailureCount++;
+    }
+}
+
+static void app_communication_process_complete_line(app_communication_t *communication)
+{
+    app_communication_command_t command = APP_COMMUNICATION_COMMAND_INVALID;
+
+    if (communication->context.commandLength == 0U) {
+        return;
+    }
+
+    command = app_communication_parse_command(communication->context.commandLine,
+                                              communication->context.commandLength);
+    if (command == APP_COMMUNICATION_COMMAND_INVALID) {
+        communication->statistics.commandInvalidCount++;
+        app_communication_send_local_response(communication,
+                                              g_unknownCommandResponse,
+                                              sizeof(g_unknownCommandResponse) - 1U);
+        return;
+    }
+
+    communication->statistics.commandReceivedCount++;
+    switch (command) {
+        case APP_COMMUNICATION_COMMAND_START:
+            app_communication_submit_control_event(communication, APP_CTRL_START);
+            break;
+
+        case APP_COMMUNICATION_COMMAND_STOP:
+            app_communication_submit_control_event(communication, APP_CTRL_STOP);
+            break;
+
+        case APP_COMMUNICATION_COMMAND_ONCE:
+            app_communication_submit_control_event(communication, APP_CTRL_SAMPLE_ONCE);
+            break;
+
+        case APP_COMMUNICATION_COMMAND_STATUS:
+            app_communication_submit_control_event(communication, APP_CTRL_GET_STATUS);
+            break;
+
+        case APP_COMMUNICATION_COMMAND_HELP:
+            app_communication_send_local_response(communication,
+                                                  g_helpResponse,
+                                                  sizeof(g_helpResponse) - 1U);
+            break;
+
+        default:
+            break;
+    }
+}
+
+static void app_communication_discard_current_line(app_communication_t *communication,
+                                                    platform_bool_t overflowed)
+{
+    communication->context.commandLength = 0U;
+    communication->context.pendingCr = PLATFORM_FALSE;
+    communication->context.discardLine = PLATFORM_TRUE;
+    communication->statistics.commandInvalidCount++;
+    if (overflowed == PLATFORM_TRUE) {
+        communication->statistics.commandOverflowCount++;
+        app_communication_send_local_response(communication,
+                                              g_commandTooLongResponse,
+                                              sizeof(g_commandTooLongResponse) - 1U);
+    }
+}
+
+static void app_communication_feed_rx_byte(app_communication_t *communication, uint8_t data)
+{
+    if (communication->context.discardLine == PLATFORM_TRUE) {
+        if (communication->context.pendingCr == PLATFORM_TRUE) {
+            if (data == '\n') {
+                communication->context.pendingCr = PLATFORM_FALSE;
+                communication->context.discardLine = PLATFORM_FALSE;
+            } else {
+                communication->context.pendingCr = (data == '\r') ? PLATFORM_TRUE : PLATFORM_FALSE;
+            }
+        } else if (data == '\r') {
+            communication->context.pendingCr = PLATFORM_TRUE;
+        }
+
+        return;
+    }
+
+    if (communication->context.pendingCr == PLATFORM_TRUE) {
+        if (data == '\n') {
+            communication->context.pendingCr = PLATFORM_FALSE;
+            communication->context.commandLine[communication->context.commandLength] = '\0';
+            app_communication_process_complete_line(communication);
+            communication->context.commandLength = 0U;
+        } else {
+            app_communication_discard_current_line(communication, PLATFORM_FALSE);
+            if (data == '\r') {
+                communication->context.pendingCr = PLATFORM_TRUE;
+            }
+        }
+
+        return;
+    }
+
+    if (data == '\r') {
+        communication->context.pendingCr = PLATFORM_TRUE;
+        return;
+    }
+
+    if (data == '\n') {
+        app_communication_discard_current_line(communication, PLATFORM_FALSE);
+        return;
+    }
+
+    if (communication->context.commandLength >=
+        (PROJECT_COMM_COMMAND_LINE_BUFFER_SIZE - 1U)) {
+        app_communication_discard_current_line(communication, PLATFORM_TRUE);
+        return;
+    }
+
+    communication->context.commandLine[communication->context.commandLength] = data;
+    communication->context.commandLength++;
+}
+
 static platform_error_t app_communication_drain_rx(app_communication_t *communication)
 {
     uint8_t buffer[PROJECT_COMM_READ_BUFFER_SIZE] = {0};
     platform_error_t result = PLATFORM_ERR_OK;
     platform_size_t readLength = 0U;
+    platform_size_t index = 0U;
 
     for (;;) {
         result = service_uart_read(communication->config.service,
@@ -55,6 +253,9 @@ static platform_error_t app_communication_drain_rx(app_communication_t *communic
 
         communication->statistics.processedChunkCount++;
         communication->statistics.processedByteCount += readLength;
+        for (index = 0U; index < readLength; index++) {
+            app_communication_feed_rx_byte(communication, buffer[index]);
+        }
     }
 }
 

@@ -649,6 +649,15 @@ static int test_deinit_validates_state_and_preserves_on_unbind_failure(void)
     fake_service_platform_reset();
     service = (service_uart_t)SERVICE_UART_INITIALIZER;
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
+    service.context.state = SERVICE_UART_STATE_ERROR;
+    service.context.txState = SERVICE_UART_TX_STATE_ACTIVE;
+    TEST_ASSERT(PLATFORM_ERR_INVALID_STATE == service_uart_deinit(&service));
+    TEST_ASSERT(1U == g_fakePlatform.setCallbackCallCount);
+    TEST_ASSERT(&uart == service.config.uart);
+
+    fake_service_platform_reset();
+    service = (service_uart_t)SERVICE_UART_INITIALIZER;
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
     g_fakePlatform.setCallbackResult = PLATFORM_ERR_IO;
     TEST_ASSERT(PLATFORM_ERR_IO == service_uart_deinit(&service));
     TEST_ASSERT(SERVICE_UART_STATE_INITIALIZED == service.context.state);

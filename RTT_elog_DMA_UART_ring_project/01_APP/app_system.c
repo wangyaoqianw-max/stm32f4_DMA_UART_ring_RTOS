@@ -50,7 +50,9 @@ platform_error_t app_system_init(void)
 {
     app_communication_config_t communicationConfig = {
         .uart = &g_communicationUart,
-        .service = &g_uartService
+        .service = &g_uartService,
+        .controlHandler = NULL,
+        .controlContext = NULL
     };
     platform_thread_config_t threadConfig = {
         .name = "communication",

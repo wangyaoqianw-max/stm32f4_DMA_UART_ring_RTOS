@@ -563,6 +563,10 @@ platform_error_t service_uart_deinit(service_uart_t *service)
         return PLATFORM_ERR_INVALID_STATE;
     }
 
+    if (service->context.txState != SERVICE_UART_TX_STATE_IDLE) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
     result = platform_uart_set_callback(service->config.uart, NULL, NULL);
     if (result != PLATFORM_ERR_OK) {
         return result;
