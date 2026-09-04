@@ -2,8 +2,8 @@
 
 > 文档类型：Architecture Contract  
 > 状态：Baseline  
-> 版本：V2.3  
-> 更新时间：2026-09-03  
+> 版本：V2.4  
+> 更新时间：2026-09-04  
 > 适用工程：`stm32f4_DMA_UART_ring_RTOS`
 
 ---
@@ -98,7 +98,7 @@ APP 负责：
 Task lifecycle
 STOPPED / RUNNING 唯一状态
 START / STOP / ONCE / STATUS 业务决策
-5 s 周期采集编排
+2 s 周期采集编排
 Button / UART 控制事件统一处理
 LED 产品语义决策
 UART 数据上报编排
@@ -131,6 +131,8 @@ ONCE_SUCCESS -> blink 3 times -> OFF
 ```
 
 UART Service 继续只负责通信数据流、RingBuffer 和 UART 生命周期，不解释应用命令业务。
+
+后续统一 Acquisition Service 负责组合 DHT20 + MPU6050 的采集能力；不为单个传感器建立空转发 Service。
 
 ---
 
@@ -196,6 +198,50 @@ PROJECT_USER_KEY_PULL         = PLATFORM_GPIO_PULL_UP
 ```
 
 Platform Button 不做 debounce / single / double / long。
+
+## Platform DHT20
+
+Phase 6 已实现并验证：
+
+```text
+caller-owned lightweight sensor context
+non-owning reference to shared platform_i2c_t
+init / read / deinit
+raw + converted RH/T data
+atomic measurement output
+no service_dht20
+no impl_dht20
+no private task / mutex
+```
+
+## Platform MPU6050
+
+Phase 7 已实现并验证：
+
+```text
+caller-owned lightweight sensor context
+non-owning reference to shared platform_i2c_t
+7-bit address = 0x68 / 0x69
+WHO_AM_I expected = 0x68
+init = identity verify + wake + fixed configuration
+read = one 14-byte burst from 0x3B
+raw + g / dps six-axis output
+atomic measurement output
+no service_mpu6050
+no impl_mpu6050
+no platform_device_t
+no private task / mutex
+```
+
+Phase 7 固定配置：
+
+```text
+PWR_MGMT_1   0x6B = 0x01
+CONFIG       0x1A = 0x03
+SMPLRT_DIV   0x19 = 0x04
+GYRO_CONFIG  0x1B = 0x00   -> ±250 dps
+ACCEL_CONFIG 0x1C = 0x00   -> ±2 g
+```
 
 ---
 
@@ -315,23 +361,29 @@ Indicator Task 用于隔离三闪阻塞时序。
 
 Phase 5 目标板曾使用临时 Button Smoke Task + Indicator Smoke Task + Platform Queue；该 Harness 已删除，不构成永久 RTOS 架构。
 
+Phase 6 / 7 的 DHT20 / MPU6050 临时目标板 Smoke Harness 均已在验证完成后删除，不构成永久 RTOS 架构。
+
 永久 Button Task / priority / stack / IPC / event buffering 留到 Phase 9。
 
 ---
 
 # 8. Software I2C 并发
 
-DHT20 与 MPU6050 第一阶段共用软件 I2C。
+DHT20 与 MPU6050 共用软件 I2C。
 
-优先：
+第一阶段固定：
 
 ```text
 one Acquisition context
- -> DHT20 transaction
- -> MPU6050 transaction
+ -> DHT20 complete transaction
+ -> MPU6050 complete transaction
 ```
 
+当前不增加 Mutex。
+
 只有出现真实多个并发访问者时才增加 Mutex，且互斥必须覆盖完整 transaction。
+
+DHT20 / MPU6050 均不得在 deinit 中关闭共享 `platform_i2c_t`。
 
 ---
 
@@ -388,11 +440,14 @@ Software I2C timing
 Status LED active level / blink timing
 User Key active level / pull
 Button sample / debounce / double / long timing
+PROJECT_ACQUISITION_PERIOD_MS = 2000U
 ```
 
 Button raw / stable / gesture / timestamps 属于 Context。
 
-Sensor readings 属于 Data。
+DHT20 / MPU6050 readings 属于 Data。
+
+MPU6050 内部约 200 Hz output rate 属于设备内部配置，不等于 APP 的 2 s 产品采集周期。
 
 ---
 
@@ -410,6 +465,8 @@ APP / Service
 
 禁止正常运行时逐 UART byte、逐 I2C bit / ACK、逐 LED edge、逐 Button 10 ms polling 刷日志。
 
+Sensor target smoke 可以通过 RTT / EasyLogger 输出必要的 init / measurement / error 摘要，但不得破坏 Software I2C 时序。
+
 ---
 
 # 12. 当前阶段状态
@@ -419,10 +476,13 @@ Phase 3 Software I2C   COMPLETED
 Phase 4 LED            COMPLETED
 Phase 5 Button         COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 Phase 6 DHT20          COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
+Phase 7 MPU6050        COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
-Phase 5 不再有 `implementation PENDING` 状态。
+Phase 6 已完成 RTT、逻辑分析仪与约 2 s 连续实板验证。
 
-Phase 6 已按冻结专项设计实现，并完成 RTT、逻辑分析仪与连续约 2 s 实板验证。
+Phase 7 已完成 Host 28/28、Keil production rebuild、RTT / EasyLogger、PB6/PB7 逻辑分析仪、14-byte burst、物理 sanity check 和断连/NACK negative smoke；临时 Smoke 已删除，production startup 已恢复。
+
+下一阶段为 Phase 8 UART Application Communication，进入前仍应先完成专项设计，不自动编码。
 
 当前明确不做：SPI / LCD / GUI、W25Q64、AT24C02、Bluetooth、姿态融合、Button EXTI、无需求驱动框架扩张。
