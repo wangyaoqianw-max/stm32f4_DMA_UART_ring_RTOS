@@ -81,6 +81,7 @@ LED / Indicator Module                   VERIFIED
 Button Module Phase 5                    VERIFIED
 DHT20 production module                  VERIFIED
 DHT20 hardware connectivity              VERIFIED
+MPU6050 production module                VERIFIED
 MPU6050 hardware connectivity            VERIFIED
 ```
 
@@ -95,7 +96,7 @@ PA9  -> USART1_TX
 PA10 -> USART1_RX
 ```
 
-DHT20 与 MPU6050 已通过共享 Software I2C 的临时目标板连通性检查。该事实只证明 MPU6050 硬件连接可用，不代表 Phase 7 production driver 已实现。
+DHT20 与 MPU6050 已在共享 Software I2C 上完成 production 级目标板验证；两者当前均可作为后续统一 Acquisition Service 的稳定 Platform Sensor 能力。
 
 ---
 
@@ -108,6 +109,7 @@ Phase 3  Software I2C                         COMPLETED
 Phase 4  LED Module                           COMPLETED
 Phase 5  Button Module                        COMPLETED / HOST + KEIL + TARGET VERIFIED
 Phase 6  DHT20 Environment Module             COMPLETED / HOST + KEIL + TARGET VERIFIED
+Phase 7  MPU6050 Motion Module                COMPLETED / HOST + KEIL + TARGET VERIFIED
 ```
 
 DHT20 正式能力链：
@@ -124,11 +126,25 @@ Future APP / Acquisition Service
       STM32 GPIO Impl
 ```
 
-DHT20 只引用共享 `platform_i2c_t`，不拥有总线生命周期。后续 MPU6050 必须遵守同一共享资源原则。
+MPU6050 正式能力链：
+
+```text
+Future APP / Acquisition Service
+            ↓
+      Platform MPU6050
+            ↓
+      Platform I2C
+            ↓
+      Platform GPIO
+            ↓
+      STM32 GPIO Impl
+```
+
+DHT20 / MPU6050 均只引用共享 `platform_i2c_t`，不拥有总线生命周期。
 
 ---
 
-# 5. 当前 Active Phase
+# 5. 最近关闭阶段 / 当前停止点
 
 ```text
 Phase 7 — MPU6050 Motion Module
@@ -143,7 +159,7 @@ MPU6050 production、Host contract test、Keil production 接入与目标板验�
 00_Doc/02_架构设计/MPU6050_Phase1设计.md
 ```
 
-当前执行计划：
+已完成执行计划：
 
 ```text
 00_Doc/04_Agent/implementation_plan.md
@@ -151,11 +167,9 @@ MPU6050 Phase 7 Implementation Plan
 Status: COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
-下一次 Codex 应先读取：
+Phase 7 相关参考：
 
 ```text
-00_Doc/04_Agent/handoff.md
-00_Doc/04_Agent/implementation_plan.md
 00_Doc/02_架构设计/MPU6050_Phase1设计.md
 00_Doc/02_架构设计/MPU6050参考文件/MPU6050寄存器英文版本.md
 00_Doc/02_架构设计/MPU6050参考文件/MPU6050寄存器英文版本.pdf
@@ -163,10 +177,21 @@ Status: COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 03_Platform/platform_mcu/i2c/platform_i2c.h
 03_Platform/platform_bsp/dht20/platform_dht20.h
 03_Platform/platform_bsp/dht20/platform_dht20.c
+03_Platform/platform_bsp/mpu6050/platform_mpu6050.h
+03_Platform/platform_bsp/mpu6050/platform_mpu6050.c
 00_Config/project_config.h
 ```
 
 原始 MPU6050 Register Map 优先于项目蒸馏摘要。
+
+当前下一阶段：
+
+```text
+Phase 8 — UART Application Communication
+STATUS: NEXT / DESIGN PENDING
+```
+
+不得直接开始 Phase 8 production 编码，应先进行专项设计讨论并生成新的 implementation plan。
 
 ---
 
@@ -286,11 +311,11 @@ Accel ±2 g
 PROJECT_ACQUISITION_PERIOD_MS = 2000U
 ```
 
-旧 MPU6050 摘要和旧 architecture 中若仍出现 5 s，视为过期描述，不得用于 Phase 7 实现。
+历史 MPU6050 摘要中若仍出现 5 s，视为过期描述；Architecture V2.4 与当前 Config 的 2000 ms 为有效合同。
 
-原始 Register Map 没有要求普通 Sleep -> Awake 后固定等待 100 ms；手册出现的 100 ms 属于 reset sequence。首版不要无依据添加 wake delay。
+原始 Register Map 没有要求普通 Sleep -> Awake 后固定等待 100 ms；手册出现的 100 ms 属于 reset sequence。首版不增加无依据的 wake delay。
 
-初始化应采用提交式语义：任一步失败，不得留下 `initialized=true` 的半初始化对象。
+初始化采用提交式语义：任一步失败，不得留下 `initialized=true` 的半初始化对象。
 
 ---
 
@@ -360,8 +385,8 @@ START
 换算：
 
 ```text
-accel_g  = raw / 16384.0
- gyro_dps = raw / 131.0
+accel_g = raw / 16384.0
+gyro_dps = raw / 131.0
 ```
 
 `platform_mpu6050_read()` 必须 atomic commit；失败时不修改调用者已有 measurement。
@@ -388,14 +413,18 @@ one acquisition execution context
 
 ---
 
-# 12. Phase 7 板测合同
+# 12. Phase 7 板测合同与结果
 
-继续使用：
+验证组合：
 
 ```text
 RTT / EasyLogger
 +
 Logic Analyzer on PB6/PB7
++
+Physical sanity check
++
+Minimal disconnect / NACK smoke
 ```
 
 RTT 观察：
@@ -436,43 +465,14 @@ STOP
 
 ```text
 静止：gyro 接近 0 dps，允许零偏；一个 accel 轴约 ±1 g
-翻转/旋转：对应轴符号和幅值合理变化
+平移 / 翻转 / 旋转：对应轴符号和幅值合理变化
 ```
 
-允许最小 disconnect / NACK smoke，确认错误传播、无死锁和共享总线可恢复。
+当前结果：以上目标板检查均已由用户于 2026-09-04 确认通过；disconnect / NACK smoke 也已通过。
 
 ---
 
-# 13. Codex 执行边界
-
-Codex 可以：
-
-```text
-实现 platform_mpu6050.h/.c
-增加最小必要 contract tests
-更新 Keil production group
-创建临时 target smoke harness
-执行 Host / Keil 验证
-指导/记录 RTT + Logic Analyzer 实板验证
-在验证完成后清理临时 smoke
-更新 Phase 7 execution record 和 handoff
-```
-
-Codex 不得自动继续：
-
-```text
-Phase 8 UART Application Communication
-Acquisition Service
-Final Acquisition Task
-APP Control FSM
-final UART sensor reporting
-```
-
-只有具备真实 Host、Keil、RTT、逻辑分析仪和物理 sanity check 证据后，才能把 Phase 7 标记为：
-
-```text
-COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
-```
+# 13. Phase 7 执行记录
 
 当前状态：
 
@@ -480,7 +480,7 @@ COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
-当前自动执行证据：
+自动执行证据：
 
 ```text
 Host regression                        28 / 28 PASS
@@ -503,6 +503,8 @@ Tests/platform_mpu6050/test_platform_mpu6050.c
 
 目标板验证结果（用户于 2026-09-04 确认）：RTT / EasyLogger 初始化与六轴输出通过；PB6/PB7 初始化寄存器事务通过；`0x3B` 起始 14-byte burst 与末字节 NACK 通过；静止/平移/翻转/旋转 sanity check 通过；最小断连/NACK smoke 通过。
 
+Phase 7 已关闭，临时 smoke 已删除，正常 production startup 已恢复。
+
 ---
 
 # 14. 后续路线
@@ -510,10 +512,10 @@ Tests/platform_mpu6050/test_platform_mpu6050.c
 ```text
 Phase 6  DHT20 Environment Module       COMPLETED / HOST + KEIL + TARGET VERIFIED
 Phase 7  MPU6050 Motion Module          COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
-Phase 8  UART Application Communication
+Phase 8  UART Application Communication NEXT / DESIGN PENDING
 Phase 9  RTOS Task / Event Design
 Phase 10 Final APP Integration
 Final Integrated Board Test
 ```
 
-当前停止点：Phase 7 已完成并关闭；不得自动进入 Phase 8。
+当前停止点：Phase 7 已完成并关闭；下一步讨论 Phase 8 UART Application Communication 专项设计，不直接进入 production implementation。
