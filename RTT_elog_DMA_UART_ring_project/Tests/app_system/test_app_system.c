@@ -126,7 +126,7 @@ int main(void)
     TEST_ASSERT(128U == g_fakeSystem.serviceConfig->dmaRxBufferSize);
     TEST_ASSERT(NULL != g_fakeSystem.serviceConfig->ringBufferStorage);
     TEST_ASSERT(512U == g_fakeSystem.serviceConfig->ringBufferStorageSize);
-    TEST_ASSERT(NULL != g_fakeSystem.serviceConfig->consumerThread);
+    TEST_ASSERT(NULL != g_fakeSystem.serviceConfig->ownerThread);
     TEST_ASSERT(1U == g_fakeSystem.logCallCount);
     TEST_ASSERT(PLATFORM_LOG_LEVEL_INFO == g_fakeSystem.logLevel);
     TEST_ASSERT(0 == strcmp("app_system", g_fakeSystem.logTag));

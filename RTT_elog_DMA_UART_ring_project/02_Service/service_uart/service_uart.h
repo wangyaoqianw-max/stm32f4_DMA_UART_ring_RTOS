@@ -4,7 +4,7 @@
  * All Rights Reserved.
  *
  * @file service_uart.h
- * @brief UART 接收 Service 公共接口
+ * @brief UART 传输 Service 公共接口
  * @author Codex
  * @date 2026-08-30
  * @version V1.0
@@ -45,6 +45,16 @@ typedef enum
 } service_uart_state_t;
 
 /**
+ * @brief UART Service 单笔 TX transaction 运行状态
+ */
+typedef enum
+{
+    SERVICE_UART_TX_STATE_IDLE = 0,
+    SERVICE_UART_TX_STATE_ACTIVE,
+    SERVICE_UART_TX_STATE_MAX
+} service_uart_tx_state_t;
+
+/**
  * @brief UART Service 初始化配置
  * @note 全部指针指向的对象及存储均由 APP / Caller 持有，并必须至少有效至 deinit 完成。
  */
@@ -60,8 +70,8 @@ typedef struct
     uint8_t *ringBufferStorage;
     /** RingBuffer 后备存储长度，必须至少为 2。 */
     platform_size_t ringBufferStorageSize;
-    /** 唯一 Consumer Communication Task 的 Platform 线程对象。 */
-    platform_thread_t *consumerThread;
+    /** UART Service 所属唯一 Task execution context 的 Platform 线程对象。 */
+    platform_thread_t *ownerThread;
 } service_uart_config_t;
 
 /**
@@ -78,6 +88,10 @@ typedef struct
     volatile platform_error_t lastError;
     /** 当前 Session 的 sticky 数据丢失标记；新 Session 成功启动时清除。 */
     volatile platform_bool_t dataLossOccurred;
+    /** 当前单笔 TX transaction 的运行状态。 */
+    volatile service_uart_tx_state_t txState;
+    /** 最近一次 TX transaction 的终止结果。 */
+    volatile platform_error_t txResult;
 } service_uart_context_t;
 
 /**
@@ -104,6 +118,20 @@ typedef struct
     volatile uint32_t uartErrorCount;
     /** 收到的 Platform UART CANCELED 事件累计值。 */
     volatile uint32_t cancelCount;
+    /** TX 请求次数。 */
+    volatile uint32_t txRequestCount;
+    /** TX 正常完成次数。 */
+    volatile uint32_t txCompleteCount;
+    /** TX 正常完成字节总数。 */
+    volatile uint32_t txBytesCompleted;
+    /** 因已有活动 TX transaction 被拒绝的次数。 */
+    volatile uint32_t txBusyRejectCount;
+    /** TX 超时次数。 */
+    volatile uint32_t txTimeoutCount;
+    /** TX 错误次数。 */
+    volatile uint32_t txErrorCount;
+    /** TX 取消次数。 */
+    volatile uint32_t txCancelCount;
 } service_uart_statistics_t;
 
 /**
@@ -160,6 +188,19 @@ platform_error_t service_uart_start(service_uart_t *service);
  * service_uart_get_status() 获取真实状态，不能仅凭本函数错误返回推断仍在运行。
  */
 platform_error_t service_uart_stop(service_uart_t *service);
+/**
+ * @brief 同步发送一笔 UART 数据并等待 DMA transaction 终止
+ * @param[in,out] service    : 正在运行且由 ownerThread 调用的 Service 对象
+ * @param[in] data           : 调用者持有的发送缓冲区
+ * @param[in] dataLength     : 发送字节数
+ * @param[in] timeoutMs      : 总超时时间，单位为毫秒
+ * @return PLATFORM_ERR_OK 成功；其他值表示状态、发送、取消、超时或传输错误
+ * @warning 函数返回前 DMA 不再访问 data 指向的调用者缓冲区。
+ */
+platform_error_t service_uart_write(service_uart_t *service,
+                                    const uint8_t *data,
+                                    platform_size_t dataLength,
+                                    uint32_t timeoutMs);
 /**
  * @brief 解绑 Platform UART 回调并清理 UART Service 对象
  * @param[in,out] service : 已初始化且不存在活动 RX Session 的 Service 对象

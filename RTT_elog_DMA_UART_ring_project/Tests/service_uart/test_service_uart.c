@@ -30,6 +30,7 @@ typedef struct
     platform_size_t rxBufferSize;
     platform_error_t setCallbackResult;
     platform_error_t readAsyncResult;
+    platform_error_t writeAsyncResult;
     platform_error_t cancelResult;
     platform_error_t notifySetResult;
     platform_error_t notifySetFromIsrResult;
@@ -41,10 +42,12 @@ typedef struct
     uint32_t notifyWaitCount;
     uint32_t setCallbackCallCount;
     uint32_t readAsyncCallCount;
+    uint32_t writeAsyncCallCount;
     uint32_t cancelCallCount;
     uint32_t canceledCallbackCount;
     uint32_t notifySetCountAtCancelReturn;
     platform_uart_direction_t cancelDirection;
+    platform_uart_direction_t cancelDirectionHistory[2];
     service_uart_state_t cancelStateAtCall;
     platform_bool_t emitCanceledOnCancel;
     platform_thread_t *notifySetThread;
@@ -53,6 +56,8 @@ typedef struct
     uint32_t notifyClearFlags;
     uint32_t notifyWaitFlags;
     uint32_t notifyWaitTimeoutMs;
+    uint32_t notifyWaitTimeoutHistory[4];
+    uint32_t notifyWaitTimeAdvanceMs;
     platform_bool_t notifyWaitAll;
     platform_bool_t notifyWaitClearOnExit;
     platform_bool_t invokeRxDataAfterClear;
@@ -60,6 +65,11 @@ typedef struct
     platform_uart_t *hookUart;
     const uint8_t *hookData;
     platform_size_t hookDataLength;
+    const uint8_t *txData;
+    platform_size_t txDataLength;
+    platform_bool_t emitTxCompleteOnWrite;
+    platform_error_t timeGetMsResult;
+    uint32_t timeMs;
 } fake_service_platform_t;
 
 static fake_service_platform_t g_fakePlatform;
@@ -82,11 +92,13 @@ static void fake_service_platform_reset(void)
     g_fakePlatform = (fake_service_platform_t){0};
     g_fakePlatform.setCallbackResult = PLATFORM_ERR_OK;
     g_fakePlatform.readAsyncResult = PLATFORM_ERR_OK;
+    g_fakePlatform.writeAsyncResult = PLATFORM_ERR_OK;
     g_fakePlatform.cancelResult = PLATFORM_ERR_OK;
     g_fakePlatform.notifySetResult = PLATFORM_ERR_OK;
     g_fakePlatform.notifySetFromIsrResult = PLATFORM_ERR_OK;
     g_fakePlatform.notifyClearResult = PLATFORM_ERR_OK;
     g_fakePlatform.notifyWaitResult = PLATFORM_ERR_TIMEOUT;
+    g_fakePlatform.timeGetMsResult = PLATFORM_ERR_OK;
 }
 
 /**
@@ -138,6 +150,29 @@ platform_error_t platform_uart_read_async(platform_uart_t *uart,
     return g_fakePlatform.readAsyncResult;
 }
 
+platform_error_t platform_uart_write_async(platform_uart_t *uart,
+                                           const uint8_t *data,
+                                           platform_size_t dataLength)
+{
+    platform_uart_event_t event = {0};
+
+    g_fakePlatform.writeAsyncCallCount++;
+    g_fakePlatform.txData = data;
+    g_fakePlatform.txDataLength = dataLength;
+    if ((g_fakePlatform.writeAsyncResult == PLATFORM_ERR_OK) &&
+        (g_fakePlatform.emitTxCompleteOnWrite == PLATFORM_TRUE) &&
+        (g_fakePlatform.callback != NULL)) {
+        event.type = PLATFORM_UART_EVENT_TX_COMPLETE;
+        event.direction = PLATFORM_UART_DIRECTION_TX;
+        event.data = data;
+        event.dataLength = dataLength;
+        event.error = PLATFORM_ERR_OK;
+        g_fakePlatform.callback(uart, &event, g_fakePlatform.callbackContext);
+    }
+
+    return g_fakePlatform.writeAsyncResult;
+}
+
 /**
  * @brief 返回预设的 Platform UART 取消结果
  * @param[in] uart      : Platform UART 对象
@@ -154,6 +189,11 @@ platform_error_t platform_uart_cancel(platform_uart_t *uart,
      **/
     g_fakePlatform.cancelCallCount++;
     g_fakePlatform.cancelDirection = direction;
+    if (g_fakePlatform.cancelCallCount <=
+        (sizeof(g_fakePlatform.cancelDirectionHistory) /
+         sizeof(g_fakePlatform.cancelDirectionHistory[0]))) {
+        g_fakePlatform.cancelDirectionHistory[g_fakePlatform.cancelCallCount - 1U] = direction;
+    }
     if (NULL != g_fakePlatform.callbackContext) {
         g_fakePlatform.cancelStateAtCall =
             ((service_uart_t *)g_fakePlatform.callbackContext)->context.state;
@@ -164,7 +204,7 @@ platform_error_t platform_uart_cancel(platform_uart_t *uart,
         (NULL != g_fakePlatform.callback)) {
         event.type = PLATFORM_UART_EVENT_CANCELED;
         event.direction = direction;
-        event.error = PLATFORM_ERR_OK;
+        event.error = PLATFORM_ERR_CANCELED;
         g_fakePlatform.callback(uart, &event, g_fakePlatform.callbackContext);
         g_fakePlatform.canceledCallbackCount++;
     }
@@ -262,12 +302,20 @@ platform_error_t platform_notify_wait(uint32_t flags,
     g_fakePlatform.notifyWaitAll = waitAll;
     g_fakePlatform.notifyWaitClearOnExit = clearOnExit;
     g_fakePlatform.notifyWaitTimeoutMs = timeoutMs;
+    if (g_fakePlatform.notifyWaitCount <=
+        (sizeof(g_fakePlatform.notifyWaitTimeoutHistory) /
+         sizeof(g_fakePlatform.notifyWaitTimeoutHistory[0]))) {
+        g_fakePlatform.notifyWaitTimeoutHistory[g_fakePlatform.notifyWaitCount - 1U] = timeoutMs;
+    }
 
     if (PLATFORM_TRUE == g_fakePlatform.invokeRxDataBeforeWait) {
         fake_service_platform_invoke_rx_data(g_fakePlatform.hookUart,
                                              g_fakePlatform.hookData,
                                              g_fakePlatform.hookDataLength);
+        g_fakePlatform.invokeRxDataBeforeWait = PLATFORM_FALSE;
     }
+
+    g_fakePlatform.timeMs += g_fakePlatform.notifyWaitTimeAdvanceMs;
 
     if (PLATFORM_ERR_TIMEOUT != g_fakePlatform.notifyWaitResult) {
         *receivedFlags = g_fakePlatform.pendingNotifyFlags & flags;
@@ -285,6 +333,16 @@ platform_error_t platform_notify_wait(uint32_t flags,
     }
 
     return PLATFORM_ERR_OK;
+}
+
+platform_error_t platform_time_get_ms(uint32_t *timeMs)
+{
+    if (timeMs == NULL) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    *timeMs = g_fakePlatform.timeMs;
+    return g_fakePlatform.timeGetMsResult;
 }
 
 /**
@@ -344,19 +402,30 @@ static void fake_service_platform_invoke_error(platform_uart_t *uart,
     g_fakePlatform.callback(uart, &event, g_fakePlatform.callbackContext);
 }
 
+static void fake_service_platform_invoke_both_error(platform_uart_t *uart,
+                                                    platform_error_t error)
+{
+    platform_uart_event_t event = {0};
+
+    event.type = PLATFORM_UART_EVENT_ERROR;
+    event.direction = PLATFORM_UART_DIRECTION_BOTH;
+    event.error = error;
+    g_fakePlatform.callback(uart, &event, g_fakePlatform.callbackContext);
+}
+
 /**
  * @brief 构造一份有效的 Service 配置
  * @param[in] uart              : Platform UART 对象
  * @param[in] dmaRxBuffer       : DMA 接收缓冲区
  * @param[in] ringBufferStorage : RingBuffer 后备存储
- * @param[in] consumerThread    : Consumer 线程对象
+ * @param[in] ownerThread    : Consumer 线程对象
  * @param[out] 无
  * @return 有效的 Service 配置
  */
 static service_uart_config_t make_valid_config(platform_uart_t *uart,
                                                 uint8_t *dmaRxBuffer,
                                                 uint8_t *ringBufferStorage,
-                                                platform_thread_t *consumerThread)
+                                                platform_thread_t *ownerThread)
 {
     service_uart_config_t config = {
         uart,
@@ -364,7 +433,7 @@ static service_uart_config_t make_valid_config(platform_uart_t *uart,
         8U,
         ringBufferStorage,
         16U,
-        consumerThread
+        ownerThread
     };
 
     /**
@@ -383,33 +452,33 @@ static int test_init_rejects_invalid_parameters(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == service_uart_init(NULL, &config));
     TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == service_uart_init(&service, NULL));
 
     config.uart = NULL;
     TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == service_uart_init(&service, &config));
-    config = make_valid_config(&uart, dmaRxBuffer, ringBufferStorage, &consumerThread);
+    config = make_valid_config(&uart, dmaRxBuffer, ringBufferStorage, &ownerThread);
     config.dmaRxBuffer = NULL;
     TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == service_uart_init(&service, &config));
-    config = make_valid_config(&uart, dmaRxBuffer, ringBufferStorage, &consumerThread);
+    config = make_valid_config(&uart, dmaRxBuffer, ringBufferStorage, &ownerThread);
     config.dmaRxBufferSize = 0U;
     TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == service_uart_init(&service, &config));
-    config = make_valid_config(&uart, dmaRxBuffer, ringBufferStorage, &consumerThread);
+    config = make_valid_config(&uart, dmaRxBuffer, ringBufferStorage, &ownerThread);
     config.ringBufferStorage = NULL;
     TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == service_uart_init(&service, &config));
-    config = make_valid_config(&uart, dmaRxBuffer, ringBufferStorage, &consumerThread);
+    config = make_valid_config(&uart, dmaRxBuffer, ringBufferStorage, &ownerThread);
     config.ringBufferStorageSize = 1U;
     TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == service_uart_init(&service, &config));
-    config = make_valid_config(&uart, dmaRxBuffer, ringBufferStorage, &consumerThread);
-    config.consumerThread = NULL;
+    config = make_valid_config(&uart, dmaRxBuffer, ringBufferStorage, &ownerThread);
+    config.ownerThread = NULL;
     TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == service_uart_init(&service, &config));
 
     return 0;
@@ -425,13 +494,13 @@ static int test_init_constructs_service_and_binds_callback(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -441,7 +510,7 @@ static int test_init_constructs_service_and_binds_callback(void)
     TEST_ASSERT(sizeof(dmaRxBuffer) == service.config.dmaRxBufferSize);
     TEST_ASSERT(ringBufferStorage == service.config.ringBufferStorage);
     TEST_ASSERT(sizeof(ringBufferStorage) == service.config.ringBufferStorageSize);
-    TEST_ASSERT(&consumerThread == service.config.consumerThread);
+    TEST_ASSERT(&ownerThread == service.config.ownerThread);
     TEST_ASSERT(ringBufferStorage == service.context.rxRingBuffer.storage);
     TEST_ASSERT(sizeof(ringBufferStorage) == service.context.rxRingBuffer.storageSize);
     TEST_ASSERT(0U == service.context.rxRingBuffer.readIndex);
@@ -450,6 +519,27 @@ static int test_init_constructs_service_and_binds_callback(void)
     TEST_ASSERT(NULL != g_fakePlatform.callback);
     TEST_ASSERT(&service == g_fakePlatform.callbackContext);
     TEST_ASSERT(PLATFORM_ERR_ALREADY_INITIALIZED == service_uart_init(&service, &config));
+
+    return 0;
+}
+
+static int test_init_assigns_owner_thread_and_tx_context(void)
+{
+    service_uart_t service = SERVICE_UART_INITIALIZER;
+    platform_uart_t uart = {0};
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    uint8_t dmaRxBuffer[8] = {0};
+    uint8_t ringBufferStorage[16] = {0};
+    service_uart_config_t config = make_valid_config(&uart,
+                                                      dmaRxBuffer,
+                                                      ringBufferStorage,
+                                                      &ownerThread);
+
+    fake_service_platform_reset();
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
+    TEST_ASSERT(&ownerThread == service.config.ownerThread);
+    TEST_ASSERT(SERVICE_UART_TX_STATE_IDLE == service.context.txState);
+    TEST_ASSERT(PLATFORM_ERR_OK == service.context.txResult);
 
     return 0;
 }
@@ -464,13 +554,13 @@ static int test_init_rolls_back_when_callback_binding_fails(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     g_fakePlatform.setCallbackResult = PLATFORM_ERR_IO;
@@ -494,13 +584,13 @@ static int test_deinit_unbinds_and_preserves_external_storage(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0xA5U};
     uint8_t ringBufferStorage[16] = {0x5AU};
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -527,13 +617,13 @@ static int test_deinit_validates_state_and_preserves_on_unbind_failure(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -578,7 +668,7 @@ static int test_start_begins_new_session_and_preserves_statistics(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     uint8_t oldData[] = {0x31U, 0x32U, 0x33U};
@@ -587,7 +677,7 @@ static int test_start_begins_new_session_and_preserves_statistics(void)
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -628,13 +718,13 @@ static int test_start_validates_state_and_allows_safe_restart_states(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED == service_uart_start(&service));
 
@@ -667,13 +757,13 @@ static int test_start_restores_safe_state_when_read_async_fails(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -698,13 +788,13 @@ static int test_stop_cancels_session_and_notifies_after_callback(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -721,7 +811,7 @@ static int test_stop_cancels_session_and_notifies_after_callback(void)
     TEST_ASSERT(1U == service.statistics.cancelCount);
     TEST_ASSERT(1U == g_fakePlatform.notifySetCount);
     TEST_ASSERT(0U == g_fakePlatform.notifySetFromIsrCount);
-    TEST_ASSERT(&consumerThread == g_fakePlatform.notifySetThread);
+    TEST_ASSERT(&ownerThread == g_fakePlatform.notifySetThread);
 
     return 0;
 }
@@ -736,13 +826,13 @@ static int test_stop_restores_running_state_when_cancel_fails(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED == service_uart_stop(&service));
 
@@ -774,13 +864,13 @@ static int test_stop_reports_notification_failure_after_stopping(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -806,13 +896,13 @@ static int test_unexpected_canceled_stops_without_notification(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -838,7 +928,7 @@ static int test_rx_data_buffers_bytes_updates_statistics_and_notifies(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     uint8_t receivedData[] = {0x11U, 0x22U, 0x33U, 0x44U, 0x55U};
@@ -847,7 +937,7 @@ static int test_rx_data_buffers_bytes_updates_statistics_and_notifies(void)
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -884,7 +974,7 @@ static int test_rx_data_partial_write_tracks_drop_and_notifies(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[5] = {0};
     uint8_t receivedData[] = {0U, 1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U};
@@ -893,7 +983,7 @@ static int test_rx_data_partial_write_tracks_drop_and_notifies(void)
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     config.ringBufferStorageSize = sizeof(ringBufferStorage);
     fake_service_platform_reset();
@@ -937,7 +1027,7 @@ static int test_rx_data_full_drop_tracks_loss_and_notifies(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[5] = {0};
     uint8_t firstData[] = {0x10U, 0x11U, 0x12U, 0x13U};
@@ -945,7 +1035,7 @@ static int test_rx_data_full_drop_tracks_loss_and_notifies(void)
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     config.ringBufferStorageSize = sizeof(ringBufferStorage);
     fake_service_platform_reset();
@@ -982,7 +1072,7 @@ static int test_restart_discards_unread_rx_data_and_preserves_statistics(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     uint8_t receivedData[] = {0x71U, 0x72U, 0x73U, 0x74U, 0x75U};
@@ -992,7 +1082,7 @@ static int test_restart_discards_unread_rx_data_and_preserves_statistics(void)
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -1034,7 +1124,7 @@ static int test_rx_data_is_ignored_outside_running(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     uint8_t receivedData[] = {0x81U, 0x82U};
@@ -1042,7 +1132,7 @@ static int test_rx_data_is_ignored_outside_running(void)
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -1077,7 +1167,7 @@ static int test_rx_data_keeps_high_water_mark_across_reads_and_restart(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     uint8_t receivedData[] = {0x11U, 0x22U, 0x33U, 0x44U, 0x55U};
@@ -1086,7 +1176,7 @@ static int test_rx_data_keeps_high_water_mark_across_reads_and_restart(void)
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -1119,7 +1209,7 @@ static int test_read_returns_buffered_data_and_tracks_actual_length(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     uint8_t receivedData[] = {0x91U, 0x92U, 0x93U};
@@ -1128,7 +1218,7 @@ static int test_read_returns_buffered_data_and_tracks_actual_length(void)
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -1169,7 +1259,7 @@ static int test_queries_copy_service_truth_and_reject_uninitialized(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     uint8_t receivedData[] = {0xA1U, 0xA2U};
@@ -1179,7 +1269,7 @@ static int test_queries_copy_service_truth_and_reject_uninitialized(void)
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED ==
                 service_uart_get_readable_size(&service, &readableSize));
@@ -1227,7 +1317,7 @@ static int test_clear_statistics_preserves_runtime_and_buffer(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     uint8_t receivedData[] = {0xB1U, 0xB2U};
@@ -1235,7 +1325,7 @@ static int test_clear_statistics_preserves_runtime_and_buffer(void)
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -1288,7 +1378,7 @@ static int test_wait_event_returns_immediate_service_truth(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     uint8_t receivedData[] = {0xC1U, 0xC2U};
@@ -1296,7 +1386,7 @@ static int test_wait_event_returns_immediate_service_truth(void)
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -1334,14 +1424,14 @@ static int test_wait_event_validates_state_and_events_pointer(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     uint32_t events = 0U;
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == service_uart_wait_event(NULL, 1U, &events));
     TEST_ASSERT(PLATFORM_ERR_NOT_INITIALIZED == service_uart_wait_event(&service, 1U, &events));
@@ -1367,7 +1457,7 @@ static int test_wait_event_detects_rx_arriving_after_clear(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     uint8_t receivedData[] = {0xD1U};
@@ -1375,7 +1465,7 @@ static int test_wait_event_detects_rx_arriving_after_clear(void)
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -1403,7 +1493,7 @@ static int test_wait_event_detects_rx_arriving_before_wait(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     uint8_t receivedData[] = {0xD2U};
@@ -1411,7 +1501,7 @@ static int test_wait_event_detects_rx_arriving_before_wait(void)
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -1443,14 +1533,14 @@ static int test_wait_event_rejects_stale_wake_without_service_truth(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     uint32_t events = 0xFFFFFFFFU;
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -1476,14 +1566,14 @@ static int test_wait_event_propagates_notify_errors(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     uint32_t events = 0xFFFFFFFFU;
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -1512,7 +1602,7 @@ static int test_error_callback_sets_error_and_preserves_buffered_data(void)
 {
     service_uart_t service = SERVICE_UART_INITIALIZER;
     platform_uart_t uart = {0};
-    platform_thread_t consumerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
     uint8_t dmaRxBuffer[8] = {0};
     uint8_t ringBufferStorage[16] = {0};
     uint8_t receivedData[] = {0xE1U, 0xE2U};
@@ -1522,7 +1612,7 @@ static int test_error_callback_sets_error_and_preserves_buffered_data(void)
     service_uart_config_t config = make_valid_config(&uart,
                                                       dmaRxBuffer,
                                                       ringBufferStorage,
-                                                      &consumerThread);
+                                                      &ownerThread);
 
     fake_service_platform_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
@@ -1546,6 +1636,139 @@ static int test_error_callback_sets_error_and_preserves_buffered_data(void)
     return 0;
 }
 
+static int test_write_returns_after_tx_complete_and_releases_caller_buffer(void)
+{
+    service_uart_t service = SERVICE_UART_INITIALIZER;
+    platform_uart_t uart = {0};
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    uint8_t dmaRxBuffer[8] = {0};
+    uint8_t ringBufferStorage[16] = {0};
+    const uint8_t txData[] = {0xF1U, 0xF2U};
+    service_uart_config_t config = make_valid_config(&uart,
+                                                      dmaRxBuffer,
+                                                      ringBufferStorage,
+                                                      &ownerThread);
+
+    fake_service_platform_reset();
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_start(&service));
+    g_fakePlatform.emitTxCompleteOnWrite = PLATFORM_TRUE;
+
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                service_uart_write(&service, txData, sizeof(txData), 100U));
+    TEST_ASSERT(1U == g_fakePlatform.writeAsyncCallCount);
+    TEST_ASSERT(txData == g_fakePlatform.txData);
+    TEST_ASSERT(sizeof(txData) == g_fakePlatform.txDataLength);
+    TEST_ASSERT(SERVICE_UART_TX_STATE_IDLE == service.context.txState);
+    TEST_ASSERT(PLATFORM_ERR_OK == service.context.txResult);
+    TEST_ASSERT(1U == service.statistics.txRequestCount);
+    TEST_ASSERT(1U == service.statistics.txCompleteCount);
+    TEST_ASSERT(sizeof(txData) == service.statistics.txBytesCompleted);
+
+    return 0;
+}
+
+static int test_write_timeout_uses_total_deadline_despite_rx_wake(void)
+{
+    service_uart_t service = SERVICE_UART_INITIALIZER;
+    platform_uart_t uart = {0};
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    uint8_t dmaRxBuffer[8] = {0};
+    uint8_t ringBufferStorage[16] = {0};
+    uint8_t rxData[] = {0xF3U};
+    const uint8_t txData[] = {0xF4U};
+    platform_size_t readableSize = 0U;
+    service_uart_config_t config = make_valid_config(&uart,
+                                                      dmaRxBuffer,
+                                                      ringBufferStorage,
+                                                      &ownerThread);
+
+    fake_service_platform_reset();
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_start(&service));
+    g_fakePlatform.notifyWaitTimeAdvanceMs = 5U;
+    g_fakePlatform.invokeRxDataBeforeWait = PLATFORM_TRUE;
+    g_fakePlatform.hookUart = &uart;
+    g_fakePlatform.hookData = rxData;
+    g_fakePlatform.hookDataLength = sizeof(rxData);
+
+    TEST_ASSERT(PLATFORM_ERR_TIMEOUT ==
+                service_uart_write(&service, txData, sizeof(txData), 10U));
+    TEST_ASSERT(1U == g_fakePlatform.cancelCallCount);
+    TEST_ASSERT(PLATFORM_UART_DIRECTION_TX == g_fakePlatform.cancelDirection);
+    TEST_ASSERT(2U == g_fakePlatform.notifyWaitCount);
+    TEST_ASSERT(10U == g_fakePlatform.notifyWaitTimeoutHistory[0]);
+    TEST_ASSERT(5U == g_fakePlatform.notifyWaitTimeoutHistory[1]);
+    TEST_ASSERT(SERVICE_UART_TX_STATE_IDLE == service.context.txState);
+    TEST_ASSERT(PLATFORM_ERR_CANCELED == service.context.txResult);
+    TEST_ASSERT(1U == service.statistics.txTimeoutCount);
+    TEST_ASSERT(1U == service.statistics.txCancelCount);
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_get_readable_size(&service, &readableSize));
+    TEST_ASSERT(sizeof(rxData) == readableSize);
+
+    return 0;
+}
+
+static int test_stop_cancels_active_tx_before_stopping_rx(void)
+{
+    service_uart_t service = SERVICE_UART_INITIALIZER;
+    platform_uart_t uart = {0};
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    uint8_t dmaRxBuffer[8] = {0};
+    uint8_t ringBufferStorage[16] = {0};
+    service_uart_config_t config = make_valid_config(&uart,
+                                                      dmaRxBuffer,
+                                                      ringBufferStorage,
+                                                      &ownerThread);
+
+    fake_service_platform_reset();
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_start(&service));
+    service.context.txState = SERVICE_UART_TX_STATE_ACTIVE;
+    service.context.txResult = PLATFORM_ERR_OK;
+    g_fakePlatform.emitCanceledOnCancel = PLATFORM_TRUE;
+
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_stop(&service));
+    TEST_ASSERT(2U == g_fakePlatform.cancelCallCount);
+    TEST_ASSERT(PLATFORM_UART_DIRECTION_TX == g_fakePlatform.cancelDirectionHistory[0]);
+    TEST_ASSERT(PLATFORM_UART_DIRECTION_RX == g_fakePlatform.cancelDirectionHistory[1]);
+    TEST_ASSERT(SERVICE_UART_TX_STATE_IDLE == service.context.txState);
+    TEST_ASSERT(PLATFORM_ERR_CANCELED == service.context.txResult);
+    TEST_ASSERT(SERVICE_UART_STATE_STOPPED == service.context.state);
+
+    return 0;
+}
+
+static int test_both_error_terminates_active_tx_and_sets_service_error(void)
+{
+    service_uart_t service = SERVICE_UART_INITIALIZER;
+    platform_uart_t uart = {0};
+    platform_thread_t ownerThread = PLATFORM_OS_OBJECT_INITIALIZER;
+    uint8_t dmaRxBuffer[8] = {0};
+    uint8_t ringBufferStorage[16] = {0};
+    service_uart_config_t config = make_valid_config(&uart,
+                                                      dmaRxBuffer,
+                                                      ringBufferStorage,
+                                                      &ownerThread);
+
+    fake_service_platform_reset();
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_init(&service, &config));
+    TEST_ASSERT(PLATFORM_ERR_OK == service_uart_start(&service));
+    service.context.txState = SERVICE_UART_TX_STATE_ACTIVE;
+    service.context.txResult = PLATFORM_ERR_OK;
+
+    fake_service_platform_invoke_both_error(&uart, PLATFORM_ERR_IO);
+
+    TEST_ASSERT(SERVICE_UART_STATE_ERROR == service.context.state);
+    TEST_ASSERT(PLATFORM_ERR_IO == service.context.lastError);
+    TEST_ASSERT(SERVICE_UART_TX_STATE_IDLE == service.context.txState);
+    TEST_ASSERT(PLATFORM_ERR_IO == service.context.txResult);
+    TEST_ASSERT(1U == service.statistics.uartErrorCount);
+    TEST_ASSERT(1U == service.statistics.txErrorCount);
+
+    return 0;
+}
+
 /**
  * @brief 运行 UART Service 对象生命周期测试
  * @param[in] 无
@@ -1562,6 +1785,11 @@ int main(void)
     }
 
     result = test_init_constructs_service_and_binds_callback();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_init_assigns_owner_thread_and_tx_context();
     if (0 != result) {
         return result;
     }
@@ -1692,6 +1920,26 @@ int main(void)
     }
 
     result = test_error_callback_sets_error_and_preserves_buffered_data();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_write_returns_after_tx_complete_and_releases_caller_buffer();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_write_timeout_uses_total_deadline_despite_rx_wake();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_stop_cancels_active_tx_before_stopping_rx();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_both_error_terminates_active_tx_and_sets_service_error();
     if (0 != result) {
         return result;
     }

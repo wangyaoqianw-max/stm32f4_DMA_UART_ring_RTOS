@@ -59,6 +59,121 @@ static platform_error_t service_uart_rebuild_events(const service_uart_t *servic
     return PLATFORM_ERR_OK;
 }
 
+static void service_uart_finish_tx(service_uart_t *service,
+                                   platform_error_t result,
+                                   platform_size_t completedLength)
+{
+    if ((service == NULL) || (service->context.txState != SERVICE_UART_TX_STATE_ACTIVE)) {
+        return;
+    }
+
+    service->context.txState = SERVICE_UART_TX_STATE_IDLE;
+    service->context.txResult = result;
+    if (result == PLATFORM_ERR_OK) {
+        service->statistics.txCompleteCount++;
+        service->statistics.txBytesCompleted += completedLength;
+    } else if (result == PLATFORM_ERR_CANCELED) {
+        service->statistics.txCancelCount++;
+    } else {
+        service->statistics.txErrorCount++;
+    }
+
+    (void)platform_notify_set_from_isr(service->config.ownerThread,
+                                       SERVICE_UART_NOTIFY_WAKE_FLAG);
+}
+
+static platform_error_t service_uart_cancel_active_tx(service_uart_t *service)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    if (service->context.txState != SERVICE_UART_TX_STATE_ACTIVE) {
+        return PLATFORM_ERR_OK;
+    }
+
+    result = platform_uart_cancel(service->config.uart, PLATFORM_UART_DIRECTION_TX);
+    if (result != PLATFORM_ERR_OK) {
+        return result;
+    }
+
+    /* Platform cancel 成功后 DMA 已停止；此分支仅覆盖底层未同步回调的异常实现。 */
+    service_uart_finish_tx(service, PLATFORM_ERR_CANCELED, 0U);
+
+    return PLATFORM_ERR_OK;
+}
+
+static platform_error_t service_uart_wait_tx_complete(service_uart_t *service,
+                                                       uint32_t timeoutMs)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+    uint32_t startTimeMs = 0U;
+    uint32_t currentTimeMs = 0U;
+    uint32_t elapsedMs = 0U;
+    uint32_t remainingTimeoutMs = 0U;
+    uint32_t previousFlags = 0U;
+    uint32_t receivedFlags = 0U;
+
+    if (service->context.txState != SERVICE_UART_TX_STATE_ACTIVE) {
+        return service->context.txResult;
+    }
+
+    if (timeoutMs != PLATFORM_OS_WAIT_FOREVER) {
+        result = platform_time_get_ms(&startTimeMs);
+        if (result != PLATFORM_ERR_OK) {
+            (void)service_uart_cancel_active_tx(service);
+            return result;
+        }
+    }
+
+    for (;;) {
+        if (service->context.txState != SERVICE_UART_TX_STATE_ACTIVE) {
+            return service->context.txResult;
+        }
+
+        if (timeoutMs == PLATFORM_OS_WAIT_FOREVER) {
+            remainingTimeoutMs = PLATFORM_OS_WAIT_FOREVER;
+        } else {
+            result = platform_time_get_ms(&currentTimeMs);
+            if (result != PLATFORM_ERR_OK) {
+                (void)service_uart_cancel_active_tx(service);
+                return result;
+            }
+
+            elapsedMs = currentTimeMs - startTimeMs;
+            if (elapsedMs >= timeoutMs) {
+                result = service_uart_cancel_active_tx(service);
+                if (result != PLATFORM_ERR_OK) {
+                    return result;
+                }
+
+                service->statistics.txTimeoutCount++;
+                return PLATFORM_ERR_TIMEOUT;
+            }
+
+            remainingTimeoutMs = timeoutMs - elapsedMs;
+        }
+
+        result = platform_notify_clear(SERVICE_UART_NOTIFY_WAKE_FLAG, &previousFlags);
+        if (result != PLATFORM_ERR_OK) {
+            (void)service_uart_cancel_active_tx(service);
+            return result;
+        }
+
+        if (service->context.txState != SERVICE_UART_TX_STATE_ACTIVE) {
+            return service->context.txResult;
+        }
+
+        result = platform_notify_wait(SERVICE_UART_NOTIFY_WAKE_FLAG,
+                                      PLATFORM_FALSE,
+                                      PLATFORM_TRUE,
+                                      remainingTimeoutMs,
+                                      &receivedFlags);
+        if ((result != PLATFORM_ERR_OK) && (result != PLATFORM_ERR_TIMEOUT)) {
+            (void)service_uart_cancel_active_tx(service);
+            return result;
+        }
+    }
+}
+
 /**
  * @brief 接收 Platform UART 异步事件
  * @param[in] uart            : 产生事件的 UART 对象
@@ -81,8 +196,42 @@ static void service_uart_handle_platform_event(
      * 两种情况都不能在 callback 内调用 Notify，因为 callback 的执行上下文不可假设。
      **/
     if ((service == NULL) || (uart == NULL) || (event == NULL) ||
-        (uart != service->config.uart) ||
-        (event->direction != PLATFORM_UART_DIRECTION_RX)) {
+        (uart != service->config.uart)) {
+        return;
+    }
+
+    if (event->direction == PLATFORM_UART_DIRECTION_TX) {
+        if (event->type == PLATFORM_UART_EVENT_TX_COMPLETE) {
+            service_uart_finish_tx(service, PLATFORM_ERR_OK, event->dataLength);
+        } else if (event->type == PLATFORM_UART_EVENT_ERROR) {
+            service_uart_finish_tx(service, event->error, 0U);
+        } else if (event->type == PLATFORM_UART_EVENT_CANCELED) {
+            service_uart_finish_tx(service, PLATFORM_ERR_CANCELED, 0U);
+        }
+
+        return;
+    }
+
+    if (event->direction == PLATFORM_UART_DIRECTION_BOTH) {
+        if ((event->type != PLATFORM_UART_EVENT_ERROR) ||
+            (service->context.state != SERVICE_UART_STATE_RUNNING)) {
+            return;
+        }
+
+        service->context.lastError = event->error;
+        service->statistics.uartErrorCount++;
+        service->context.state = SERVICE_UART_STATE_ERROR;
+        if (service->context.txState == SERVICE_UART_TX_STATE_ACTIVE) {
+            service_uart_finish_tx(service, event->error, 0U);
+        } else {
+            (void)platform_notify_set_from_isr(service->config.ownerThread,
+                                               SERVICE_UART_NOTIFY_WAKE_FLAG);
+        }
+
+        return;
+    }
+
+    if (event->direction != PLATFORM_UART_DIRECTION_RX) {
         return;
     }
 
@@ -101,7 +250,7 @@ static void service_uart_handle_platform_event(
         service->statistics.uartErrorCount++;
         service->context.state = SERVICE_UART_STATE_ERROR;
 
-        result = platform_notify_set_from_isr(service->config.consumerThread,
+        result = platform_notify_set_from_isr(service->config.ownerThread,
                                               SERVICE_UART_NOTIFY_WAKE_FLAG);
         if (result != PLATFORM_ERR_OK) {
             return;
@@ -142,7 +291,7 @@ static void service_uart_handle_platform_event(
         service->statistics.ringBufferHighWaterMark = readableSize;
     }
 
-    result = platform_notify_set_from_isr(service->config.consumerThread,
+    result = platform_notify_set_from_isr(service->config.ownerThread,
                                           SERVICE_UART_NOTIFY_WAKE_FLAG);
     if (result != PLATFORM_ERR_OK) {
         /**
@@ -170,7 +319,7 @@ static platform_error_t service_uart_validate_init_config(
         (config->dmaRxBuffer == NULL) || (config->dmaRxBufferSize == 0U) ||
         (config->ringBufferStorage == NULL) ||
         (config->ringBufferStorageSize < 2U) ||
-        (config->consumerThread == NULL)) {
+        (config->ownerThread == NULL)) {
         return PLATFORM_ERR_INVALID_PARAM;
     }
 
@@ -231,6 +380,8 @@ platform_error_t service_uart_init(service_uart_t *service,
     service->config = *config;
     service->context.lastError = PLATFORM_ERR_OK;
     service->context.dataLossOccurred = PLATFORM_FALSE;
+    service->context.txState = SERVICE_UART_TX_STATE_IDLE;
+    service->context.txResult = PLATFORM_ERR_OK;
     service->statistics = (service_uart_statistics_t){0};
 
     result = platform_uart_set_callback(service->config.uart,
@@ -328,19 +479,61 @@ platform_error_t service_uart_stop(service_uart_t *service)
     }
 
     service->context.state = SERVICE_UART_STATE_STOPPING;
+    result = service_uart_cancel_active_tx(service);
+    if (result != PLATFORM_ERR_OK) {
+        service->context.state = SERVICE_UART_STATE_RUNNING;
+        return result;
+    }
+
     result = platform_uart_cancel(service->config.uart, PLATFORM_UART_DIRECTION_RX);
     if (result != PLATFORM_ERR_OK) {
         service->context.state = SERVICE_UART_STATE_RUNNING;
         return result;
     }
 
-    result = platform_notify_set(service->config.consumerThread,
+    result = platform_notify_set(service->config.ownerThread,
                                  SERVICE_UART_NOTIFY_WAKE_FLAG);
     if (result != PLATFORM_ERR_OK) {
         return result;
     }
 
     return PLATFORM_ERR_OK;
+}
+
+platform_error_t service_uart_write(service_uart_t *service,
+                                    const uint8_t *data,
+                                    platform_size_t dataLength,
+                                    uint32_t timeoutMs)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+
+    if ((service == NULL) || (data == NULL) || (dataLength == 0U)) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    if (service->context.state == SERVICE_UART_STATE_UNINITIALIZED) {
+        return PLATFORM_ERR_NOT_INITIALIZED;
+    }
+
+    if (service->context.state != SERVICE_UART_STATE_RUNNING) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    if (service->context.txState != SERVICE_UART_TX_STATE_IDLE) {
+        service->statistics.txBusyRejectCount++;
+        return PLATFORM_ERR_BUSY;
+    }
+
+    service->context.txState = SERVICE_UART_TX_STATE_ACTIVE;
+    service->context.txResult = PLATFORM_ERR_OK;
+    service->statistics.txRequestCount++;
+    result = platform_uart_write_async(service->config.uart, data, dataLength);
+    if (result != PLATFORM_ERR_OK) {
+        service_uart_finish_tx(service, result, 0U);
+        return result;
+    }
+
+    return service_uart_wait_tx_complete(service, timeoutMs);
 }
 
 /**
@@ -570,6 +763,13 @@ platform_error_t service_uart_get_statistics(
     statistics->ringBufferHighWaterMark = service->statistics.ringBufferHighWaterMark;
     statistics->uartErrorCount = service->statistics.uartErrorCount;
     statistics->cancelCount = service->statistics.cancelCount;
+    statistics->txRequestCount = service->statistics.txRequestCount;
+    statistics->txCompleteCount = service->statistics.txCompleteCount;
+    statistics->txBytesCompleted = service->statistics.txBytesCompleted;
+    statistics->txBusyRejectCount = service->statistics.txBusyRejectCount;
+    statistics->txTimeoutCount = service->statistics.txTimeoutCount;
+    statistics->txErrorCount = service->statistics.txErrorCount;
+    statistics->txCancelCount = service->statistics.txCancelCount;
 
     return PLATFORM_ERR_OK;
 }
@@ -604,6 +804,13 @@ platform_error_t service_uart_clear_statistics(service_uart_t *service)
     service->statistics.ringBufferHighWaterMark = 0U;
     service->statistics.uartErrorCount = 0U;
     service->statistics.cancelCount = 0U;
+    service->statistics.txRequestCount = 0U;
+    service->statistics.txCompleteCount = 0U;
+    service->statistics.txBytesCompleted = 0U;
+    service->statistics.txBusyRejectCount = 0U;
+    service->statistics.txTimeoutCount = 0U;
+    service->statistics.txErrorCount = 0U;
+    service->statistics.txCancelCount = 0U;
 
     return PLATFORM_ERR_OK;
 }

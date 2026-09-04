@@ -65,7 +65,7 @@ platform_error_t app_system_init(void)
         .dmaRxBufferSize = PROJECT_COMM_DMA_RX_BUFFER_SIZE,
         .ringBufferStorage = g_ringStorage,
         .ringBufferStorageSize = PROJECT_COMM_RING_BUFFER_STORAGE_SIZE,
-        .consumerThread = &g_communicationThread
+        .ownerThread = &g_communicationThread
     };
     platform_error_t result = PLATFORM_ERR_OK;
 
