@@ -9,12 +9,14 @@
 UART_HandleTypeDef huart1;
 HAL_StatusTypeDef g_fakeHalReceiveToIdleResult = HAL_OK;
 HAL_StatusTypeDef g_fakeHalAbortReceiveResult = HAL_OK;
+HAL_StatusTypeDef g_fakeHalAbortTransmitResult = HAL_OK;
 HAL_StatusTypeDef g_fakeHalTransmitDmaResult = HAL_OK;
 UART_HandleTypeDef *g_fakeHalReceiveToIdleUart;
 uint8_t *g_fakeHalReceiveToIdleBuffer;
 uint16_t g_fakeHalReceiveToIdleSize;
 uint32_t g_fakeHalReceiveToIdleCallCount;
 uint32_t g_fakeHalAbortReceiveCallCount;
+uint32_t g_fakeHalAbortTransmitCallCount;
 UART_HandleTypeDef *g_fakeHalTransmitDmaUart;
 uint8_t *g_fakeHalTransmitDmaBuffer;
 uint16_t g_fakeHalTransmitDmaSize;
@@ -113,12 +115,14 @@ static void reset_fake_hal(void)
 {
     g_fakeHalReceiveToIdleResult = HAL_OK;
     g_fakeHalAbortReceiveResult = HAL_OK;
+    g_fakeHalAbortTransmitResult = HAL_OK;
     g_fakeHalTransmitDmaResult = HAL_OK;
     g_fakeHalReceiveToIdleUart = NULL;
     g_fakeHalReceiveToIdleBuffer = NULL;
     g_fakeHalReceiveToIdleSize = 0U;
     g_fakeHalReceiveToIdleCallCount = 0U;
     g_fakeHalAbortReceiveCallCount = 0U;
+    g_fakeHalAbortTransmitCallCount = 0U;
     g_fakeHalTransmitDmaUart = NULL;
     g_fakeHalTransmitDmaBuffer = NULL;
     g_fakeHalTransmitDmaSize = 0U;
@@ -171,6 +175,121 @@ static int test_tx_complete_releases_transaction_before_notifying(void)
     TEST_ASSERT(PLATFORM_ERR_OK ==
                 platform_uart_write_async(&uart, secondData, sizeof(secondData)));
     TEST_ASSERT(2U == g_fakeHalTransmitDmaCallCount);
+
+    return 0;
+}
+
+static int test_cancel_tx_releases_transaction_and_notifies(void)
+{
+    platform_uart_t uart = PLATFORM_UART_INITIALIZER;
+    event_record_t record = {0};
+    uint8_t firstData[] = {0x51U};
+    uint8_t secondData[] = {0x52U};
+
+    reset_fake_hal();
+    TEST_ASSERT(0 == make_started_uart(&uart, &record));
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_uart_write_async(&uart, firstData, sizeof(firstData)));
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_uart_cancel(&uart, PLATFORM_UART_DIRECTION_TX));
+    TEST_ASSERT(1U == g_fakeHalAbortTransmitCallCount);
+    TEST_ASSERT(1U == record.eventCount);
+    TEST_ASSERT(PLATFORM_UART_EVENT_CANCELED == record.events[0].type);
+    TEST_ASSERT(PLATFORM_UART_DIRECTION_TX == record.events[0].direction);
+    TEST_ASSERT(PLATFORM_ERR_CANCELED == record.events[0].error);
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_uart_write_async(&uart, secondData, sizeof(secondData)));
+
+    return 0;
+}
+
+static int test_cancel_both_terminates_independent_rx_and_tx_transactions(void)
+{
+    platform_uart_t uart = PLATFORM_UART_INITIALIZER;
+    event_record_t record = {0};
+    uint8_t rxBuffer[16] = {0};
+    uint8_t txData[] = {0x61U};
+
+    reset_fake_hal();
+    TEST_ASSERT(0 == make_started_uart(&uart, &record));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_read_async(&uart, rxBuffer, sizeof(rxBuffer)));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_write_async(&uart, txData, sizeof(txData)));
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                platform_uart_cancel(&uart, PLATFORM_UART_DIRECTION_BOTH));
+    TEST_ASSERT(1U == g_fakeHalAbortReceiveCallCount);
+    TEST_ASSERT(1U == g_fakeHalAbortTransmitCallCount);
+    TEST_ASSERT(2U == record.eventCount);
+    TEST_ASSERT(PLATFORM_UART_EVENT_CANCELED == record.events[0].type);
+    TEST_ASSERT(PLATFORM_UART_DIRECTION_TX == record.events[0].direction);
+    TEST_ASSERT(PLATFORM_UART_EVENT_CANCELED == record.events[1].type);
+    TEST_ASSERT(PLATFORM_UART_DIRECTION_RX == record.events[1].direction);
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_read_async(&uart, rxBuffer, sizeof(rxBuffer)));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_write_async(&uart, txData, sizeof(txData)));
+
+    return 0;
+}
+
+static int test_lifecycle_stop_terminates_tx_without_business_cancel_event(void)
+{
+    platform_uart_t uart = PLATFORM_UART_INITIALIZER;
+    event_record_t record = {0};
+    uint8_t txData[] = {0x71U};
+
+    reset_fake_hal();
+    TEST_ASSERT(0 == make_started_uart(&uart, &record));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_write_async(&uart, txData, sizeof(txData)));
+    TEST_ASSERT(PLATFORM_ERR_OK == uart.device.lifecycle->stop(&uart));
+    TEST_ASSERT(1U == g_fakeHalAbortTransmitCallCount);
+    TEST_ASSERT(0U == record.eventCount);
+    TEST_ASSERT(PLATFORM_ERR_OK == uart.device.lifecycle->start(&uart));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_write_async(&uart, txData, sizeof(txData)));
+
+    return 0;
+}
+
+static int test_tx_dma_error_releases_tx_transaction(void)
+{
+    platform_uart_t uart = PLATFORM_UART_INITIALIZER;
+    event_record_t record = {0};
+    uint8_t txData[] = {0x81U};
+
+    reset_fake_hal();
+    TEST_ASSERT(0 == make_started_uart(&uart, &record));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_write_async(&uart, txData, sizeof(txData)));
+
+    huart1.ErrorCode = HAL_UART_ERROR_DMA;
+    HAL_UART_ErrorCallback(&huart1);
+
+    TEST_ASSERT(1U == record.eventCount);
+    TEST_ASSERT(PLATFORM_UART_EVENT_ERROR == record.events[0].type);
+    TEST_ASSERT(PLATFORM_UART_DIRECTION_TX == record.events[0].direction);
+    TEST_ASSERT(PLATFORM_ERR_IO == record.events[0].error);
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_write_async(&uart, txData, sizeof(txData)));
+
+    return 0;
+}
+
+static int test_unattributed_dma_error_terminates_full_duplex_transactions(void)
+{
+    platform_uart_t uart = PLATFORM_UART_INITIALIZER;
+    event_record_t record = {0};
+    uint8_t rxBuffer[16] = {0};
+    uint8_t txData[] = {0x91U};
+
+    reset_fake_hal();
+    TEST_ASSERT(0 == make_started_uart(&uart, &record));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_read_async(&uart, rxBuffer, sizeof(rxBuffer)));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_write_async(&uart, txData, sizeof(txData)));
+
+    huart1.ErrorCode = HAL_UART_ERROR_DMA;
+    HAL_UART_ErrorCallback(&huart1);
+
+    TEST_ASSERT(1U == record.eventCount);
+    TEST_ASSERT(PLATFORM_UART_EVENT_ERROR == record.events[0].type);
+    TEST_ASSERT(PLATFORM_UART_DIRECTION_BOTH == record.events[0].direction);
+    TEST_ASSERT(PLATFORM_ERR_IO == record.events[0].error);
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_read_async(&uart, rxBuffer, sizeof(rxBuffer)));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_uart_write_async(&uart, txData, sizeof(txData)));
 
     return 0;
 }
@@ -339,6 +458,31 @@ int main(void)
     }
 
     result = test_tx_complete_releases_transaction_before_notifying();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_cancel_tx_releases_transaction_and_notifies();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_cancel_both_terminates_independent_rx_and_tx_transactions();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_lifecycle_stop_terminates_tx_without_business_cancel_event();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_tx_dma_error_releases_tx_transaction();
+    if (0 != result) {
+        return result;
+    }
+
+    result = test_unattributed_dma_error_terminates_full_duplex_transactions();
     if (0 != result) {
         return result;
     }

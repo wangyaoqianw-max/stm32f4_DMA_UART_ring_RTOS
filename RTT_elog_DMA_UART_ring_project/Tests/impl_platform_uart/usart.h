@@ -54,12 +54,14 @@ typedef struct
 extern UART_HandleTypeDef huart1;
 extern HAL_StatusTypeDef g_fakeHalReceiveToIdleResult;
 extern HAL_StatusTypeDef g_fakeHalAbortReceiveResult;
+extern HAL_StatusTypeDef g_fakeHalAbortTransmitResult;
 extern HAL_StatusTypeDef g_fakeHalTransmitDmaResult;
 extern UART_HandleTypeDef *g_fakeHalReceiveToIdleUart;
 extern uint8_t *g_fakeHalReceiveToIdleBuffer;
 extern uint16_t g_fakeHalReceiveToIdleSize;
 extern uint32_t g_fakeHalReceiveToIdleCallCount;
 extern uint32_t g_fakeHalAbortReceiveCallCount;
+extern uint32_t g_fakeHalAbortTransmitCallCount;
 extern UART_HandleTypeDef *g_fakeHalTransmitDmaUart;
 extern uint8_t *g_fakeHalTransmitDmaBuffer;
 extern uint16_t g_fakeHalTransmitDmaSize;
@@ -128,6 +130,14 @@ static inline HAL_StatusTypeDef HAL_UART_AbortReceive(UART_HandleTypeDef *halUar
     g_fakeHalAbortReceiveCallCount++;
 
     return g_fakeHalAbortReceiveResult;
+}
+
+static inline HAL_StatusTypeDef HAL_UART_AbortTransmit(UART_HandleTypeDef *halUart)
+{
+    (void)halUart;
+    g_fakeHalAbortTransmitCallCount++;
+
+    return g_fakeHalAbortTransmitResult;
 }
 
 static inline HAL_StatusTypeDef HAL_UART_Transmit_DMA(UART_HandleTypeDef *halUart,
