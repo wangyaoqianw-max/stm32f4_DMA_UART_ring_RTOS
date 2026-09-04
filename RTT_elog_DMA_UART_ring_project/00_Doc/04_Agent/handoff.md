@@ -6,7 +6,7 @@
 > 详细业务需求以 `00_Doc/00_项目需求/最终功能需求.md` 为准。
 > 架构合同以 `00_Doc/04_Agent/architecture.md` 为准。
 > 阶段路线以 `00_Doc/04_Agent/development_roadmap.md` 为准。
-> 当前施工记录以 `00_Doc/04_Agent/implementation_plan.md` 为准。
+> 当前施工计划以 `00_Doc/04_Agent/implementation_plan.md` 为准。
 
 ---
 
@@ -79,6 +79,7 @@ Board GPIO Binding                       VERIFIED
 Software I2C                             VERIFIED
 LED / Indicator Module                   VERIFIED
 Button Module Phase 5                    VERIFIED
+DHT20 production module                  VERIFIED
 DHT20 hardware connectivity              VERIFIED
 MPU6050 hardware connectivity            VERIFIED
 ```
@@ -94,15 +95,7 @@ PA9  -> USART1_TX
 PA10 -> USART1_RX
 ```
 
-2026-09-04 临时硬件连通性板测确认：
-
-```text
-DHT20  7-bit 0x38 -> ACK / usable
-MPU6050 shared Software I2C -> usable
-RTT observation -> PASS
-```
-
-该临时板测仅用于排除硬件风险，不代表 DHT20/MPU6050 production driver 已完成。
+DHT20 与 MPU6050 已通过共享 Software I2C 的临时目标板连通性检查。该事实只证明 MPU6050 硬件连接可用，不代表 Phase 7 production driver 已实现。
 
 ---
 
@@ -114,55 +107,10 @@ Phase 2  Board Resource + CubeMX              COMPLETED
 Phase 3  Software I2C                         COMPLETED
 Phase 4  LED Module                           COMPLETED
 Phase 5  Button Module                        COMPLETED / HOST + KEIL + TARGET VERIFIED
+Phase 6  DHT20 Environment Module             COMPLETED / HOST + KEIL + TARGET VERIFIED
 ```
 
-Button 正式专项设计：
-
-```text
-00_Doc/02_架构设计/Button_Phase1设计.md
-```
-
-Button 冻结链：
-
-```text
-PA0 HIGH / LOW
-    ↓
-Platform GPIO
-    ↓
-Platform Button -> PRESSED / RELEASED
-    ↓
-Button Service -> SINGLE / DOUBLE / LONG
-    ↓
-Future APP -> START / SAMPLE_ONCE / STOP
-```
-
-临时 Button/Indicator smoke harness 已清理；正常生产启动路径已恢复。
-
----
-
-# 5. Phase 6 — DHT20 实现状态
-
-状态：
-
-```text
-COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
-```
-
-正式设计：
-
-```text
-00_Doc/02_架构设计/DHT20_Phase1设计.md
-```
-
-当前执行计划：
-
-```text
-00_Doc/04_Agent/implementation_plan.md
-DHT20 Phase 6 Implementation Plan
-Status: COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
-```
-
-正式能力链：
+DHT20 正式能力链：
 
 ```text
 Future APP / Acquisition Service
@@ -176,137 +124,275 @@ Future APP / Acquisition Service
       STM32 GPIO Impl
 ```
 
-第一版 DHT20 位于：
+DHT20 只引用共享 `platform_i2c_t`，不拥有总线生命周期。后续 MPU6050 必须遵守同一共享资源原则。
+
+---
+
+# 5. 当前 Active Phase
 
 ```text
-03_Platform/platform_bsp/dht20/
-├── platform_dht20.h
-└── platform_dht20.c
+Phase 7 — MPU6050 Motion Module
+STATUS: DESIGN FROZEN / READY FOR CODEX EXECUTION
 ```
 
-不建立：
+当前只完成设计与执行计划更新，尚未创建或修改 MPU6050 production 代码。
+
+正式专项设计：
 
 ```text
-service_dht20
-impl_dht20
+00_Doc/02_架构设计/MPU6050_Phase1设计.md
+```
+
+当前执行计划：
+
+```text
+00_Doc/04_Agent/implementation_plan.md
+MPU6050 Phase 7 Implementation Plan
+Status: READY FOR CODEX EXECUTION
+```
+
+下一次 Codex 应先读取：
+
+```text
+00_Doc/04_Agent/handoff.md
+00_Doc/04_Agent/implementation_plan.md
+00_Doc/02_架构设计/MPU6050_Phase1设计.md
+00_Doc/02_架构设计/MPU6050参考文件/MPU6050寄存器英文版本.md
+00_Doc/02_架构设计/MPU6050参考文件/MPU6050寄存器英文版本.pdf
+00_Doc/02_架构设计/MPU6050参考文件/MPU6050数据手册_项目适用分析.md
+03_Platform/platform_mcu/i2c/platform_i2c.h
+03_Platform/platform_bsp/dht20/platform_dht20.h
+03_Platform/platform_bsp/dht20/platform_dht20.c
+00_Config/project_config.h
+```
+
+原始 MPU6050 Register Map 优先于项目蒸馏摘要。
+
+---
+
+# 6. Phase 7 冻结架构边界
+
+正式能力链：
+
+```text
+Future APP / Acquisition Service
+            ↓
+      Platform MPU6050
+            ↓
+      Platform I2C
+            ↓
+      Platform GPIO
+            ↓
+      STM32 GPIO Impl
+```
+
+首版只实现 Platform MPU6050，不建立：
+
+```text
+service_mpu6050
+impl_mpu6050
 platform_device_t
 registry / manager
+MPU6050 private task
+MPU6050-owned mutex
 malloc/free
-DHT20 private task
-DHT20-owned mutex
-Fake I2C / test-only Ops abstraction
+FIFO / DMP / DATA_RDY interrupt
+attitude solution / filter
 ```
+
+后续建立统一 Acquisition Service 同时调用 DHT20 + MPU6050；不要按传感器数量机械创建 Service 或 Task。
 
 ---
 
-# 6. DHT20 对象 / API 合同
+# 7. MPU6050 对象与 API 合同
 
-对象：
+轻量 caller-owned Context：
 
-```text
-platform_dht20_t
-- platform_i2c_t *i2c
-- initialized
+```c
+typedef struct
+{
+    platform_i2c_t *i2c;
+    uint8_t address;
+    platform_bool_t initialized;
+} platform_mpu6050_t;
 ```
 
-DHT20 只引用共享 `platform_i2c_t`，不拥有总线生命周期；`platform_dht20_deinit()` 绝不能调用 `platform_i2c_deinit()`，因为 MPU6050 共用该总线。
-
-一次采集数据：
+首版 Measurement 公开：
 
 ```text
-status
-rawHumidity
-rawTemperature
-humidityPercent
- temperatureC
+accelXRaw / accelYRaw / accelZRaw
+gyroXRaw / gyroYRaw / gyroZRaw
+accelXG / accelYG / accelZG
+gyroXDps / gyroYDps / gyroZDps
 ```
 
-公共 API：
+MPU6050 内部温度虽然包含在 14-byte burst 中，但首版不作为业务输出；环境温度继续由 DHT20 提供。
+
+公共 API 只保留：
 
 ```text
-platform_dht20_init()
-platform_dht20_read()
-platform_dht20_deinit()
+platform_mpu6050_init()
+platform_mpu6050_read()
+platform_mpu6050_deinit()
 ```
 
-`init()` 只检查并绑定已初始化 I2C，不发送隐藏探测/测量事务。
+当前不建立通用 config struct，也不公开 range / filter / register helper API。
 
 ---
 
-# 7. DHT20 协议合同
+# 8. init() 冻结语义
 
-Platform I2C 使用 7-bit 地址：
+MPU6050 上电默认处于 Sleep。
 
-```text
-DHT20 address = 0x38
-```
-
-不得把规格书 8-bit 地址 `0x70 / 0x71` 直接传给 Platform I2C。
-
-单次读取：
+因此：
 
 ```text
-platform_i2c_write(0x38, AC 33 00)
- -> STOP
- -> platform_time_delay_ms(80)
- -> platform_i2c_read(0x38, frame, 7)
- -> Busy
- -> frame CRC8
- -> OTP CRC_flag
- -> CalibrationEnable
- -> raw parse
- -> float conversion
- -> atomic measurement commit
+initialized == true
+=
+I2C bound
++ WHO_AM_I verified
++ device awake
++ first-version configuration applied
++ read() legal
 ```
 
-不得用 `platform_i2c_write_read()` 代替，因为 DHT20 测量命令要求 STOP + >=80 ms + 新 START。
-
-错误语义：
+初始化顺序：
 
 ```text
-address NACK             -> PLATFORM_ERR_NOT_FOUND
-I2C transaction error    -> preserve underlying error
-Busy                     -> PLATFORM_ERR_BUSY
-frame CRC mismatch       -> PLATFORM_ERR_CHECKSUM
-OTP CRC_flag == 0        -> PLATFORM_ERR_CHECKSUM
-CalibrationEnable == 0   -> PLATFORM_ERR_INVALID_STATE
+WHO_AM_I     0x75 -> expect 0x68
+PWR_MGMT_1   0x6B <- 0x01
+CONFIG       0x1A <- 0x03
+SMPLRT_DIV   0x19 <- 0x04
+GYRO_CONFIG  0x1B <- 0x00
+ACCEL_CONFIG 0x1C <- 0x00
 ```
 
-失败时不得修改调用者已有 measurement。
-
----
-
-# 8. 产品采集周期更新
-
-最终第一阶段统一采集 / 上报周期由 5 s 调整为：
+配置语义：
 
 ```text
-2000 ms / 2 s
+wake from Sleep
+X-axis gyro PLL clock
+DLPF_CFG = 3
+internal output rate approximately 200 Hz
+Gyro  ±250 dps
+Accel ±2 g
 ```
 
-生产配置名称：
+内部约 200 Hz 更新率不等于 APP 采集周期。
+
+当前产品统一采集 / 上报周期为：
 
 ```text
 PROJECT_ACQUISITION_PERIOD_MS = 2000U
 ```
 
-该值是产品级静态配置，不是 DHT20 协议常量。
+旧 MPU6050 摘要和旧 architecture 中若仍出现 5 s，视为过期描述，不得用于 Phase 7 实现。
 
-DHT20 规格书也建议约每 2 秒测量一次，以降低频繁激活导致的自热影响。
+原始 Register Map 没有要求普通 Sleep -> Awake 后固定等待 100 ms；手册出现的 100 ms 属于 reset sequence。首版不要无依据添加 wake delay。
 
-Phase 6 只加入该配置，不提前实现最终 Acquisition Task。
+初始化应采用提交式语义：任一步失败，不得留下 `initialized=true` 的半初始化对象。
 
 ---
 
-# 9. Phase 6 验证合同
-
-不建立额外 Fake I2C 测试框架，直接验证真实完整链路。
-
-验证组合：
+# 9. Address / WHO_AM_I 关键语义
 
 ```text
-Keil production build
-+
+AD0 low  -> I2C 7-bit address 0x68
+AD0 high -> I2C 7-bit address 0x69
+WHO_AM_I expected value is always 0x68
+```
+
+原始寄存器手册明确 WHO_AM_I 不反映 AD0 对地址最低位的影响。
+
+禁止：
+
+```text
+WHO_AM_I == configured I2C address
+```
+
+正确规则：
+
+```text
+I2C transaction error -> preserve underlying platform_error_t
+WHO_AM_I != 0x68       -> PLATFORM_ERR_NOT_FOUND
+```
+
+不得在 0x68 NACK 后静默 fallback 到 0x69。
+
+---
+
+# 10. 六轴读取合同
+
+从 `ACCEL_XOUT_H = 0x3B` 一次读取 14 bytes：
+
+```text
+0..1   ACCEL_XOUT_H/L
+2..3   ACCEL_YOUT_H/L
+4..5   ACCEL_ZOUT_H/L
+6..7   TEMP_OUT_H/L      // first version ignored
+8..9   GYRO_XOUT_H/L
+10..11 GYRO_YOUT_H/L
+12..13 GYRO_ZOUT_H/L
+```
+
+使用：
+
+```text
+platform_i2c_write_read(..., &reg, 1, raw, 14)
+```
+
+必须形成：
+
+```text
+START
+ -> address + W
+ -> 0x3B
+ -> Repeated START
+ -> address + R
+ -> 14-byte read
+ -> ACK first 13 bytes
+ -> NACK final byte
+ -> STOP
+```
+
+每轴是 high-byte-first 16-bit two's complement。
+
+换算：
+
+```text
+accel_g  = raw / 16384.0
+ gyro_dps = raw / 131.0
+```
+
+`platform_mpu6050_read()` 必须 atomic commit；失败时不修改调用者已有 measurement。
+
+---
+
+# 11. Shared I2C / 并发合同
+
+DHT20 与 MPU6050 共用 Software I2C。
+
+第一阶段：
+
+```text
+one acquisition execution context
+ -> DHT20 complete transaction
+ -> MPU6050 complete transaction
+```
+
+不加 mutex。
+
+未来若出现多个真实访问任务，mutex 必须覆盖完整 transaction，而不是单个 byte / START / STOP。
+
+`platform_mpu6050_deinit()` 绝不能调用 `platform_i2c_deinit()`。
+
+---
+
+# 12. Phase 7 板测合同
+
+继续使用：
+
+```text
 RTT / EasyLogger
 +
 Logic Analyzer on PB6/PB7
@@ -315,104 +401,96 @@ Logic Analyzer on PB6/PB7
 RTT 观察：
 
 ```text
-DHT20 init result
-status
-raw RH / T
-converted RH / T
-read errors
+WHO_AM_I / init result
+AX/AY/AZ raw + g
+GX/GY/GZ raw + dps
+init/read error
 ```
 
-逻辑分析仪确认：
+禁止在软件 I2C bit/byte 级时序中刷日志。
+
+逻辑分析仪初始化检查：
 
 ```text
-START
-0x70 + ACK
-AC + ACK
-33 + ACK
-00 + ACK
+WHO_AM_I read
+PWR_MGMT_1 = 0x01
+CONFIG = 0x03
+SMPLRT_DIV = 0x04
+GYRO_CONFIG = 0x00
+ACCEL_CONFIG = 0x00
+START / STOP / ACK / Repeated START
+```
+
+采样检查：
+
+```text
+register pointer = 0x3B
+Repeated START
+14-byte continuous read
+ACK first 13 bytes
+NACK final byte
 STOP
-
->= 80 ms
-
-START
-0x71 + ACK
-7-byte read
-ACK first 6 bytes
-NACK final CRC byte
-STOP
 ```
 
-再验证约 2 s 连续采集下事务稳定。
-
-临时 DHT20 smoke harness 已在目标板验证完成后清理，production 启动路径已恢复。
-
-当前自动验证记录：
+物理 sanity check：
 
 ```text
-Host regression                    27 / 27 PASS
-Keil temporary Smoke compile       0 errors / 20 historical warnings
-Keil final production rebuild      0 errors / 20 historical warnings
-Keil attached target Smoke rebuild 0 errors / 20 historical warnings
-DHT20 production / Smoke warning   0 new warnings
-Temporary Keil group/include path  REMOVED
-Normal startup path                RESTORED
+静止：gyro 接近 0 dps，允许零偏；一个 accel 轴约 ±1 g
+翻转/旋转：对应轴符号和幅值合理变化
 ```
 
-当前实现文件：
-
-```text
-03_Platform/platform_bsp/dht20/platform_dht20.h
-03_Platform/platform_bsp/dht20/platform_dht20.c
-Tests/platform_dht20/test_platform_dht20.c
-```
-
-目标板验证记录：RTT 初始化与连续读取结果均为 0，状态为 `0x18`，温湿度数据连续合理；逻辑分析仪确认 `AC 33 00`、约 80 ms 等待、7-byte read 最后一字节 NACK，以及约 2 s 周期。Target PASS。
+允许最小 disconnect / NACK smoke，确认错误传播、无死锁和共享总线可恢复。
 
 ---
 
-# 10. 当前 Active Phase / 下一步
+# 13. Codex 执行边界
+
+Codex 可以：
 
 ```text
-Phase 6 — DHT20 Environment Module
-STATUS: COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
+实现 platform_mpu6050.h/.c
+增加最小必要 contract tests
+更新 Keil production group
+创建临时 target smoke harness
+执行 Host / Keil 验证
+指导/记录 RTT + Logic Analyzer 实板验证
+在验证完成后清理临时 smoke
+更新 Phase 7 execution record 和 handoff
 ```
 
-下一步：
+Codex 不得自动继续：
 
 ```text
-Phase 6 closed
-    ↓
-Next session starts from Phase 7 design/plan when explicitly requested
+Phase 8 UART Application Communication
+Acquisition Service
+Final Acquisition Task
+APP Control FSM
+final UART sensor reporting
 ```
 
-本次已关闭 Phase 6，未实现 Phase 7。
+只有具备真实 Host、Keil、RTT、逻辑分析仪和物理 sanity check 证据后，才能把 Phase 7 标记为：
+
+```text
+COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
+```
+
+当前状态仍然是：
+
+```text
+READY FOR CODEX EXECUTION
+```
 
 ---
 
-# 11. 后续路线
+# 14. 后续路线
 
 ```text
 Phase 6  DHT20 Environment Module       COMPLETED / HOST + KEIL + TARGET VERIFIED
-Phase 7  MPU6050 Motion Module          NEXT AFTER PHASE 6
+Phase 7  MPU6050 Motion Module          READY FOR CODEX EXECUTION
 Phase 8  UART Application Communication
 Phase 9  RTOS Task / Event Design
 Phase 10 Final APP Integration
 Final Integrated Board Test
 ```
 
-后续计划建立统一 Acquisition Service 调用 DHT20 + MPU6050；不为单个 DHT20 建立空转发 Service。
-
-当前暂缓：
-
-```text
-SPI / LCD / GUI
-W25Q64
-AT24C02
-Bluetooth
-Roll / Pitch / Yaw
-DMP
-Kalman / Complementary Filter
-复杂二进制 UART Protocol
-Button EXTI / low-power wake
-无需求驱动的框架扩展
-```
+当前停止点：把本 handoff、专项设计和 implementation plan 交给下一次 Codex 执行 Phase 7。
