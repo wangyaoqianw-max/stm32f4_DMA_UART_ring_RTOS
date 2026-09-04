@@ -1,7 +1,7 @@
 # MPU6050 Phase 7 Implementation Plan
 
 > 当前执行计划 / Current Active Plan  
-> 状态：READY FOR CODEX EXECUTION  
+> 状态：COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 > 日期：2026-09-04
 
 **Goal:** 在已验证的 Platform GPIO + Software I2C + DHT20 共享总线基线上，实现 MPU6050 Platform 设备能力，并通过 Host、Keil、RTT 与逻辑分析仪完成目标板验证。
@@ -460,39 +460,76 @@ no final APP / Acquisition scope creep
 # 19. Final Acceptance Checklist
 
 ```text
-[ ] platform_mpu6050.h/.c created
-[ ] lightweight context implemented
-[ ] shared I2C non-owning reference respected
-[ ] init/read/deinit implemented
-[ ] 7-bit address semantics correct
-[ ] no silent address fallback
-[ ] WHO_AM_I fixed expectation 0x68 correct
-[ ] init performs wake + fixed configuration
-[ ] partial init does not commit object state
-[ ] 14-byte burst read correct
-[ ] signed raw parsing correct
-[ ] ±2 g / ±250 dps conversion correct
-[ ] MPU internal temperature omitted from public measurement
-[ ] failed read leaves output unchanged
-[ ] no private MPU6050 error type
-[ ] existing Host regression passes
-[ ] MPU6050 contract tests pass where practical
-[ ] Keil production build passes
-[ ] no new MPU6050 production warning
-[ ] RTT target smoke passes
-[ ] logic analyzer init sequence passes
-[ ] logic analyzer 14-byte burst passes
-[ ] physical static / rotate sanity passes
-[ ] negative smoke disposition recorded
-[ ] temporary smoke removed
-[ ] normal-path rebuild passes after cleanup
-[ ] architecture review passes
-[ ] handoff updated with real execution evidence
+[x] platform_mpu6050.h/.c created
+[x] lightweight context implemented
+[x] shared I2C non-owning reference respected
+[x] init/read/deinit implemented
+[x] 7-bit address semantics correct
+[x] no silent address fallback
+[x] WHO_AM_I fixed expectation 0x68 correct
+[x] init performs wake + fixed configuration
+[x] partial init does not commit object state
+[x] 14-byte burst read correct
+[x] signed raw parsing correct
+[x] ±2 g / ±250 dps conversion correct
+[x] MPU internal temperature omitted from public measurement
+[x] failed read leaves output unchanged
+[x] no private MPU6050 error type
+[x] existing Host regression passes
+[x] MPU6050 contract tests pass where practical
+[x] Keil production build passes
+[x] no new MPU6050 production warning
+[x] RTT target smoke passes — USER CONFIRMED 2026-09-04
+[x] logic analyzer init sequence passes — USER CONFIRMED 2026-09-04
+[x] logic analyzer 14-byte burst passes — USER CONFIRMED 2026-09-04
+[x] physical static / translate / flip / rotate sanity passes — USER CONFIRMED 2026-09-04
+[x] negative smoke passes — USER CONFIRMED 2026-09-04
+[x] temporary smoke removed after target verification
+[x] normal-path rebuild passes after cleanup
+[x] architecture review passes
+[x] handoff updated with real execution evidence
 ```
 
 ---
 
-# 20. Stop Point
+# 20. Execution Record — 2026-09-04
+
+自动完成：
+
+```text
+MPU6050 contract test RED              PASS / missing production header
+MPU6050 contract test GREEN            PASS
+Host regression                        28 / 28 PASS
+Keil production Full Rebuild           0 errors / 20 historical warnings
+Keil attached target smoke rebuild     0 errors / 20 historical warnings
+Keil final production Full Rebuild     0 errors / 20 historical warnings
+MPU6050 production warning             0 new warnings
+Temporary smoke source/group/path      REMOVED
+Normal production startup              RESTORED
+Architecture dependency review         PASS
+```
+
+目标板观察结果（用户于 2026-09-04 确认）：
+
+```text
+RTT / EasyLogger init and six-axis output       PASS / USER CONFIRMED
+PB6/PB7 initialization transactions            PASS / USER CONFIRMED
+PB6/PB7 0x3B 14-byte burst and final NACK       PASS / USER CONFIRMED
+static / flip / translate / rotate sanity       PASS / USER CONFIRMED
+disconnect / NACK negative smoke                PASS / USER CONFIRMED
+```
+
+Phase 7 最终状态：
+
+```text
+COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
+```
+
+目标板证据由用户确认，临时 smoke 已清理，正常 production startup 已恢复，并已再次完成 production Full Rebuild。
+
+---
+
+# 21. Stop Point
 
 Phase 7 完成后停止。
 

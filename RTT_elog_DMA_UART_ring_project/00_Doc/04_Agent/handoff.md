@@ -132,10 +132,10 @@ DHT20 只引用共享 `platform_i2c_t`，不拥有总线生命周期。后续 MP
 
 ```text
 Phase 7 — MPU6050 Motion Module
-STATUS: DESIGN FROZEN / READY FOR CODEX EXECUTION
+STATUS: COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
-当前只完成设计与执行计划更新，尚未创建或修改 MPU6050 production 代码。
+MPU6050 production、Host contract test、Keil production 接入与目标板验证均已完成。目标板 RTT、逻辑分析仪、物理 sanity check 和断连/NACK negative smoke 由用户于 2026-09-04 确认通过。
 
 正式专项设计：
 
@@ -148,7 +148,7 @@ STATUS: DESIGN FROZEN / READY FOR CODEX EXECUTION
 ```text
 00_Doc/04_Agent/implementation_plan.md
 MPU6050 Phase 7 Implementation Plan
-Status: READY FOR CODEX EXECUTION
+Status: COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
 下一次 Codex 应先读取：
@@ -474,11 +474,34 @@ final UART sensor reporting
 COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
-当前状态仍然是：
+当前状态：
 
 ```text
-READY FOR CODEX EXECUTION
+COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
+
+当前自动执行证据：
+
+```text
+Host regression                        28 / 28 PASS
+Keil production Full Rebuild           0 errors / 20 historical warnings
+Keil attached target smoke rebuild     0 errors / 20 historical warnings
+Keil final production Full Rebuild     0 errors / 20 historical warnings
+MPU6050 production warning             0 new warnings
+Temporary smoke source/group/path      REMOVED
+Normal production startup              RESTORED
+Architecture dependency review         PASS
+```
+
+当前实现文件：
+
+```text
+03_Platform/platform_bsp/mpu6050/platform_mpu6050.h
+03_Platform/platform_bsp/mpu6050/platform_mpu6050.c
+Tests/platform_mpu6050/test_platform_mpu6050.c
+```
+
+目标板验证结果（用户于 2026-09-04 确认）：RTT / EasyLogger 初始化与六轴输出通过；PB6/PB7 初始化寄存器事务通过；`0x3B` 起始 14-byte burst 与末字节 NACK 通过；静止/平移/翻转/旋转 sanity check 通过；最小断连/NACK smoke 通过。
 
 ---
 
@@ -486,11 +509,11 @@ READY FOR CODEX EXECUTION
 
 ```text
 Phase 6  DHT20 Environment Module       COMPLETED / HOST + KEIL + TARGET VERIFIED
-Phase 7  MPU6050 Motion Module          READY FOR CODEX EXECUTION
+Phase 7  MPU6050 Motion Module          COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 Phase 8  UART Application Communication
 Phase 9  RTOS Task / Event Design
 Phase 10 Final APP Integration
 Final Integrated Board Test
 ```
 
-当前停止点：把本 handoff、专项设计和 implementation plan 交给下一次 Codex 执行 Phase 7。
+当前停止点：Phase 7 已完成并关闭；不得自动进入 Phase 8。
