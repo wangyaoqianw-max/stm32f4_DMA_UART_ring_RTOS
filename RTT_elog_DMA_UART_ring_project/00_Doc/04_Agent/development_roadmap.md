@@ -29,10 +29,9 @@
 # 2. 已验证基础能力
 
 ```text
-UART Platform / STM32 Impl                    VERIFIED
-UART DMA RX / TX                              VERIFIED
-UART Service                                  VERIFIED
-SPSC RingBuffer                               VERIFIED
+UART Platform blocking capability             VERIFIED
+UART DMA RX + IDLE / HT / TC                  VERIFIED
+UART Service RX + SPSC RingBuffer              VERIFIED
 APP Communication Phase 1                     VERIFIED
 Platform OS                                   VERIFIED
 Service Log + EasyLogger + RTT                 VERIFIED
@@ -40,13 +39,19 @@ Platform GPIO + STM32 Impl + Board Binding     VERIFIED
 Software I2C                                  VERIFIED
 LED / Indicator Module                        VERIFIED
 Button / Button Service                       VERIFIED
-DHT20 hardware connectivity                   VERIFIED
-DHT20 production module                       VERIFIED
-MPU6050 hardware connectivity                 VERIFIED
-MPU6050 production module                     VERIFIED
+DHT20 hardware + production module             VERIFIED
+MPU6050 hardware + production module           VERIFIED
 ```
 
-DHT20 与 MPU6050 已在真实共享 Software I2C 总线上完成 production 级目标板验证；两者当前均为可复用 Platform Sensor 能力。
+UART TX 当前必须区分：
+
+```text
+blocking TX path                               EXISTS / VERIFIED baseline
+USART1 TX DMA CubeMX configuration             READY
+STM32 Platform async TX implementation         PENDING Phase 8
+UART Service TX transaction                    PENDING Phase 8
+TX DMA production path                         NOT YET VERIFIED
+```
 
 最终闭环仍缺：
 
@@ -70,7 +75,7 @@ Phase 4  LED Module                              COMPLETED
 Phase 5  Button Module                           COMPLETED / HOST + KEIL + TARGET VERIFIED
 Phase 6  DHT20 Environment Module                COMPLETED / HOST + KEIL + TARGET VERIFIED
 Phase 7  MPU6050 Motion Module                   COMPLETED / HOST + KEIL + TARGET VERIFIED
-Phase 8  UART Application Communication          NEXT / DESIGN PENDING
+Phase 8  UART Application Communication          DESIGN FROZEN / PLAN READY / NOT STARTED
 Phase 9  RTOS Task / Event Design
 Phase 10 Final APP Integration
 Final Integrated Board Test
@@ -80,272 +85,137 @@ Final Integrated Board Test
 
 # 4. 已完成阶段摘要
 
-## Phase 1 / 2 — GPIO + Board
-
-完成 STM32 GPIO Impl、Board Binding、CubeMX 配置和目标板 GPIO 验证。
-
-冻结资源：
+Phase 1 / 2：GPIO STM32 Impl、Board Binding、CubeMX 资源配置完成。
 
 ```text
 PC13 Status LED
 PA0 User Key
 PB6 Soft I2C SCL
 PB7 Soft I2C SDA
-USART1 existing pins
+PA9 USART1_TX
+PA10 USART1_RX
 ```
 
-## Phase 3 — Software I2C
+Phase 3：Software I2C，Master-only / 7-bit / synchronous / Platform GPIO based / Repeated START / Host + Keil + target verified。
 
-```text
-Master-only
-7-bit
-synchronous
-Platform GPIO based
-Repeated START
-microsecond timing
-Host + Keil + target smoke verified
-```
+Phase 4：Indicator Service -> Platform LED -> Platform GPIO；STOPPED/OFF、RUNNING/ON、ONCE_SUCCESS/3 blinks。
 
-## Phase 4 — LED
+Phase 5：Platform Button + Button Service，10 ms sample / 30 ms debounce / 300 ms double / 3000 ms long，Host + Keil + target verified。
 
-```text
-Indicator Service -> Platform LED -> Platform GPIO
-STOPPED -> OFF
-RUNNING -> ON
-ONCE_SUCCESS -> 3 blinks -> OFF
-Host + Keil + target verified
-```
+Phase 6：Platform DHT20，shared Software I2C non-owning reference，Host + Keil + RTT + logic analyzer verified。
 
-## Phase 5 — Button
-
-专项设计：
-
-```text
-00_Doc/02_架构设计/Button_Phase1设计.md
-```
-
-正式链：
-
-```text
-Platform GPIO
- -> Platform Button PRESSED / RELEASED
- -> Button Service SINGLE / DOUBLE / LONG
- -> future APP control
-```
-
-冻结参数：
-
-```text
-active LOW / Pull-Up
-sample 10 ms
-debounce 30 ms
-double 300 ms
-long 3000 ms
-```
-
-Phase 5：`COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED`。
+Phase 7：Platform MPU6050，WHO_AM_I / wake / fixed config / 14-byte burst / raw + g/dps，Host + Keil + RTT + logic analyzer + physical sanity + negative smoke verified。
 
 ---
 
-# 5. Phase 6 — DHT20 Environment Module
+# 5. Phase 8 — UART Application Communication
 
 正式专项设计：
 
 ```text
-00_Doc/02_架构设计/DHT20_Phase1设计.md
+00_Doc/02_架构设计/UART_Application_Communication_Phase8设计.md
 ```
 
-正式链：
+当前执行计划：
 
 ```text
-Future APP / Acquisition Service
-    -> Platform DHT20
-    -> Platform Software I2C
-    -> Platform GPIO
-    -> STM32 GPIO Impl
+00_Doc/04_Agent/implementation_plan.md
+UART Application Communication Phase 8 Implementation Plan
+Status: READY FOR IMPLEMENTATION / NOT STARTED
 ```
 
-第一版边界：
+Phase 8 分为三块：
 
 ```text
-Platform-only DHT20 capability
-no service_dht20
-no impl_dht20
-no platform_device_t
-no malloc/free
-no private task / mutex
-shared platform_i2c_t is non-owned reference
+8A — Reusable UART TX DMA
+8B — UART Service TX transaction
+8C — APP Communication CRLF protocol / control event outlet
 ```
 
-核心能力：
+## 5.1 RX 保持现有稳定链
 
 ```text
-platform_dht20_init()
-platform_dht20_read()
-platform_dht20_deinit()
-Busy / CRC / Calibration validation
-20-bit raw RH/T parsing
-float physical conversion
-atomic measurement output
+USART1 RX
+ -> DMA2_Stream2 Circular
+ -> IDLE / HT / TC
+ -> STM32 UART Impl
+ -> Platform UART RX_DATA
+ -> UART Service
+ -> SPSC RingBuffer
+ -> Communication Task
 ```
 
-产品统一采集 / 上报周期：
+不得建立第二套 UART RX 路径，不给当前 SPSC 增加普通 Mutex。
+
+## 5.2 TX DMA 补齐
+
+CubeMX 已于 2026-09-04 由人工开启：
 
 ```text
-PROJECT_ACQUISITION_PERIOD_MS = 2000U
+USART1_TX
+DMA2_Stream7
+Channel 4
+Memory -> Peripheral
+Mode = Normal
+IRQ priority = 5
 ```
 
-验证状态：
+Phase 8 production 实现目标：
 
 ```text
-Host regression                    27 / 27 PASS
-Keil production                    PASS
-RTT target observation             PASS
-Logic analyzer PB6/PB7             PASS
-continuous ~2 s target read        PASS
-Temporary Smoke                    REMOVED
-Production startup                 RESTORED
+Platform UART write_async
+ -> STM32 HAL_UART_Transmit_DMA
+ -> TX_COMPLETE / cancel / error
+ -> UART Service synchronous Task-facing write
 ```
 
-Phase 6：`COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED`。
+注意：硬件配置 READY 不等于 TX DMA production path VERIFIED。
 
----
-
-# 6. Phase 7 — MPU6050 Motion Module
-
-正式专项设计：
+## 5.3 UART Service
 
 ```text
-00_Doc/02_架构设计/MPU6050_Phase1设计.md
+RX = long-lived DMA stream + RingBuffer
+TX = one-shot DMA transaction
 ```
 
-正式能力链：
+第一版：
 
 ```text
-Future APP / Acquisition Service
-    -> Platform MPU6050
-    -> Platform Software I2C
-    -> Platform GPIO
-    -> STM32 GPIO Impl
+one active TX transaction only
+no TX RingBuffer
+no TX Queue
+no TX worker Task
+no public Service async TX API
 ```
 
-第一版边界：
+`service_uart_write()` 对 Task 表现为同步完成，但内部使用 DMA + notify wait；返回后 DMA 不得继续访问 caller buffer。
+
+## 5.4 Command protocol
+
+严格命令：
 
 ```text
-Platform-only MPU6050 capability
-no service_mpu6050
-no impl_mpu6050
-no platform_device_t
-no registry / manager
-no private task / mutex
-no FIFO / DMP / DATA_RDY interrupt
-no attitude algorithm
-shared platform_i2c_t is non-owned reference
+START\r\n
+STOP\r\n
+ONCE\r\n
+STATUS\r\n
+HELP\r\n
 ```
 
-核心能力：
+规则：
 
 ```text
-platform_mpu6050_init()
-platform_mpu6050_read()
-platform_mpu6050_deinit()
-WHO_AM_I fixed expectation = 0x68
-I2C 7-bit address = 0x68 / 0x69 according to AD0
-wake + fixed register configuration
-one 14-byte burst read from 0x3B
-signed raw parsing
-raw -> g / dps conversion
-atomic measurement output
+strict CRLF
+uppercase only
+case-sensitive
+no trim
+no arguments
+fixed-size caller/static storage
 ```
 
-固定首版配置：
+必须处理 fragmented / coalesced arbitrary byte chunks。
 
-```text
-PWR_MGMT_1   = 0x01
-CONFIG       = 0x03
-SMPLRT_DIV   = 0x04
-GYRO_CONFIG  = 0x00   -> ±250 dps
-ACCEL_CONFIG = 0x00   -> ±2 g
-```
-
-内部约 200 Hz output rate 不等于 APP 采集周期；产品周期继续使用 `PROJECT_ACQUISITION_PERIOD_MS = 2000U`。
-
-验证状态：
-
-```text
-Host regression                        28 / 28 PASS
-Keil production Full Rebuild           0 errors / historical warnings only
-MPU6050 production warning             0 new warnings
-RTT / EasyLogger target smoke          PASS
-Logic analyzer initialization          PASS
-0x3B 14-byte burst + final NACK         PASS
-static / translate / flip / rotate     PASS
-disconnect / NACK negative smoke       PASS
-Temporary Smoke                        REMOVED
-Production startup                     RESTORED
-Architecture review                    PASS
-```
-
-Phase 7：`COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED`。
-
----
-
-# 7. Phase 8 — UART Application Communication
-
-当前下一阶段。进入 production 编码前必须先专项设计。
-
-复用现有：
-
-```text
-UART DMA RX -> UART Service -> RingBuffer -> Communication Task
-```
-
-计划应用命令：
-
-```text
-START
-STOP
-ONCE
-STATUS
-HELP
-```
-
-计划业务输出：
-
-```text
-DHT20 environment data
-MPU6050 six-axis data
-system status / command response
-```
-
-不得建立第二套 UART RX 路径，不得把应用命令语义塞入 UART Service。
-
----
-
-# 8. Phase 9 — RTOS Task / Event Design
-
-已确认方向：
-
-```text
-Communication Task
-Acquisition Task
-Indicator Task
-```
-
-永久 Button processing context、priority、stack、Button -> APP IPC、Indicator event delivery 等在本 Phase 冻结。
-
-统一 Acquisition Service / Acquisition Task 串行调用 DHT20 + MPU6050；不按设备数量机械创建独立 Task。
-
----
-
-# 9. Phase 10 — Final APP Integration
-
-APP 唯一状态：
-
-```text
-STOPPED
-RUNNING
-```
+## 5.5 APP Control Event outlet
 
 统一事件：
 
@@ -356,32 +226,114 @@ APP_CTRL_SAMPLE_ONCE
 APP_CTRL_GET_STATUS
 ```
 
-最终闭环：Button / UART -> APP FSM -> Acquisition / Indicator / UART Report。
+Phase 8 只冻结逻辑 handler 出口，不冻结 Queue / Task / direct-call 机制。
 
-RUNNING 第一阶段统一采集 / 上报周期为 2000 ms。
+```text
+HELP -> Communication local
+START/STOP/ONCE/STATUS -> APP Control event outlet
+```
+
+Communication 不维护 STOPPED / RUNNING。
+
+## 5.6 Product TX ownership
+
+冻结：
+
+```text
+Communication Task = sole USART1 product TX requester
+```
+
+未来 Acquisition Task 只交付 acquisition result，不直接调用 UART TX。
+
+正式通道：
+
+```text
+USART1 = product control + product data
+RTT    = diagnostics
+```
+
+现有 `printf/fputc -> HAL_UART_Transmit(&huart1)` 旁路在 Phase 8 production implementation 中退出正式运行路径。
+
+## 5.7 Phase 8 不实现
+
+```text
+APP Control FSM
+permanent Control Queue / Task
+Acquisition Service / Task
+Button permanent IPC
+Indicator permanent IPC
+2 s integrated report scheduling
+final ONCE business transaction
+```
 
 ---
 
-# 10. 当前下一步
+# 6. Phase 9 — RTOS Task / Event Design
+
+已确认方向：
+
+```text
+Communication Task
+Acquisition Task
+Indicator Task
+```
+
+本 Phase 冻结：
+
+```text
+permanent Button execution context
+Button -> APP control IPC
+APP control event consumer execution context
+Acquisition result -> Communication IPC
+Indicator event delivery
+priority / stack / buffering / overflow policy
+Unified Acquisition Service / Acquisition Task
+```
+
+统一 Acquisition Service 串行调用 DHT20 + MPU6050；不按设备数量机械创建独立 Task。
+
+---
+
+# 7. Phase 10 — Final APP Integration
+
+APP 唯一业务状态：
+
+```text
+STOPPED
+RUNNING
+```
+
+最终闭环：
+
+```text
+Button / UART
+ -> APP Control FSM
+ -> Acquisition / Indicator / Communication
+```
+
+RUNNING 统一采集 / 上报周期：
+
+```text
+PROJECT_ACQUISITION_PERIOD_MS = 2000U
+```
+
+Phase 10 负责最终 state-dependent UART response、ONCE 完整业务结果和系统状态转换。
+
+---
+
+# 8. 当前下一步
 
 ```text
 Phase 5 Button      CLOSED
-Phase 6 DHT20       CLOSED / HOST + KEIL + TARGET VERIFIED
-Phase 7 MPU6050     CLOSED / HOST + KEIL + TARGET VERIFIED
-Phase 8 UART App    NEXT / DESIGN PENDING
+Phase 6 DHT20       CLOSED / TARGET VERIFIED
+Phase 7 MPU6050     CLOSED / TARGET VERIFIED
+Phase 8 UART App    DESIGN FROZEN / PLAN READY / NOT STARTED
 ```
 
-当前流程：
+当前停止点：
 
 ```text
-Phase 7 complete
- -> Host regression PASS
- -> Keil production build PASS
- -> RTT / Logic Analyzer target verification PASS
- -> physical / negative smoke PASS
- -> temporary smoke removed
- -> production startup restored
- -> Phase 8 design discussion next
+Phase 8 design synchronized
+ -> no production source modified by documentation sync
+ -> next action, when explicitly requested: execute Phase 8 implementation_plan
 ```
-
-Phase 7 已关闭；当前不得直接进入 Phase 8 production implementation，先完成 UART Application Communication 专项设计。
