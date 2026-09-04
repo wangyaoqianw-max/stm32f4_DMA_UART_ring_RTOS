@@ -1,15 +1,17 @@
-# Button Phase 5 Implementation Plan
+# DHT20 Phase 6 Implementation Plan
 
 > 当前执行计划 / Current Active Plan  
-> 状态：COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED  
-> 日期：2026-09-03
+> 状态：READY FOR CODEX EXECUTION  
+> 日期：2026-09-04
 
-**Goal:** 在现有 Platform GPIO / User Key Binding / LED / Indicator / Platform OS 基线上，实现 Platform Button 与 Button Service，并完成 Host、Keil 和 FreeRTOS 目标板验证。
+**Goal:** 在已验证的 Platform GPIO + Software I2C 基线上，实现 DHT20 Platform 设备能力，并通过 Keil、RTT 与逻辑分析仪完成目标板验证。
 
-**Spec:**
+**Frozen Spec:**
 
 ```text
-00_Doc/02_架构设计/Button_Phase1设计.md
+00_Doc/02_架构设计/DHT20_Phase1设计.md
+00_Doc/02_架构设计/DHT20参考文件/DHT20_软件I2C接入设计分析.md
+00_Doc/02_架构设计/DHT20参考文件/DHT20产品规格书(中文版) A3-202409.md
 00_Doc/00_项目需求/最终功能需求.md
 00_Doc/04_Agent/requirements.md
 00_Doc/04_Agent/architecture.md
@@ -17,46 +19,42 @@
 00_Doc/04_Agent/handoff.md
 ```
 
-> 本文件现在是 Phase 5 完成记录，不再是待执行计划。原始逐步 TDD 施工细节保留在 Git 历史中；进入 Phase 6 后应由新的 DHT20 implementation plan 替换本文件。
-
 ---
 
-# 1. 完成架构
+# 1. Phase Scope
+
+本次只实现：
 
 ```text
+Platform DHT20
+    ↓
+Platform Software I2C
+    ↓
 Platform GPIO
-    ↓ HIGH / LOW
-Platform Button
-    ↓ PRESSED / RELEASED
-Button Service
-    ↓ NONE / SINGLE / DOUBLE / LONG
-Future APP
 ```
 
-约束保持：
+不实现：
 
 ```text
-no impl_button
-no platform_device_t for Button
-no malloc/free
-no Button EXTI
-no Final APP Control FSM
-no permanent Button Task frozen
+DHT20 Service
+Acquisition Service
+MPU6050 production driver
+Final Sensor Task
+APP START / STOP / ONCE FSM
+UART sensor report integration
+new I2C mutex
+Fake I2C / test-only abstraction
 ```
 
 ---
 
-# 2. 实际生产文件
+# 2. Production Files
 
 新增：
 
 ```text
-03_Platform/platform_bsp/button/platform_button.h
-03_Platform/platform_bsp/button/platform_button.c
-03_Platform/platform_bsp/button/platform_bsp_button.h
-03_Platform/platform_bsp/button/platform_bsp_button.c
-02_Service/service_button/service_button.h
-02_Service/service_button/service_button.c
+03_Platform/platform_bsp/dht20/platform_dht20.h
+03_Platform/platform_bsp/dht20/platform_dht20.c
 ```
 
 修改：
@@ -66,215 +64,335 @@ no permanent Button Task frozen
 MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx
 ```
 
-最终正常启动路径没有 Button Smoke Hook；`Core/Src/freertos.c` 已恢复原生产路径。
+其中 `project_config.h` 只增加产品级：
+
+```c
+#define PROJECT_ACQUISITION_PERIOD_MS (2000U)
+```
+
+DHT20 的地址、命令、80 ms、CRC 多项式等协议常量保留在 `platform_dht20.c` 私有范围。
 
 ---
 
-# 3. 冻结配置
+# 3. Object and API
+
+实现 caller-owned 轻量对象：
+
+```c
+typedef struct
+{
+    platform_i2c_t *i2c;
+    platform_bool_t initialized;
+} platform_dht20_t;
+```
+
+以及：
+
+```c
+typedef struct
+{
+    uint8_t status;
+    uint32_t rawHumidity;
+    uint32_t rawTemperature;
+    float humidityPercent;
+    float temperatureC;
+} platform_dht20_measurement_t;
+```
+
+公共 API：
 
 ```text
-PROJECT_USER_KEY_ACTIVE_LEVEL = PLATFORM_GPIO_LEVEL_LOW
-PROJECT_USER_KEY_PULL         = PLATFORM_GPIO_PULL_UP
-PROJECT_BUTTON_SAMPLE_PERIOD_MS = 10U
-PROJECT_BUTTON_DEBOUNCE_MS      = 30U
-PROJECT_BUTTON_DOUBLE_CLICK_MS  = 300U
-PROJECT_BUTTON_LONG_PRESS_MS    = 3000U
+platform_dht20_init()
+platform_dht20_read()
+platform_dht20_deinit()
 ```
+
+DHT20 只引用共享 `platform_i2c_t`，不得拥有或关闭总线。
 
 ---
 
-# 4. Button Service 最终行为
+# 4. Init Implementation
+
+`platform_dht20_init()`：
 
 ```text
-Debounce:
-    state stable >= 30 ms
-    elapsed-time based
-
-SINGLE:
-    first stable RELEASE
-    no second stable PRESS within 300 ms
-    emit once after window expires
-
-DOUBLE:
-    second stable PRESS begins <= 300 ms after first stable RELEASE
-    emit on second stable RELEASE
-    no preceding SINGLE
-
-LONG:
-    stable PRESS >= 3000 ms
-    emit immediately once
-    release does not emit SINGLE
-    second press held long -> LONG only
+validate dht20
+validate i2c
+reject repeated init
+require initialized platform_i2c_t
+bind i2c
+initialized = true
 ```
 
-所有 elapsed 判断使用 wraparound-safe `uint32_t` difference。
+不发送探测命令，不执行隐藏测量，不增加额外校准序列。
+
+当前板级固定供电，调用前满足 DHT20 VDD 上电至少 5 ms 的规格书前置条件。
 
 ---
 
-# 5. Host Test 完成记录
+# 5. Read Implementation
 
-保留测试：
-
-```text
-Tests/platform_button/
-Tests/platform_bsp_button/
-Tests/service_button/
-```
-
-已覆盖：
+固定 7-bit 地址：
 
 ```text
-Platform Button lifecycle / active-low / active-high / error propagation
-User Key BSP active-low + pull-up composition
-initial RELEASED / initial PRESSED
-press / release bounce
-SINGLE delayed confirmation
-DOUBLE 299 / 300 ms boundary
-expired second press preserved as new gesture
-2999 / 3000 ms LONG boundary
-LONG exactly once
-LONG release no SINGLE
-second press LONG conflict
-irregular process interval
-uint32_t wraparound
+0x38
 ```
 
-结果：`PASS`。
+固定测量生命周期：
+
+```text
+validate
+ -> platform_i2c_write(0x38, AC 33 00)
+ -> STOP
+ -> platform_time_delay_ms(80)
+ -> platform_i2c_read(0x38, frame, 7)
+ -> Busy check
+ -> frame CRC8 check
+ -> OTP CRC_flag check
+ -> CalibrationEnable check
+ -> parse 20-bit RH / T
+ -> convert to float
+ -> atomically commit measurement
+```
+
+不得使用 `platform_i2c_write_read()`。
+
+第一版不做 Busy polling / retry loop。
 
 ---
 
-# 6. Keil / 生产集成记录
+# 6. Error Semantics
 
 ```text
-Platform Button production sources included      PASS
-Button Service production source included        PASS
-Normal production rebuild                        PASS
-Result                                            0 Error(s), 20 existing Warning(s)
-Button production-source warning                  NONE
+I2C address NACK       -> preserve PLATFORM_ERR_NOT_FOUND
+I2C transaction error -> preserve underlying platform_error_t
+Busy == 1              -> PLATFORM_ERR_BUSY
+frame CRC mismatch     -> PLATFORM_ERR_CHECKSUM
+OTP CRC_flag == 0      -> PLATFORM_ERR_CHECKSUM
+CalibrationEnable == 0 -> PLATFORM_ERR_INVALID_STATE
 ```
 
-相关集成提交包括：
+不得新增 DHT20 私有错误码体系。
 
-```text
-d814eaab  build: integrate button phase 5 production sources
-cd3a3511  fix: clear button production compiler warnings
-```
+失败时不得修改调用者已有 measurement 内容。
 
 ---
 
-# 7. FreeRTOS Target Smoke 完成记录
+# 7. CRC / Parsing / Conversion
 
-验证时临时使用：
+CRC8：
 
 ```text
-Button Smoke Task
-    -> Platform Button read
-    -> platform_time_get_ms()
-    -> Button Service
-    -> Platform Queue
-
-Indicator Smoke Task
-    -> Indicator Service
-    -> Platform LED
+input frame[0..5]
+init 0xFF
+poly 0x31
+compare frame[6]
 ```
 
-Smoke-only 映射：
+Raw：
 
-```text
-SINGLE -> RUNNING      -> LED ON
-DOUBLE -> ONCE_SUCCESS -> 3 blinks -> OFF
-LONG   -> STOPPED      -> LED OFF
+```c
+rawHumidity = ((uint32_t)frame[1] << 12U)
+            | ((uint32_t)frame[2] << 4U)
+            | ((uint32_t)frame[3] >> 4U);
+
+rawTemperature = (((uint32_t)frame[3] & 0x0FU) << 16U)
+               | ((uint32_t)frame[4] << 8U)
+               | (uint32_t)frame[5];
 ```
 
-实板证据：
+Conversion：
 
-```text
-Target board                           PASS — user confirmed
-Serial Assistant                       START / READY / SINGLE / DOUBLE / LONG
-RTT                                    START / READY / SINGLE / DOUBLE / LONG
-LED behavior                           PASS
-No duplicate gesture                   PASS
-Existing UART regression               PASS
-No HardFault / obvious scheduling stall PASS
-```
-
----
-
-# 8. Smoke Cleanup
-
-已经删除：
-
-```text
-Tests/button_smoke
-Temporary Button Smoke Task
-Temporary Indicator Smoke Task
-Temporary Platform Queue
-freertos.c temporary include / startup hook
-Keil temporary Test group / include path
-```
-
-清理后重新执行正常路径 Keil Build 和 Host regression：`PASS`。
-
----
-
-# 9. Coding / Architecture Review
-
-```text
-Coding Standard Review                  PASS
-APP -> Impl violation                   NONE
-Service -> Impl violation               NONE
-Raw HAL dependency in Button modules    NONE
-Raw FreeRTOS dependency in Button modules NONE
-Final APP FSM introduced                NO
-Permanent Button Task frozen            NO
-Button EXTI introduced                  NO
+```c
+humidityPercent = ((float)rawHumidity * 100.0f) / 1048576.0f;
+temperatureC = ((float)rawTemperature * 200.0f) / 1048576.0f - 50.0f;
 ```
 
 ---
 
-# 10. Final Acceptance Checklist
+# 8. Keil Integration
+
+将两个 DHT20 production source/header 正常加入工程，不创建临时永久 Test Group。
+
+完成 normal production rebuild。
+
+验收：
 
 ```text
-[x] Button_Phase1 design implemented
-[x] Platform Button lightweight object
-[x] No platform_device_t for Button
-[x] No impl_button pass-through
-[x] User Key LOW active + PULL_UP
-[x] Button timing 10 / 30 / 300 / 3000
-[x] Platform Button Host Test
-[x] Platform BSP Button Host Test
-[x] Button Service Host Test
-[x] Time-based debounce
-[x] SINGLE delayed confirmation
-[x] DOUBLE without preceding SINGLE
-[x] 300 ms double boundary
-[x] expired second press preserved
-[x] LONG >=3000 ms exactly once
-[x] LONG release no SINGLE
-[x] second-press LONG conflict handled
-[x] uint32 wraparound coverage
-[x] Keil production rebuild
-[x] FreeRTOS target smoke
-[x] Serial Assistant observation
-[x] RTT observation
-[x] LED visual mapping
-[x] Existing UART regression
-[x] Temporary smoke removed
-[x] Normal-path rebuild after cleanup
-[x] Final Host regression
-[x] Coding Standard Review
-[x] No Final APP Control FSM
-[x] No permanent Button Task frozen
-[x] No Button EXTI
+0 compile errors
+no new DHT20 production warnings
+no architecture dependency violation
+```
+
+现有历史 warning 可记录但不得由本 Phase 无关修改扩大范围。
+
+---
+
+# 9. Temporary Target Smoke
+
+允许创建最小临时 DHT20 smoke harness，仅用于目标板验证。
+
+要求：
+
+```text
+reuse existing Soft I2C
+initialize Platform DHT20
+perform repeated DHT20 read
+period approximately 2000 ms
+observe via RTT
+```
+
+不要实现最终 Acquisition Service / APP FSM。
+
+RTT 至少观察：
+
+```text
+DHT20 init result
+status
+raw RH / T
+converted RH / T
+read error when present
+```
+
+正常测试不逐 bit / 逐 ACK 刷日志。
+
+---
+
+# 10. Logic Analyzer Verification
+
+连接：
+
+```text
+PB6 -> SCL
+PB7 -> SDA
+```
+
+单次测量必须观察到：
+
+```text
+START
+0x70 + ACK
+0xAC + ACK
+0x33 + ACK
+0x00 + ACK
+STOP
+
+>= 80 ms
+
+START
+0x71 + ACK
+7-byte read
+ACK after first 6 bytes
+NACK after final CRC byte
+STOP
+```
+
+再观察连续约 2 s 周期下事务稳定。
+
+确认：
+
+```text
+no random address/data NACK
+no stuck-low bus
+no malformed START/STOP
+final byte NACK correct
 ```
 
 ---
 
-# 11. Stop Point / Next Phase
+# 11. Negative Smoke
+
+可执行最小断连测试：
 
 ```text
-Phase 5 — CLOSED
-Phase 6 — DHT20 Environment Module / DESIGN PENDING
+disconnect DHT20
+ -> read/probe returns PLATFORM_ERR_NOT_FOUND or corresponding bus error
+ -> RTT reports failure
 ```
 
-不得直接执行 DHT20 生产实现。下一步先完成 DHT20 专项设计，再用 Phase 6 implementation plan 替换本文件。
+不为了制造 Busy / CRC / OTP 错误而增加测试框架。
+
+---
+
+# 12. Cleanup
+
+目标板验证通过后，移除所有仅为 DHT20 Smoke 添加的：
+
+```text
+temporary task / startup hook
+temporary test source
+temporary Keil test group/include path
+```
+
+保留 production DHT20 source、2000 ms 产品配置和正式文档。
+
+重新执行正常生产 Build。
+
+---
+
+# 13. Architecture Review
+
+确认：
+
+```text
+Platform DHT20 -> Platform I2C only
+no direct HAL dependency
+no Service -> Impl
+no APP -> Impl
+no impl_dht20 passthrough
+no service_dht20 empty wrapper
+no platform_device_t
+no malloc/free
+no DHT20-owned mutex/task
+no platform_i2c_deinit() from DHT20 deinit
+```
+
+---
+
+# 14. Final Acceptance Checklist
+
+```text
+[ ] platform_dht20.h/.c created
+[ ] lightweight object implemented
+[ ] shared I2C non-owning reference respected
+[ ] init/read/deinit implemented
+[ ] 7-bit 0x38 used
+[ ] AC 33 00 transaction correct
+[ ] STOP + 80 ms + new read transaction correct
+[ ] Busy check correct
+[ ] frame CRC8 correct
+[ ] OTP CRC_flag correct
+[ ] CalibrationEnable correct
+[ ] raw RH/T parsing correct
+[ ] float conversion correct
+[ ] failed read leaves output unchanged
+[ ] PROJECT_ACQUISITION_PERIOD_MS = 2000U
+[ ] Keil production build passes
+[ ] no new DHT20 production warning
+[ ] RTT target smoke passes
+[ ] logic analyzer single transaction passes
+[ ] continuous ~2 s target read passes
+[ ] optional disconnect error observed
+[ ] temporary smoke removed
+[ ] normal-path rebuild passes after cleanup
+[ ] architecture/coding review passes
+[ ] no Phase 7 / final APP scope creep
+```
+
+---
+
+# 15. Stop Point
+
+Phase 6 完成后停止。
+
+不要自动继续实现：
+
+```text
+Phase 7 MPU6050 production module
+Acquisition Service
+Final Sensor Task
+APP Control FSM
+final UART sensor reporting
+```
+
+先更新验证记录与 `handoff.md`，再进入下一阶段设计讨论。
