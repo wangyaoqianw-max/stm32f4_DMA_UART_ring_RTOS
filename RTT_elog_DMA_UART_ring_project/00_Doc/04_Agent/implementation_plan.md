@@ -1,482 +1,410 @@
-# UART Application Communication Phase 8 Implementation Plan
+# Phase 9 Final RTOS Application Integration Implementation Plan
 
 > 当前执行计划 / Current Active Plan  
-> 状态：IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
-> TARGET VERIFICATION DEFERRED TO PHASE 9
-> 日期：2026-09-04
+> 状态：DESIGN FROZEN / READY FOR CODEX  
+> 日期：2026-09-04  
+> 适用工程：`stm32f4_DMA_UART_ring_RTOS`
 
-**Goal:** 在保持现有 UART DMA RX + RingBuffer 稳定链路的基础上，补齐可复用 USART1 TX DMA 能力，并让 `app_communication` 完成严格 CRLF 文本命令解析、Communication-local 响应和统一 APP Control Event 出口。
+**Goal:** 在 Phase 1~8 已完成能力上完成最终 FreeRTOS 应用闭环：Button + UART 统一控制、APP Control FSM、4 个产品 Task、Unified Acquisition Service、2 s DHT20 + MPU6050 采集上报、ONCE 完整事务、Indicator 反馈以及最终综合板测。
 
-**Architecture:** Platform UART 负责完整 UART 硬件能力；STM32 Impl 实现 RX Circular DMA 与 TX Normal DMA；UART Service 负责 RX RingBuffer 和面向 Task 的可靠 TX transaction；APP Communication 负责 UART 文本协议。Communication Task 是 USART1 唯一产品 TX requester，APP Control FSM 仍留到 Phase 10。
+**Architecture:** `APP -> Service -> Platform -> Impl -> Vendor`。Control Task 是唯一 STOPPED/RUNNING 业务状态 owner；Acquisition Task 是唯一 sensor / shared Software I2C runtime accessor；Communication Task 是 UART Service ownerThread 和 USART1 唯一产品 TX requester；Indicator Task 是 LED semantic executor。
 
-**Tech Stack:** STM32F411CEU6、STM32 HAL、DMA2、CMSIS-RTOS2 / FreeRTOS、Platform OS、SPSC RingBuffer、Keil MDK、Host Contract Tests。
+**Primary Spec:** `00_Doc/02_架构设计/Final_RTOS_Application_Integration_Phase9设计.md`
 
-**Spec:** `00_Doc/02_架构设计/UART_Application_Communication_Phase8设计.md`
-
-## Global Constraints
-
-```text
-No production implementation has started when this plan is created.
-APP -> Impl FORBIDDEN.
-Service -> Impl FORBIDDEN.
-UART Service must not interpret START / STOP / ONCE / STATUS / HELP business semantics.
-APP Communication must not own STOPPED / RUNNING truth.
-Communication Task is the sole USART1 product TX requester.
-RX remains DMA Circular + RingBuffer SPSC.
-TX uses DMA Normal, one active transaction only.
-No TX RingBuffer / TX Queue / TX worker Task in Phase 8.
-No permanent Phase 9 IPC design in Phase 8.
-No Acquisition Service / APP Control FSM implementation in Phase 8.
-USART1 is product communication; RTT / EasyLogger is diagnostics.
-```
+**Important:** 本 Phase 已合并原“RTOS Task / Event Design”和“Final APP Integration”。不存在独立 Phase 10。完成本计划与最终综合板测后，当前项目核心目标完成。
 
 ---
 
-# 1. Current Hardware / Generated Baseline
+# 0. Execution Rules / Stop Conditions
 
-CubeMX 已由人工完成 USART1 TX DMA 配置：
-
-```text
-RX: DMA2_Stream2 / Channel 4 / Peripheral->Memory / Circular / IRQ 5
-TX: DMA2_Stream7 / Channel 4 / Memory->Peripheral / Normal / IRQ 5
-```
-
-当前代码状态：
+Codex 开始执行前必须完整读取：
 
 ```text
-Platform public write_async()                 EXISTS
-Platform TX_COMPLETE event type              EXISTS
-STM32 Impl writeAsync Ops                    IMPLEMENTED
-STM32 HAL TxCplt -> Platform event           IMPLEMENTED
-Platform cancel TX/BOTH                      IMPLEMENTED in STM32 Impl
-UART Service TX                              IMPLEMENTED
-APP Communication command parser             IMPLEMENTED
+00_Doc/00_项目需求/最终功能需求.md
+00_Doc/02_架构设计/Final_RTOS_Application_Integration_Phase9设计.md
+00_Doc/02_架构设计/UART_Application_Communication_Phase8设计.md
+00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
+00_Doc/04_Agent/execution_rules.md
+00_Doc/04_Agent/architecture.md
+00_Doc/04_Agent/requirements.md
+00_Doc/04_Agent/development_roadmap.md
+00_Doc/04_Agent/handoff.md
+00_Doc/04_Agent/implementation_plan.md
 ```
 
-不得把 TX DMA 配置 READY 误标为 production TX DMA VERIFIED。
+全局约束：
+
+```text
+APP -> Impl FORBIDDEN
+Service -> Impl FORBIDDEN
+no direct HAL UART TX product bypass
+no second UART RX path
+RX SPSC RingBuffer stays lock-free
+Communication Task = sole USART1 product TX requester
+Control Task = sole STOPPED/RUNNING truth owner
+Acquisition Task = sole runtime DHT20/MPU6050/Soft-I2C accessor
+4 product Tasks only
+CubeMX defaultTask is not a product Task
+no I2C mutex in first version
+no Queue Set / Event Group expansion in first version
+no runtime malloc/free for APP business data flow
+APP Queue messages are bounded value-copy messages
+initialize dependencies before creating product Threads
+no low-power / Tickless / Button EXTI work in this Phase
+```
+
+每个 implementation Task：
+
+```text
+1. read nearest existing implementation + tests
+2. add/adjust contract tests first where practical
+3. confirm expected RED for new behavior
+4. implement smallest production change
+5. run focused tests
+6. run regression relevant to changed module
+7. perform Coding Standard Review
+8. only then continue
+```
+
+若出现与冻结架构冲突的问题，不得自行引入第五个业务 Task、新 mutex、新 TX owner 或新 HAL bypass；先记录问题并按设计合同收束。
 
 ---
 
-# 2. Task 1 — STM32 UART TX DMA Contract Tests
+# 1. Task 0 — Baseline Verification
 
-**Files:**
-
-```text
-Tests/... existing UART Platform / Impl test location
-04_Impl/impl_mcu/impl_platform_uart.c        later production target
-03_Platform/platform_mcu/uart/platform_uart.* existing contract
-```
-
-先增加最小失败测试，冻结：
+在改代码前记录当前 baseline：
 
 ```text
-write_async starts one TX
-second TX while active -> BUSY
-TX complete releases transaction
-TX cancel releases transaction
-RX + TX may be active concurrently
-lifecycle stop leaves no TX transaction active
+Phase 8 Host regression
+Keil production rebuild
+current warning count
+current UART RX/TX architecture
+current generated defaultTask behavior
 ```
 
-不得为了测试引入 production-only fake abstraction。
+预期 baseline：
 
-验收：测试先 RED，原因明确来自 STM32 Impl 尚未提供 async TX。
+```text
+Phase 8 Host regression PASS
+Keil 0 Error(s)
+Phase 8 production path intact
+TX DMA target verification still pending
+```
+
+本 Task 不做架构修改。
 
 ---
 
-# 3. Task 2 — STM32 UART Async TX Implementation
+# 2. Task 1 — Static Config + APP IPC Contracts
 
-**Modify:**
-
-```text
-04_Impl/impl_mcu/impl_platform_uart.c
-```
-
-实现：
+**Modify/Create later:**
 
 ```text
-TX context: caller buffer pointer / length / txActive
-stm32_uart_write_async()
-g_stm32UartOps.writeAsync binding
-HAL_UART_Transmit_DMA()
-HAL_UART_TxCpltCallback()
-PLATFORM_UART_EVENT_TX_COMPLETE / TX
+00_Config/project_config.h
+01_APP/app_ipc_types.h
 ```
 
-关键顺序：
+冻结初始资源：
 
 ```text
-HAL Tx complete
- -> snapshot data pointer / length
- -> clear TX context
- -> notify Platform event
+Communication Task   2048 B   ABOVE_NORMAL
+Control Task         1024 B   ABOVE_NORMAL
+Acquisition Task     1536 B   NORMAL
+Indicator Task        768 B   BELOW_NORMAL
+
+Control Queue                  depth 8
+Acquisition Command Queue      depth 4
+Communication Outbound Queue   depth 8
+Indicator Queue                depth 4
+
+PROJECT_COMM_WAIT_TIMEOUT_MS = 20U
 ```
 
-失败启动必须 rollback TX context。
-
-验证 Task 1 测试 GREEN。
-
----
-
-# 4. Task 3 — Platform UART TX Cancel / Lifecycle Completion
-
-**Modify:**
+定义 APP-level value contracts，至少包含：
 
 ```text
-04_Impl/impl_mcu/impl_platform_uart.c
-```
+app_ctrl_source_t
+  BUTTON
+  UART
 
-补齐：
+Control Queue message
+  CONTROL_REQUEST(event + source)
+  ONCE_ACQUISITION_FAILED(result)
+  ONCE_TX_RESULT(result)
 
-```text
-platform cancel direction TX
-platform cancel direction BOTH
-HAL_UART_AbortTransmit()
-RX / TX independent context cleanup
-lifecycle stop terminates active RX and TX
-lifecycle deinit starts from clean transaction state
-```
+Acquisition command
+  START_PERIODIC
+  STOP_PERIODIC
+  SAMPLE_ONCE
 
-显式 cancel 产生正确 direction 的 CANCELED event；device lifecycle stop 不制造无意义业务 cancel event。
+Communication outbound
+  CONTROL_RESPONSE
+  PERIODIC_REPORT
+  ONCE_REPORT
 
-测试：
-
-```text
-cancel TX
-cancel BOTH with RX+TX active
-stop while TX active
-buffer is no longer owned after termination
-```
-
----
-
-# 5. Task 4 — UART Error Direction Review
-
-**Modify as needed:**
-
-```text
-04_Impl/impl_mcu/impl_platform_uart.c
-```
-
-保持规则：
-
-```text
-PE / FE / NE / ORE -> RX-oriented error
-explicit TX DMA failure -> TX error
-unreliable device-wide failure -> device/BOTH semantics
-```
-
-禁止“只要 txActive 就把 HAL ErrorCallback 当 TX error”。
-
-运行 UART Platform / Impl regression。
-
----
-
-# 6. Task 5 — UART Service TX Data Model
-
-**Modify:**
-
-```text
-02_Service/service_uart/service_uart.h
-02_Service/service_uart/service_uart.c
-01_APP/app_system.c                  config field rename/wiring only
-```
-
-将 RX-only `consumerThread` 语义升级为：
-
-```text
-ownerThread = UART Service sole Task execution context
-```
-
-增加最小 TX Context：
-
-```text
-txState = IDLE / ACTIVE
-txResult
-```
-
-增加 TX statistics：
-
-```text
-txRequestCount
-txCompleteCount
-txBytesCompleted
-txBusyRejectCount
-txTimeoutCount
-txErrorCount
-txCancelCount
-```
-
-不建立 TX queue / buffer pool / public async Service API。
-
----
-
-# 7. Task 6 — UART Service Synchronous Task TX API
-
-**Produce interface:**
-
-```c
-platform_error_t service_uart_write(
-    service_uart_t *service,
-    const uint8_t *data,
-    platform_size_t dataLength,
-    uint32_t timeoutMs);
-```
-
-内部：
-
-```text
-require Service RUNNING
-require TX IDLE
- -> txState ACTIVE
- -> platform_uart_write_async()
- -> wait for internal TX terminal condition
- -> return OK / TIMEOUT / CANCELED / underlying TX error
-```
-
-强保证：
-
-```text
-service_uart_write() returns
-=> DMA no longer accesses caller TX buffer
-```
-
-TX single transaction error 不自动把 healthy RX Service 设为 ERROR。
-
----
-
-# 8. Task 7 — Dedicated TX Wait / Timeout Semantics
-
-**Modify:**
-
-```text
-02_Service/service_uart/service_uart.c
-```
-
-不得使用公共 `service_uart_wait_event()` 等待 TX completion，因为 RingBuffer 非空会持续重建 `RX_AVAILABLE`。
-
-实现内部专用等待逻辑，使用：
-
-```text
-platform_notify_wait()
-platform_time_get_ms()
+Indicator command
+  STOPPED
+  RUNNING
+  ONCE_SUCCESS
 ```
 
 要求：
 
 ```text
-Notify only wake hint
-TX Context is truth
-unrelated RX wakeup must not extend total TX timeout
-wraparound-safe elapsed / remaining timeout
+no HAL / FreeRTOS concrete handles in APP IPC public types
+no pointer to caller temporary stack data
+sensor result copied by value
+fixed-size message union / struct
 ```
 
-timeout：
-
-```text
-cancel TX
- -> confirm transaction ended
- -> return PLATFORM_ERR_TIMEOUT
-```
-
-测试必须覆盖 RX notification 干扰 TX timeout 的场景。
+完成后做 compile-contract review，确认不存在不必要跨层依赖。
 
 ---
 
-# 9. Task 8 — UART Service Stop / Error Integration
+# 3. Task 2 — Unified Acquisition Service (Test First)
 
-**Modify:**
-
-```text
-02_Service/service_uart/service_uart.c/.h
-```
-
-冻结行为：
+**Create later:**
 
 ```text
-stop while TX idle      -> stop RX -> STOPPED
-stop while TX active    -> cancel TX + stop RX -> STOPPED
-blocked write on stop   -> CANCELED
-TX transaction error    -> write returns error; RX may remain RUNNING
-RX session error        -> Service ERROR; APP Communication recovery path
-BOTH/device fatal       -> Service ERROR + terminate active TX safely
+02_Service/service_acquisition/service_acquisition.h
+02_Service/service_acquisition/service_acquisition.c
 ```
 
-确保 `deinit()` 不偷偷承担 `stop()` 语义。
+先在现有 Host test harness 中增加最接近 Service 层的 contract tests；不要猜造第二套 test framework。
 
-运行现有 RX Service regression，确认 SPSC / data-loss recovery 未回归。
+必须覆盖：
+
+```text
+DHT20 OK + MPU6050 OK
+ -> Service OK
+ -> complete caller data committed
+
+DHT20 fail + MPU6050 OK
+ -> whole acquisition failed
+ -> MPU6050 still attempted
+ -> caller data unchanged
+
+DHT20 OK + MPU6050 fail
+ -> whole acquisition failed
+ -> caller data unchanged
+
+DHT20 fail + MPU6050 fail
+ -> both attempted
+ -> whole acquisition failed
+ -> caller data unchanged
+
+request/success/failure/per-sensor statistics correct
+last per-sensor result diagnostic state correct
+```
+
+实现约束：
+
+```text
+DHT20 first
+MPU6050 second
+always attempt both for diagnostics
+atomic temporary result
+commit only when both succeed
+non-owning Platform sensor references
+no Task / Queue / UART / LED logic
+no ownership of shared Software I2C lifecycle
+```
+
+完成 focused test + Service regression + Coding Standard Review。
 
 ---
 
-# 10. Task 9 — Remove USART1 Debug TX Bypass
+# 4. Task 3 — Control Task + APP Control FSM (Test First)
 
-**Generated/User Code files, only permitted USER CODE regions:**
-
-```text
-Core/Src/usart.c
-Core/Inc/usart.h
-related startup call site if USART1_mutex_Init() is still invoked
-```
-
-移除正式运行路径中的：
+**Create later:**
 
 ```text
-uartMutexHandle
-USART1_mutex_Init()
-printf/fputc -> HAL_UART_Transmit(&huart1)
+01_APP/app_control.h
+01_APP/app_control.c
 ```
 
-目标：
+Control Task responsibilities：
 
 ```text
-USART1 = product communication only
-RTT / EasyLogger = diagnostics only
+PA0 Button polling every 10 ms
+service_button_process()
+Button gesture -> APP_CTRL event
+Control Queue consumer
+sole STOPPED/RUNNING FSM
+orchestrate Acquisition / Communication / Indicator Queues
 ```
 
-不得修改 CubeMX 自动生成区的无关内容。
+FSM Context：
+
+```text
+state = STOPPED / RUNNING
+onceActive
+onceSource
+nextButtonSampleDeadlineMs
+```
+
+`onceActive` 不是第三个业务状态。
+
+先测试：
+
+```text
+boot state STOPPED
+STOPPED + START -> RUNNING
+RUNNING + START -> already running
+RUNNING + STOP -> STOPPED
+STOPPED + STOP -> already stopped
+STOPPED + ONCE -> onceActive, remains STOPPED
+RUNNING + ONCE -> already running
+ONCE active + UART START/STOP/ONCE -> BUSY
+ONCE active + Button START/STOP/ONCE-equivalent -> ignore
+STATUS while ONCE active -> STOPPED
+Button SINGLE/DOUBLE/LONG map into same FSM
+ONCE acquisition failure clears onceActive and never posts success indicator
+ONCE TX success clears onceActive and posts ONCE_SUCCESS exactly once
+ONCE TX failure clears onceActive and never posts success indicator
+```
+
+Button 调度使用 monotonic deadline + bounded Queue receive，不用 `delay(10)` 主循环。
+
+Queue submission failure 必须可观察；Control Task 不得永久阻塞等待 Queue 空间。
 
 ---
 
-# 11. Task 10 — APP Control Event Common Contract
+# 5. Task 4 — Acquisition Task Scheduling (Test First Where Practical)
 
-**Create:**
-
-```text
-01_APP/app_control_types.h
-```
-
-冻结：
+**Create later:**
 
 ```text
-APP_CTRL_START
-APP_CTRL_STOP
-APP_CTRL_SAMPLE_ONCE
-APP_CTRL_GET_STATUS
+01_APP/app_acquisition.h
+01_APP/app_acquisition.c
 ```
 
-该文件不包含 UART 文本、Button gesture 或 RTOS Queue 细节。
+Responsibilities：
 
-为 Phase 8 提供逻辑 event outlet；实际 permanent consumer / Queue 在 Phase 9 冻结。
+```text
+Acquisition Command Queue consumer
+sole runtime caller of Unified Acquisition Service
+periodicEnabled execution context
+absolute scheduling deadline
+publish periodic/ONCE results by value
+```
+
+冻结调度：
+
+```text
+STOPPED -> queue_receive(WAIT_FOREVER)
+START -> immediate first sample
+next deadline = first trigger time + 2000 ms
+RUNNING -> queue_receive(timeout until deadline)
+periodic deadline advances += 2000 ms
+missed periods are skipped, never catch-up burst sampled
+```
+
+STOP during active synchronous transaction：
+
+```text
+no unsafe mid-I2C cancellation
+finish current low-level transaction safely
+process pending STOP before periodic publish
+if STOP observed -> discard stale periodic result
+no later periodic acquisition until next START
+```
+
+ONCE：
+
+```text
+sample success -> Communication Outbound Queue / ONCE_REPORT
+sample failure -> Control Queue / ONCE_ACQUISITION_FAILED
+```
+
+不得直接 UART TX，不得直接 LED control。
 
 ---
 
-# 12. Task 11 — APP Communication Line Assembler Tests
+# 6. Task 5 — Indicator Task
 
-**Test target:** `app_communication`
-
-先增加失败测试：
+**Create later:**
 
 ```text
-START / STOP / ONCE / STATUS / HELP
-fragmented START
-multiple commands in one chunk
-CRLF split
-LF-only reject
-lowercase reject
-leading/trailing whitespace reject
-empty line ignore
-line boundary
-line overflow discard until CRLF
-malformed CR recovery
-invalid input does not enter APP fatal ERROR
+01_APP/app_indicator.h
+01_APP/app_indicator.c
 ```
 
-新增产品配置计划：
+第一版：
 
 ```text
-PROJECT_COMM_COMMAND_LINE_BUFFER_SIZE = 32U
+Indicator Queue WAIT_FOREVER
+ -> map APP indicator command
+ -> service_indicator_handle_event()
 ```
 
-31 chars usable + one NUL；CRLF 不存入 line buffer。
+语义：
+
+```text
+STOPPED -> OFF
+RUNNING -> ON
+ONCE_SUCCESS -> blink 3 times, 100 ms on/off -> OFF
+```
+
+现有约 600 ms blocking blink 只允许阻塞 Indicator Task。
+
+第一版接受：ONCE 闪烁期间若 START 到达，RUNNING LED event 最多等待本次闪烁完成；业务状态本身必须已经由 Control FSM 更新。
 
 ---
 
-# 13. Task 12 — APP Communication Parser / Context
+# 7. Task 6 — Communication Outbound Integration
 
-**Modify:**
+**Modify later:**
 
 ```text
 01_APP/app_communication.h
 01_APP/app_communication.c
-00_Config/project_config.h
 ```
 
-Context 增加：
+保留现有：
 
 ```text
-commandLine
-commandLength
-pendingCr
-discardLine
+strict CRLF parser
+UART Service ownerThread
+RX DMA + RingBuffer SPSC
+Communication-local HELP / invalid / overflow handling
 ```
 
-`app_communication_drain_rx()` 从“读取并丢弃”升级为：
+新增：
 
 ```text
-service_uart_read
- -> feed bytes
- -> line assembler
- -> parse complete line
+Communication Outbound Queue binding
+nonblocking outbound drain
+business response formatting
+periodic acquisition report formatting
+ONCE report formatting
+ONCE TX completion -> Control Queue
 ```
 
-Command enum 可保持 Communication 私有。
-
-Protocol invalid input 属于正常外部输入，不进入 `APP_COMMUNICATION_STATE_ERROR`。
-
----
-
-# 14. Task 13 — Command -> APP Control Event Outlet
-
-**Modify:**
+第一版 loop：
 
 ```text
-01_APP/app_communication.h/.c
-01_APP/app_system.c
+drain outbound queue nonblocking
+ -> app_communication_process(PROJECT_COMM_WAIT_TIMEOUT_MS = 20 ms)
+ -> drain outbound queue nonblocking
 ```
 
-Config 增加逻辑 handler：
+不引入 Queue Set 或第二套 wake abstraction。
+
+状态响应：
 
 ```text
-controlHandler
-controlContext
+OK START\r\n
+OK STOP\r\n
+ERR ALREADY_RUNNING\r\n
+ERR ALREADY_STOPPED\r\n
+ERR BUSY\r\n
+ERR ACQUISITION_FAILED\r\n
+STATUS RUNNING\r\n
+STATUS STOPPED\r\n
 ```
 
-映射：
-
-```text
-START  -> APP_CTRL_START
-STOP   -> APP_CTRL_STOP
-ONCE   -> APP_CTRL_SAMPLE_ONCE
-STATUS -> APP_CTRL_GET_STATUS
-HELP   -> Communication local
-```
-
-Phase 8 测试使用 test sink / minimal non-production adapter 验证 exactly-once submission。
-
-不得在 `app_communication` 增加 systemRunning / STOPPED / RUNNING truth。
-
-handler 返回值只表示 request submission result，不代表业务执行结果。
-
----
-
-# 15. Task 14 — Communication-local TX Responses
-
-**Modify:**
-
-```text
-01_APP/app_communication.c
-```
-
-通过唯一正式链：
-
-```text
-app_communication
- -> service_uart_write
- -> Platform async TX
- -> DMA2_Stream7
-```
-
-Phase 8 可直接响应：
+保留：
 
 ```text
 HELP START STOP ONCE STATUS HELP\r\n
@@ -484,150 +412,328 @@ ERR UNKNOWN_COMMAND\r\n
 ERR COMMAND_TOO_LONG\r\n
 ```
 
-状态相关文本格式可定义，但不能伪造业务执行：
+完整 report：
 
 ```text
-OK START
-OK STOP
-ERR ALREADY_RUNNING
-ERR ALREADY_STOPPED
-STATUS RUNNING / STOPPED
+ENV,T=...,...\r\n
+IMU,AX=...,AY=...,AZ=...,GX=...,GY=...,GZ=...\r\n
 ```
 
-这些发送条件等待 Phase 10 APP FSM result。
+ONCE：
 
-`ONCE` 不得在 request submission 时提前报告完整业务成功。
+```text
+complete report TX OK -> ONCE_TX_RESULT OK exactly once
+any report TX failure -> ONCE_TX_RESULT failure exactly once
+```
+
+成功 ONCE 不强制追加 `OK ONCE`；完整 report TX 本身即成功输出。
+
+Queue-full submission of UART control request：
+
+```text
+respond ERR BUSY
+increment submit failure statistic
+```
 
 ---
 
-# 16. Task 15 — APP Communication Statistics
+# 8. Task 7 — app_system Final Composition Root
 
-增加：
+**Modify later:**
 
 ```text
-commandReceivedCount
-commandInvalidCount
-commandOverflowCount
-controlEventSubmittedCount
-controlEventSubmitFailureCount
-localResponseCount
-localResponseFailureCount
+01_APP/app_system.c
 ```
 
-不复制 UART Service transport statistics，不做每条命令独立计数。
+静态持有并装配：
+
+```text
+Platform UART / LED / Button / Software I2C / DHT20 / MPU6050
+Service UART / Button / Indicator / Acquisition
+4 Platform Queues
+4 APP contexts
+4 Platform Threads
+fixed UART DMA / RingBuffer storage
+```
+
+初始化顺序必须是：
+
+```text
+hardware/platform objects
+ -> shared Software I2C
+ -> DHT20 / MPU6050
+ -> LED / Button
+ -> Services
+ -> Queues
+ -> APP contexts
+ -> Threads LAST
+```
+
+修复 Phase 8 的临时 `controlHandler = NULL` wiring，Communication control handler 只负责将 UART request 以 `source = UART` 投递到 Control Queue。
+
+Threads 必须全部依赖有效后才创建。
+
+不得在 composition root 引入业务循环。
 
 ---
 
-# 17. Task 16 — Host Regression / Architecture Review
+# 9. Task 8 — CubeMX defaultTask Self-Exit
+
+**Modify later only in generated USER CODE area:**
+
+```text
+Core/Src/freertos.c
+```
+
+最终：
+
+```c
+(void)argument;
+osThreadExit();
+```
+
+删除 defaultTask 产品运行意义；不把它重用为 Control / Acquisition / Communication / Indicator。
+
+验证：
+
+```text
+CubeMX user-code-safe placement
+no infinite osDelay(1) default loop
+4 product Tasks remain the only application Tasks
+Idle / Timer Service remain normal RTOS kernel Tasks
+```
+
+不得修改无关 CubeMX generated region。
+
+---
+
+# 10. Task 9 — Host Regression + Architecture / Coding Review
+
+运行全部现有 Host regression，并加入 Phase 9 新测试。
 
 至少确认：
 
 ```text
-all existing tests PASS
-new UART TX tests PASS
-new parser tests PASS
-RX SPSC remains lock-free
-no Service -> Impl
-no APP -> Impl
-no command semantics in UART Service
-no APP running truth in Communication
-no TX queue / mutex / second TX owner
-no dynamic allocation
+Unified Acquisition all-or-nothing contract PASS
+Control FSM matrix PASS
+Button/UART share one FSM PASS
+ONCE completion semantics PASS
+Acquisition scheduling contract PASS
+Communication formatting/outbound contract PASS
+existing UART RX/TX tests PASS
+existing Button/Indicator/Sensor tests PASS
 ```
 
-编码阶段必须完整读取：
+静态 Review：
 
 ```text
-00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
-00_Doc/04_Agent/execution_rules.md
+4 product Tasks only
+no APP -> Impl
+no Service -> Impl
+no direct HAL UART product TX
+no duplicate systemRunning truth
+no second Software I2C accessor
+no I2C mutex
+no APP temporary pointer queued
+no Queue Set expansion
+no business runtime malloc/free
+threads created after dependencies
 ```
 
-并执行 Coding Standard Review。
+执行 `嵌入式项目C代码设计规范.md` 的 Coding Standard Review。
 
 ---
 
-# 18. Task 17 — Keil / Target Validation Scope
+# 11. Task 10 — Keil Production Rebuild
 
-Keil：
+要求：
 
 ```text
 0 compile errors
-no new Phase 8 production warnings
+no new Phase 9 production warnings
 ```
 
-本次不执行独立目标板 smoke。以下验证明确延期至 Phase 9，与正式 RTOS Task / Event / IPC 链路一起执行：
+检查：
 
 ```text
-HELP response uses TX DMA
-unknown / overflow response correct
-fragmented command correct
-multiple commands correct
-RX continues while TX DMA active
-command arriving during TX is retained by RX DMA + RingBuffer
+all new production files included in Keil groups
+all include paths correct
+no host-only symbol leaked to production build
+FreeRTOS heap still has safe creation margin with loose initial Task stacks/Queues
 ```
 
-必要时用 debugger / logic analyzer 确认：
-
-```text
-TX = DMA2_Stream7 Normal
-RX = DMA2_Stream2 Circular
-```
-
-RTT 只记录必要 init / complete command / error 摘要，不逐 byte / DMA step 刷日志。
+不要因为第一版 RAM 使用偏宽松而提前压栈。
 
 ---
 
-# 19. Task 18 — Cleanup / Final Documentation
+# 12. Task 11 — Final Target Integrated Verification
 
-在本次 Host + Keil 验证后：
+## 12.1 Boot
 
 ```text
-update implementation_plan execution record
+boot complete
+STOPPED
+LED OFF
+UART RX active
+RTT active
+no periodic sensor report
+```
+
+## 12.2 Button START
+
+```text
+STOPPED SINGLE
+ -> RUNNING
+ -> LED ON
+ -> immediate first complete DHT20 + MPU6050 report
+ -> then every 2 s
+```
+
+## 12.3 Button STOP
+
+```text
+RUNNING LONG >= 3 s
+ -> STOPPED
+ -> LED OFF
+ -> no future periodic report
+```
+
+若 STOP 到达 active sensor transaction，允许 transaction 安全收尾，但不得发送 STOP 后的 stale periodic report。
+
+## 12.4 Button ONCE
+
+```text
+STOPPED DOUBLE
+ -> one complete DHT20 + MPU6050 sample
+ -> one complete UART report
+ -> TX success
+ -> LED blink 3 times
+ -> OFF
+ -> remain STOPPED
+```
+
+失败不成功闪烁。
+
+## 12.5 UART Commands
+
+验证：
+
+```text
+START
+STOP
+ONCE
+STATUS
+HELP
+fragmented command
+multiple commands in one RX chunk
+RX while TX DMA active
+ERR ALREADY_RUNNING
+ERR ALREADY_STOPPED
+ERR BUSY
+ERR ACQUISITION_FAILED
+```
+
+Button 与 UART 必须观察同一个 APP state truth。
+
+## 12.6 Shared Software I2C
+
+验证周期运行和 ONCE 下：
+
+```text
+DHT20 complete transaction
+ -> MPU6050 complete transaction
+no interleaving second accessor
+```
+
+## 12.7 Failure Visibility
+
+通过 RTT 验证至少：
+
+```text
+DHT20 failure
+MPU6050 failure
+UART TX failure/timeout path where feasible
+RingBuffer overflow/error path where feasible
+Queue internal fault counters/logging where feasible
+```
+
+ONCE sample/TX failure不得成功闪烁。
+
+---
+
+# 13. Task 12 — Resource Measurement, Not Premature Optimization
+
+完整系统稳定运行后记录：
+
+```text
+Communication Task stack high-water mark
+Control Task stack high-water mark
+Acquisition Task stack high-water mark
+Indicator Task stack high-water mark
+Control Queue peak occupancy
+Acquisition Queue peak occupancy
+Communication Outbound Queue peak occupancy
+Indicator Queue peak occupancy
+```
+
+第一轮目标是证明资源足够，不是立刻缩小。
+
+只有在完整业务压力场景有证据后才考虑：
+
+```text
+reduce Task stack
+reduce Queue depth
+adjust priority if measured latency shows need
+```
+
+不得为了“看起来省 RAM”牺牲第一版稳定性。
+
+---
+
+# 14. Task 13 — Documentation / Project Closure
+
+只有 Host + Keil + Final Target verification 完成后才能：
+
+```text
+mark Phase 9 COMPLETED
+record actual verification results
+record stack high-water marks / Queue observations
 update handoff
-update roadmap Phase 8 status
-Coding Standard Review recorded
+update roadmap
+update implementation execution record
 ```
 
-本阶段最终状态必须为：
+最终路线：
 
 ```text
-IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
-TARGET VERIFICATION DEFERRED TO PHASE 9
+Phase 1 ~ 8
+ -> Phase 9 Final RTOS Application Integration
+ -> Final Integrated Board Test
+ -> PROJECT CORE COMPLETE
 ```
+
+不要创建 Phase 10。
 
 ---
 
-# 20. Stop Point
+# 15. Execution Record
 
-Phase 8 完成后停止，不自动实现：
-
-```text
-Phase 9 permanent Task / IPC
-Unified Acquisition Service / Task
-APP Control FSM
-final state-dependent UART responses
-2 s integrated report flow
-ONCE integrated LED feedback
-```
-
-当前计划状态：
+当前：
 
 ```text
-IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
-TARGET VERIFICATION DEFERRED TO PHASE 9
+Phase 9 design: FROZEN
+Phase 9 implementation: NOT STARTED
+Phase 9 Host tests: NOT RUN
+Phase 9 Keil build: NOT RUN
+Phase 9 target integration: NOT RUN
 ```
 
----
-
-# 21. Execution Record
+Phase 8 已有 baseline：
 
 ```text
 Host regression: PASS
-Keil production rebuild: 0 Error(s), 14 existing non-Phase-8 warnings
-Phase 8 changed production sources: no Keil warnings
-Coding Standard Review: PASS
-Architecture Review: PASS
-Independent target-board smoke: NOT RUN
+Keil production rebuild: PASS / 0 Error(s)
+UART TX DMA target verification: DEFERRED TO PHASE 9
 ```
 
-Phase 9 需将目标板串口 smoke 与正式 RTOS Task / Event / IPC 链路一并执行；不得把本次结果写为 TARGET VERIFIED。
+Codex 应从 Task 0 开始顺序执行，不跳过测试、架构 Review 或最终目标板验证记录。
