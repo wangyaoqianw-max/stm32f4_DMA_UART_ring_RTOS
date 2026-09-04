@@ -19,6 +19,7 @@
 //******************************** Includes *********************************//
 
 //******************************** Private Functions *************************//
+/** @brief 使用有符号差值判断可回绕的毫秒 deadline。 */
 static platform_bool_t app_acquisition_deadline_reached(
     uint32_t nowMs,
     uint32_t deadlineMs)
@@ -26,6 +27,7 @@ static platform_bool_t app_acquisition_deadline_reached(
     return ((int32_t)(nowMs - deadlineMs) >= 0) ? PLATFORM_TRUE : PLATFORM_FALSE;
 }
 
+/** @brief 将 Service 层双传感器快照复制到 APP IPC 数据。 */
 static void app_acquisition_copy_data(
     app_acquisition_data_t *destination,
     const service_acquisition_data_t *source)
@@ -34,6 +36,7 @@ static void app_acquisition_copy_data(
     destination->motion = source->motion;
 }
 
+/** @brief 以非阻塞方式投递 Queue，并统一累计投递失败统计。 */
 static platform_error_t app_acquisition_send_queue(
     app_acquisition_t *acquisition,
     platform_queue_t *queue,
@@ -47,6 +50,7 @@ static platform_error_t app_acquisition_send_queue(
     return result;
 }
 
+/** @brief 向 Control FSM 回传 ONCE 失败或发送完成结果。 */
 static platform_error_t app_acquisition_send_once_failure(
     app_acquisition_t *acquisition,
     app_control_message_type_t type,
@@ -61,6 +65,7 @@ static platform_error_t app_acquisition_send_once_failure(
         acquisition, acquisition->config.controlQueue, &message);
 }
 
+/** @brief 将完整采集结果按指定类型发布到通信 Queue。 */
 static platform_error_t app_acquisition_publish(
     app_acquisition_t *acquisition,
     app_communication_outbound_type_t type,
@@ -75,6 +80,7 @@ static platform_error_t app_acquisition_publish(
         acquisition, acquisition->config.communicationQueue, &message);
 }
 
+/** @brief 采样完成后排空待处理命令并优先识别 STOP。 */
 static platform_error_t app_acquisition_check_pending_stop(
     app_acquisition_t *acquisition,
     platform_bool_t *stopObserved)
@@ -101,6 +107,7 @@ static platform_error_t app_acquisition_check_pending_stop(
     }
 }
 
+/** @brief 执行一次周期采集，并抑制 STOP 后的过期结果。 */
 static platform_error_t app_acquisition_execute_periodic(
     app_acquisition_t *acquisition)
 {
@@ -137,6 +144,7 @@ static platform_error_t app_acquisition_execute_periodic(
     return PLATFORM_ERR_OK;
 }
 
+/** @brief 执行一次 ONCE 采集并保证向 Control 回传完成路径。 */
 static platform_error_t app_acquisition_execute_once(app_acquisition_t *acquisition)
 {
     service_acquisition_data_t data = {0};
@@ -166,6 +174,7 @@ static platform_error_t app_acquisition_execute_once(app_acquisition_t *acquisit
     return PLATFORM_ERR_OK;
 }
 
+/** @brief 处理一条 Acquisition 命令并维护周期运行状态。 */
 static platform_error_t app_acquisition_handle_command(
     app_acquisition_t *acquisition,
     app_acquisition_command_t command,
@@ -196,6 +205,7 @@ static platform_error_t app_acquisition_handle_command(
     }
 }
 
+/** @brief 超期时推进绝对 deadline，并统计跳过的历史周期。 */
 static platform_error_t app_acquisition_advance_deadline(
     app_acquisition_t *acquisition)
 {

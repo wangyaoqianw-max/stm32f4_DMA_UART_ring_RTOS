@@ -34,39 +34,63 @@ typedef enum
     APP_CONTROL_STATE_MAX
 } app_control_state_t;
 
+/** @brief Control Task 的非拥有型硬件、Service 与 Queue 依赖。 */
 typedef struct
 {
+    /** Control Task 唯一轮询的 Platform Button。 */
     platform_button_t *button;
+    /** 将 10 ms Button 样本转换为手势的 Button Service。 */
     service_button_t *buttonService;
+    /** UART 请求和 ONCE completion 的输入 Queue。 */
     platform_queue_t *controlQueue;
+    /** 发往 Acquisition Task 的命令 Queue。 */
     platform_queue_t *acquisitionQueue;
+    /** 发往 Communication Task 的业务输出 Queue。 */
     platform_queue_t *communicationQueue;
+    /** 发往 Indicator Task 的 LED 语义 Queue。 */
     platform_queue_t *indicatorQueue;
 } app_control_config_t;
 
+/** @brief 唯一 APP Control FSM 及 Button deadline 运行上下文。 */
 typedef struct
 {
+    /** 系统唯一 STOPPED/RUNNING 业务状态。 */
     app_control_state_t state;
+    /** STOPPED 下是否存在尚未完成的 ONCE 事务。 */
     platform_bool_t onceActive;
+    /** 当前 ONCE 来源，用于决定失败时是否发送 UART 响应。 */
     app_ctrl_source_t onceSource;
+    /** 下一次 Button 采样的绝对单调毫秒 deadline。 */
     uint32_t nextButtonSampleDeadlineMs;
+    /** Control 对象是否完成初始化。 */
     platform_bool_t initialized;
 } app_control_context_t;
 
+/** @brief Control Task 的累计运行与故障统计。 */
 typedef struct
 {
+    /** 已处理的统一控制事件数。 */
     uint32_t processedEventCount;
+    /** 已处理的 Control Queue 消息数。 */
     uint32_t processedMessageCount;
+    /** 向任一 APP Queue 投递失败的累计次数。 */
     uint32_t queueSubmitFailureCount;
+    /** Platform Button 读取失败次数。 */
     uint32_t buttonReadFailureCount;
+    /** Button Service 处理失败或产生非法事件的次数。 */
     uint32_t buttonProcessFailureCount;
+    /** ONCE busy 等场景下被忽略的 Button 业务事件数。 */
     uint32_t ignoredButtonEventCount;
 } app_control_statistics_t;
 
+/** @brief 由 Composition Root 持有的完整 Control Task 对象。 */
 typedef struct
 {
+    /** 初始化后保持不变的依赖配置副本。 */
     app_control_config_t config;
+    /** 仅由 Control Task 修改的运行上下文。 */
     app_control_context_t context;
+    /** Control Task 累计统计。 */
     app_control_statistics_t statistics;
 } app_control_t;
 //******************************** Types ***********************************//

@@ -22,6 +22,7 @@
         } \
     } while (0)
 
+/** @brief 汇总 Acquisition Task 的命令、输出和时间替身状态。 */
 typedef struct
 {
     platform_queue_t commandQueue;
@@ -47,6 +48,7 @@ typedef struct
 
 static fake_acquisition_task_runtime_t g_fakeRuntime;
 
+/** @brief 将 Acquisition 测试替身恢复为默认成功场景。 */
 static void fake_runtime_reset(void)
 {
     memset(&g_fakeRuntime, 0, sizeof(g_fakeRuntime));
@@ -61,11 +63,13 @@ static void fake_runtime_reset(void)
     g_fakeRuntime.nowMs = 100U;
 }
 
+/** @brief 向命令替身队列追加一条待消费命令。 */
 static void fake_enqueue_command(app_acquisition_command_t command)
 {
     g_fakeRuntime.commands[g_fakeRuntime.commandCount++] = command;
 }
 
+/** @brief 创建依赖已就绪的 Acquisition Task 测试对象。 */
 static app_acquisition_t create_acquisition(service_acquisition_t *service)
 {
     app_acquisition_t acquisition = APP_ACQUISITION_INITIALIZER;
@@ -81,6 +85,7 @@ static app_acquisition_t create_acquisition(service_acquisition_t *service)
     return acquisition;
 }
 
+/** @brief 验证初始化依赖检查及默认禁用周期采集。 */
 static int test_init_validates_dependencies_and_starts_disabled(void)
 {
     app_acquisition_t acquisition = APP_ACQUISITION_INITIALIZER;
@@ -105,6 +110,7 @@ static int test_init_validates_dependencies_and_starts_disabled(void)
     return 0;
 }
 
+/** @brief 验证 START 立即采样并设置绝对 deadline。 */
 static int test_start_samples_immediately_and_sets_absolute_deadline(void)
 {
     service_acquisition_t service = SERVICE_ACQUISITION_INITIALIZER;
@@ -126,6 +132,7 @@ static int test_start_samples_immediately_and_sets_absolute_deadline(void)
     return 0;
 }
 
+/** @brief 验证周期 deadline 不累计传感器采样耗时。 */
 static int test_periodic_deadline_does_not_accumulate_sample_time(void)
 {
     service_acquisition_t service = SERVICE_ACQUISITION_INITIALIZER;
@@ -147,6 +154,7 @@ static int test_periodic_deadline_does_not_accumulate_sample_time(void)
     return 0;
 }
 
+/** @brief 验证超期跳过历史周期且不突发补采。 */
 static int test_overrun_skips_missed_periods_without_catch_up_burst(void)
 {
     service_acquisition_t service = SERVICE_ACQUISITION_INITIALIZER;
@@ -172,6 +180,7 @@ static int test_overrun_skips_missed_periods_without_catch_up_burst(void)
     return 0;
 }
 
+/** @brief 验证采样期间到达 STOP 时丢弃过期周期结果。 */
 static int test_stop_arriving_during_sample_discards_stale_periodic_result(void)
 {
     service_acquisition_t service = SERVICE_ACQUISITION_INITIALIZER;
@@ -195,6 +204,7 @@ static int test_stop_arriving_during_sample_discards_stale_periodic_result(void)
     return 0;
 }
 
+/** @brief 验证 ONCE 成功和失败分别发布到正确 Queue。 */
 static int test_once_success_and_failure_publish_to_correct_queues(void)
 {
     service_acquisition_t service = SERVICE_ACQUISITION_INITIALIZER;

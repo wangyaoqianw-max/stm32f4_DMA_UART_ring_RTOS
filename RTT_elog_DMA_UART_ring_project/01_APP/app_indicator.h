@@ -26,17 +26,25 @@
 //******************************** Defines *********************************//
 
 //******************************** Types ***********************************//
+/** @brief Indicator Task 的非拥有型 Service 与 Queue 依赖。 */
 typedef struct
 {
+    /** 执行 LED 语义副作用的 Indicator Service。 */
     service_indicator_t *service;
+    /** Control FSM 发来的 Indicator 命令 Queue。 */
     platform_queue_t *queue;
 } app_indicator_config_t;
 
+/** @brief 由 Composition Root 持有的完整 Indicator Task 对象。 */
 typedef struct
 {
+    /** 初始化后保持不变的依赖配置副本。 */
     app_indicator_config_t config;
+    /** 已成功执行的 LED 语义事件数。 */
     uint32_t handledEventCount;
+    /** Queue、映射或 Indicator Service 失败次数。 */
     uint32_t failureCount;
+    /** Indicator 对象是否完成初始化。 */
     platform_bool_t initialized;
 } app_indicator_t;
 //******************************** Types ***********************************//

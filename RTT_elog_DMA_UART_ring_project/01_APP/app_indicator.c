@@ -19,6 +19,7 @@
 //******************************** Includes *********************************//
 
 //******************************** Private Functions *************************//
+/** @brief 将 APP 指示命令映射为 Indicator Service 事件。 */
 static platform_error_t app_indicator_map_event(
     app_indicator_command_t command,
     service_indicator_event_t *event)

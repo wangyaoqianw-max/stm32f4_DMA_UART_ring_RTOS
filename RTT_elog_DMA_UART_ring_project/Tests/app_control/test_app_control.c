@@ -22,6 +22,7 @@
         } \
     } while (0)
 
+/** @brief 汇总 Control Task 所需 Queue、输入替身与观测记录。 */
 typedef struct
 {
     platform_queue_t controlQueue;
@@ -51,6 +52,7 @@ typedef struct
 
 static fake_control_runtime_t g_fakeRuntime;
 
+/** @brief 将 Control 测试替身恢复为默认可用状态。 */
 static void fake_runtime_reset(void)
 {
     memset(&g_fakeRuntime, 0, sizeof(g_fakeRuntime));
@@ -68,6 +70,7 @@ static void fake_runtime_reset(void)
     g_fakeRuntime.nowMs = 100U;
 }
 
+/** @brief 创建依赖已就绪的 Control FSM 测试对象。 */
 static app_control_t create_control(
     platform_button_t *button,
     service_button_t *buttonService)
@@ -89,6 +92,7 @@ static app_control_t create_control(
     return control;
 }
 
+/** @brief 清空各下游 Queue 的已记录输出计数。 */
 static void fake_clear_outputs(void)
 {
     g_fakeRuntime.acquisitionCount = 0U;
@@ -96,6 +100,7 @@ static void fake_clear_outputs(void)
     g_fakeRuntime.indicatorCount = 0U;
 }
 
+/** @brief 验证初始 STOPPED 状态及 Button deadline。 */
 static int test_boots_stopped_and_initializes_deadline(void)
 {
     app_control_t control = APP_CONTROL_INITIALIZER;
@@ -125,6 +130,7 @@ static int test_boots_stopped_and_initializes_deadline(void)
     return 0;
 }
 
+/** @brief 验证 UART START/STOP 共用唯一状态机。 */
 static int test_uart_start_and_stop_share_one_state_machine(void)
 {
     platform_button_t button = PLATFORM_BUTTON_INITIALIZER;
@@ -184,6 +190,7 @@ static int test_uart_start_and_stop_share_one_state_machine(void)
     return 0;
 }
 
+/** @brief 验证 ONCE 占用、状态查询及采集失败完成路径。 */
 static int test_once_busy_status_and_failure_completion(void)
 {
     platform_button_t button = PLATFORM_BUTTON_INITIALIZER;
@@ -232,6 +239,7 @@ static int test_once_busy_status_and_failure_completion(void)
     return 0;
 }
 
+/** @brief 验证 Queue 失败可观测且不会误改 FSM 状态。 */
 static int test_queue_failure_is_observable_and_does_not_change_state(void)
 {
     platform_button_t button = PLATFORM_BUTTON_INITIALIZER;
@@ -250,6 +258,7 @@ static int test_queue_failure_is_observable_and_does_not_change_state(void)
     return 0;
 }
 
+/** @brief 验证 ONCE 发送完成结果决定成功指示。 */
 static int test_once_tx_completion_controls_success_indicator(void)
 {
     platform_button_t button = PLATFORM_BUTTON_INITIALIZER;
@@ -281,6 +290,7 @@ static int test_once_tx_completion_controls_success_indicator(void)
     return 0;
 }
 
+/** @brief 验证 Button 手势映射到同一控制 FSM。 */
 static int test_button_gestures_map_into_same_fsm(void)
 {
     platform_button_t button = PLATFORM_BUTTON_INITIALIZER;
@@ -322,6 +332,7 @@ static int test_button_gestures_map_into_same_fsm(void)
     return 0;
 }
 
+/** @brief 验证 Control 循环以 Button deadline 计算等待时间。 */
 static int test_run_once_uses_deadline_as_queue_timeout(void)
 {
     platform_button_t button = PLATFORM_BUTTON_INITIALIZER;

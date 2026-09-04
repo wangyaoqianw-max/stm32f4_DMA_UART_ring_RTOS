@@ -86,6 +86,7 @@ static const platform_uart_config_t g_communicationUartConfig = {
 //******************************** Variables *********************************//
 
 //******************************** Private Functions *************************//
+/** @brief 将 Communication 提交的 UART 事件封装为 Control Queue 消息。 */
 static platform_error_t app_system_submit_uart_control(
     void *context,
     app_ctrl_event_t event)
@@ -105,6 +106,7 @@ static platform_error_t app_system_submit_uart_control(
     return platform_queue_send(controlQueue, &message, PLATFORM_OS_NO_WAIT);
 }
 
+/** @brief 将 Composition Root 的静态对象恢复为零初始化状态。 */
 static void app_system_reset_storage(void)
 {
     (void)memset(&g_communicationUart, 0, sizeof(g_communicationUart));
@@ -133,6 +135,7 @@ static void app_system_reset_storage(void)
     (void)memset(&g_indicatorThread, 0, sizeof(g_indicatorThread));
 }
 
+/** @brief 按创建顺序逆序释放已建立资源并恢复可重试状态。 */
 static void app_system_rollback(
     platform_bool_t uartServiceInitialized,
     platform_bool_t buttonServiceInitialized,

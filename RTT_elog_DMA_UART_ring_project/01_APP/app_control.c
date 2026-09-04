@@ -19,12 +19,14 @@
 //******************************** Includes *********************************//
 
 //******************************** Private Functions *************************//
+/** @brief 校验控制事件来源是否属于当前支持范围。 */
 static platform_bool_t app_control_is_source_valid(app_ctrl_source_t source)
 {
     return ((source == APP_CTRL_SOURCE_BUTTON) ||
             (source == APP_CTRL_SOURCE_UART)) ? PLATFORM_TRUE : PLATFORM_FALSE;
 }
 
+/** @brief 以非阻塞方式投递 Queue，并统一累计投递失败统计。 */
 static platform_error_t app_control_send_queue(
     app_control_t *control,
     platform_queue_t *queue,
@@ -38,6 +40,7 @@ static platform_error_t app_control_send_queue(
     return result;
 }
 
+/** @brief 向 Acquisition Task 投递采集控制命令。 */
 static platform_error_t app_control_send_acquisition(
     app_control_t *control,
     app_acquisition_command_t command)
@@ -45,6 +48,7 @@ static platform_error_t app_control_send_acquisition(
     return app_control_send_queue(control, control->config.acquisitionQueue, &command);
 }
 
+/** @brief 向 Indicator Task 投递 LED 业务语义。 */
 static platform_error_t app_control_send_indicator(
     app_control_t *control,
     app_indicator_command_t command)
@@ -52,6 +56,7 @@ static platform_error_t app_control_send_indicator(
     return app_control_send_queue(control, control->config.indicatorQueue, &command);
 }
 
+/** @brief 仅为 UART 来源生成并投递控制响应。 */
 static platform_error_t app_control_send_response(
     app_control_t *control,
     app_ctrl_source_t source,
@@ -68,6 +73,7 @@ static platform_error_t app_control_send_response(
     return app_control_send_queue(control, control->config.communicationQueue, &message);
 }
 
+/** @brief 合并连续操作结果，同时保留遇到的首个错误。 */
 static platform_error_t app_control_keep_first_error(
     platform_error_t currentResult,
     platform_error_t newResult)
@@ -75,6 +81,7 @@ static platform_error_t app_control_keep_first_error(
     return (currentResult == PLATFORM_ERR_OK) ? newResult : currentResult;
 }
 
+/** @brief 按事件来源处理 ONCE 事务占用状态。 */
 static platform_error_t app_control_handle_busy(
     app_control_t *control,
     app_ctrl_source_t source)
@@ -86,6 +93,7 @@ static platform_error_t app_control_handle_busy(
     return app_control_send_response(control, source, APP_CONTROL_RESPONSE_BUSY);
 }
 
+/** @brief 执行 START 状态转换及其下游通知。 */
 static platform_error_t app_control_handle_start(
     app_control_t *control,
     app_ctrl_source_t source)
@@ -115,6 +123,7 @@ static platform_error_t app_control_handle_start(
     return result;
 }
 
+/** @brief 执行 STOP 状态转换及其下游通知。 */
 static platform_error_t app_control_handle_stop(
     app_control_t *control,
     app_ctrl_source_t source)
@@ -144,6 +153,7 @@ static platform_error_t app_control_handle_stop(
     return result;
 }
 
+/** @brief 启动 STOPPED 状态下的单次采集事务。 */
 static platform_error_t app_control_handle_sample_once(
     app_control_t *control,
     app_ctrl_source_t source)
@@ -168,6 +178,7 @@ static platform_error_t app_control_handle_sample_once(
     return result;
 }
 
+/** @brief 根据唯一 FSM 状态生成查询响应。 */
 static platform_error_t app_control_handle_status(
     app_control_t *control,
     app_ctrl_source_t source)
@@ -180,6 +191,7 @@ static platform_error_t app_control_handle_status(
     return app_control_send_response(control, source, response);
 }
 
+/** @brief 结束失败的 ONCE 事务并按来源反馈结果。 */
 static platform_error_t app_control_handle_acquisition_failure(
     app_control_t *control)
 {
@@ -195,6 +207,7 @@ static platform_error_t app_control_handle_acquisition_failure(
         control, source, APP_CONTROL_RESPONSE_ACQUISITION_FAILED);
 }
 
+/** @brief 消费 ONCE 发送结果并在成功时触发指示。 */
 static platform_error_t app_control_handle_tx_result(
     app_control_t *control,
     platform_error_t txResult)
@@ -210,6 +223,7 @@ static platform_error_t app_control_handle_tx_result(
     return app_control_send_indicator(control, APP_INDICATOR_ONCE_SUCCESS);
 }
 
+/** @brief 使用有符号差值判断可回绕的毫秒 deadline。 */
 static platform_bool_t app_control_deadline_reached(uint32_t nowMs, uint32_t deadlineMs)
 {
     return ((int32_t)(nowMs - deadlineMs) >= 0) ? PLATFORM_TRUE : PLATFORM_FALSE;
@@ -375,7 +389,13 @@ platform_error_t app_control_sample_button(app_control_t *control, uint32_t nowM
 
 platform_error_t app_control_run_once(app_control_t *control)
 {
-    app_control_message_t message = {0};
+    app_control_message_t message = {
+        .type = APP_CONTROL_MESSAGE_CONTROL_REQUEST,
+        .payload.request = {
+            .event = APP_CTRL_START,
+            .source = APP_CTRL_SOURCE_BUTTON
+        }
+    };
     uint32_t nowMs = 0U;
     uint32_t timeoutMs;
     uint32_t elapsedPeriods;

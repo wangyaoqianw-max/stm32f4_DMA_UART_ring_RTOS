@@ -54,6 +54,7 @@ static const uint8_t g_statusStoppedResponse[] = "STATUS STOPPED\r\n";
 //******************************** Constants *******************************//
 
 //******************************** Functions *********************************//
+/** @brief 将不可恢复错误写入通信状态并累计故障统计。 */
 static platform_error_t app_communication_set_error(
     app_communication_t *communication,
     platform_error_t error)
@@ -65,6 +66,7 @@ static platform_error_t app_communication_set_error(
     return error;
 }
 
+/** @brief 发送通信层本地响应并记录发送结果。 */
 static void app_communication_send_local_response(app_communication_t *communication,
                                                   const uint8_t *response,
                                                   platform_size_t responseLength)
@@ -82,6 +84,7 @@ static void app_communication_send_local_response(app_communication_t *communica
     }
 }
 
+/** @brief 将一行严格命令文本解析为内部命令枚举。 */
 static app_communication_command_t app_communication_parse_command(
     const uint8_t *line,
     platform_size_t lineLength)
@@ -109,6 +112,7 @@ static app_communication_command_t app_communication_parse_command(
     return APP_COMMUNICATION_COMMAND_INVALID;
 }
 
+/** @brief 向唯一 Control FSM 提交 UART 控制事件，失败时回复 BUSY。 */
 static void app_communication_submit_control_event(app_communication_t *communication,
                                                    app_ctrl_event_t event)
 {
@@ -145,6 +149,7 @@ static void app_communication_submit_control_event(app_communication_t *communic
     }
 }
 
+/** @brief 将控制响应枚举映射为固定协议文本。 */
 static platform_error_t app_communication_get_control_response(
     app_control_response_t response,
     const uint8_t **data,
@@ -196,6 +201,7 @@ static platform_error_t app_communication_get_control_response(
     }
 }
 
+/** @brief 发送一条 Control FSM 产生的协议响应。 */
 static platform_error_t app_communication_send_control_response(
     app_communication_t *communication,
     app_control_response_t response)
@@ -219,6 +225,7 @@ static platform_error_t app_communication_send_control_response(
     return result;
 }
 
+/** @brief 将完整传感器快照格式化为 ENV 与 IMU 两行文本。 */
 static platform_error_t app_communication_format_report(
     const app_acquisition_data_t *data,
     uint8_t *environmentBuffer,
@@ -258,6 +265,7 @@ static platform_error_t app_communication_format_report(
     return PLATFORM_ERR_OK;
 }
 
+/** @brief 顺序发送完整 ENV 与 IMU 报告并记录结果。 */
 static platform_error_t app_communication_send_report(
     app_communication_t *communication,
     const app_acquisition_data_t *data)
@@ -295,6 +303,7 @@ static platform_error_t app_communication_send_report(
     return result;
 }
 
+/** @brief 将 ONCE 报告的最终发送结果回传给 Control FSM。 */
 static void app_communication_submit_once_result(
     app_communication_t *communication,
     platform_error_t txResult)
@@ -312,6 +321,7 @@ static void app_communication_submit_once_result(
     }
 }
 
+/** @brief 分派一条业务出站消息到控制响应或数据报告路径。 */
 static platform_error_t app_communication_handle_outbound(
     app_communication_t *communication,
     const app_communication_outbound_message_t *message)
@@ -340,6 +350,7 @@ static platform_error_t app_communication_handle_outbound(
     }
 }
 
+/** @brief 处理一行完整命令并触发本地响应或控制事件。 */
 static void app_communication_process_complete_line(app_communication_t *communication)
 {
     app_communication_command_t command = APP_COMMUNICATION_COMMAND_INVALID;
@@ -387,6 +398,7 @@ static void app_communication_process_complete_line(app_communication_t *communi
     }
 }
 
+/** @brief 丢弃当前损坏行，并在溢出时立即发送错误响应。 */
 static void app_communication_discard_current_line(app_communication_t *communication,
                                                     platform_bool_t overflowed)
 {
@@ -402,6 +414,7 @@ static void app_communication_discard_current_line(app_communication_t *communic
     }
 }
 
+/** @brief 将单个 RX 字节送入严格 CRLF 命令行状态机。 */
 static void app_communication_feed_rx_byte(app_communication_t *communication, uint8_t data)
 {
     if (communication->context.discardLine == PLATFORM_TRUE) {
@@ -455,6 +468,7 @@ static void app_communication_feed_rx_byte(app_communication_t *communication, u
     communication->context.commandLength++;
 }
 
+/** @brief 持续读取 UART Service 缓存直至当前数据排空。 */
 static platform_error_t app_communication_drain_rx(app_communication_t *communication)
 {
     uint8_t buffer[PROJECT_COMM_READ_BUFFER_SIZE] = {0};
@@ -679,7 +693,10 @@ platform_error_t app_communication_process(app_communication_t *communication, u
 
 platform_error_t app_communication_drain_outbound(app_communication_t *communication)
 {
-    app_communication_outbound_message_t message = {0};
+    app_communication_outbound_message_t message = {
+        .type = APP_COMM_OUTBOUND_CONTROL_RESPONSE,
+        .payload.controlResponse = APP_CONTROL_RESPONSE_OK_START
+    };
     platform_error_t result;
 
     if (communication == NULL) {

@@ -26,6 +26,7 @@ static service_indicator_event_t g_lastEvent;
 static uint32_t g_receiveTimeoutMs;
 static uint32_t g_handleCallCount;
 
+/** @brief 创建依赖已就绪的 Indicator Task 测试对象。 */
 static app_indicator_t create_indicator(service_indicator_t *service)
 {
     app_indicator_t indicator = APP_INDICATOR_INITIALIZER;
@@ -40,6 +41,7 @@ static app_indicator_t create_indicator(service_indicator_t *service)
     return indicator;
 }
 
+/** @brief 验证 Indicator 初始化的依赖约束。 */
 static int test_init_validates_dependencies(void)
 {
     app_indicator_t indicator = APP_INDICATOR_INITIALIZER;
@@ -61,6 +63,7 @@ static int test_init_validates_dependencies(void)
     return 0;
 }
 
+/** @brief 验证全部 APP 指示命令映射到正确 Service 事件。 */
 static int test_commands_map_to_indicator_service(void)
 {
     service_indicator_t service = SERVICE_INDICATOR_INITIALIZER;

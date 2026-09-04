@@ -30,6 +30,7 @@
 #define TEST_MAX_WRITES (20U)
 #define TEST_WRITE_SIZE (160U)
 
+/** @brief 汇总通信出站 Queue、UART 写入和 RX 替身状态。 */
 typedef struct
 {
     platform_queue_t outboundQueue;
@@ -50,6 +51,7 @@ typedef struct
 
 static fake_outbound_runtime_t g_fakeRuntime;
 
+/** @brief 将通信出站测试替身恢复为默认成功场景。 */
 static void fake_runtime_reset(void)
 {
     uint32_t index;
@@ -63,6 +65,7 @@ static void fake_runtime_reset(void)
     }
 }
 
+/** @brief 创建处于 RUNNING 状态的通信 APP 测试对象。 */
 static app_communication_t create_communication(void)
 {
     app_communication_t communication = APP_COMMUNICATION_INITIALIZER;
@@ -82,11 +85,13 @@ static app_communication_t create_communication(void)
     return communication;
 }
 
+/** @brief 向出站替身队列追加一条业务消息。 */
 static void fake_enqueue_outbound(app_communication_outbound_message_t message)
 {
     g_fakeRuntime.outbound[g_fakeRuntime.outboundCount++] = message;
 }
 
+/** @brief 验证全部控制响应的协议文本。 */
 static int test_formats_all_control_responses(void)
 {
     static const char *expected[] = {
@@ -121,6 +126,7 @@ static int test_formats_all_control_responses(void)
     return 0;
 }
 
+/** @brief 验证周期数据被格式化为完整 ENV 与 IMU 两行。 */
 static int test_formats_complete_periodic_report(void)
 {
     app_communication_t communication;
@@ -150,6 +156,7 @@ static int test_formats_complete_periodic_report(void)
     return 0;
 }
 
+/** @brief 验证 ONCE 完整发送后仅回传一次最终结果。 */
 static int test_once_posts_exactly_one_tx_result_after_complete_report(void)
 {
     app_communication_t communication;
@@ -178,6 +185,7 @@ static int test_once_posts_exactly_one_tx_result_after_complete_report(void)
     return 0;
 }
 
+/** @brief 模拟 Communication 到 Control FSM 的事件出口。 */
 static platform_error_t fake_control_handler(void *context, app_ctrl_event_t event)
 {
     (void)context;
@@ -185,6 +193,7 @@ static platform_error_t fake_control_handler(void *context, app_ctrl_event_t eve
     return g_fakeRuntime.controlHandlerResult;
 }
 
+/** @brief 验证控制事件提交失败时立即回复 BUSY。 */
 static int test_control_queue_submission_failure_responds_busy(void)
 {
     app_communication_t communication;
@@ -313,6 +322,7 @@ platform_error_t platform_time_delay_ms(uint32_t delayMs)
     return PLATFORM_ERR_OK;
 }
 
+/** @brief 吸收测试期间的日志输出。 */
 static void fake_log_output(
     uint8_t level,
     const char *tag,

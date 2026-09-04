@@ -19,7 +19,17 @@
 //******************************** Includes *********************************//
 
 //******************************** Defines *********************************//
-#define SERVICE_BUTTON_INITIALIZER {0}
+#define SERVICE_BUTTON_INITIALIZER                  \
+    {                                               \
+        .rawState = PLATFORM_BUTTON_STATE_RELEASED, \
+        .stableState = PLATFORM_BUTTON_STATE_RELEASED, \
+        .gestureState = SERVICE_BUTTON_GESTURE_IDLE, \
+        .rawChangedMs = 0U,                         \
+        .pressStartedMs = 0U,                       \
+        .firstReleaseMs = 0U,                       \
+        .baselineValid = PLATFORM_FALSE,            \
+        .initialized = PLATFORM_FALSE               \
+    }
 //******************************** Defines *********************************//
 
 //******************************** Declaring *********************************//

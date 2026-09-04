@@ -33,6 +33,7 @@
         } \
     } while (0)
 
+/** @brief 记录 Composition Root 的创建顺序、资源参数与回滚行为。 */
 typedef struct
 {
     uint32_t sequence;
@@ -68,17 +69,20 @@ typedef struct
 
 static fake_system_runtime_t g_fakeRuntime;
 
+/** @brief 清空系统装配测试的全部观测记录。 */
 static void fake_runtime_reset(void)
 {
     memset(&g_fakeRuntime, 0, sizeof(g_fakeRuntime));
 }
 
+/** @brief 记录一次硬件对象初始化及其顺序。 */
 static void fake_record_hardware(void)
 {
     g_fakeRuntime.hardwareInitCount++;
     g_fakeRuntime.lastHardwareSequence = ++g_fakeRuntime.sequence;
 }
 
+/** @brief 记录一次 Service 初始化及其顺序范围。 */
 static void fake_record_service(void)
 {
     uint32_t sequence = ++g_fakeRuntime.sequence;
@@ -90,6 +94,7 @@ static void fake_record_service(void)
     g_fakeRuntime.serviceInitCount++;
 }
 
+/** @brief 记录一次 APP 初始化及其顺序范围。 */
 static void fake_record_app(void)
 {
     uint32_t sequence = ++g_fakeRuntime.sequence;
@@ -101,6 +106,7 @@ static void fake_record_app(void)
     g_fakeRuntime.appInitCount++;
 }
 
+/** @brief 验证线程创建失败会完整回滚并允许重试。 */
 static int test_thread_failure_rolls_back_and_allows_retry(void)
 {
     fake_runtime_reset();
@@ -118,6 +124,7 @@ static int test_thread_failure_rolls_back_and_allows_retry(void)
     return 0;
 }
 
+/** @brief 验证最终装配顺序、Queue 合同和四任务参数。 */
 static int test_final_composition_order_and_resources(void)
 {
     static const char *expectedNames[] = {
@@ -499,6 +506,7 @@ void app_indicator_task_entry(void *argument)
     (void)argument;
 }
 
+/** @brief 吸收测试期间的日志输出。 */
 static void fake_log_output(
     uint8_t level,
     const char *tag,

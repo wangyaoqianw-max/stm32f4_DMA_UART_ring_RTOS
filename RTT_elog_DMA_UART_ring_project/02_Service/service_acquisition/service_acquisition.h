@@ -25,34 +25,51 @@
 //******************************** Defines *********************************//
 
 //******************************** Types ***********************************//
+/** @brief 一次完整采集产生的原子数据快照。 */
 typedef struct
 {
+    /** DHT20 温湿度测量结果。 */
     platform_dht20_measurement_t environment;
+    /** MPU6050 六轴测量结果。 */
     platform_mpu6050_measurement_t motion;
 } service_acquisition_data_t;
 
+/** @brief Unified Acquisition Service 的非拥有型依赖配置。 */
 typedef struct
 {
+    /** 已初始化的 DHT20 对象，由 Composition Root 持有。 */
     platform_dht20_t *dht20;
+    /** 已初始化的 MPU6050 对象，由 Composition Root 持有。 */
     platform_mpu6050_t *mpu6050;
 } service_acquisition_config_t;
 
+/** @brief Unified Acquisition Service 的累计诊断统计。 */
 typedef struct
 {
+    /** 发起完整双传感器采集的次数。 */
     uint32_t requestCount;
+    /** 两个传感器均成功且完成原子提交的次数。 */
     uint32_t successCount;
+    /** 任一传感器失败导致完整采集失败的次数。 */
     uint32_t failureCount;
+    /** DHT20 单次读取失败的累计次数。 */
     uint32_t dht20FailureCount;
+    /** MPU6050 单次读取失败的累计次数。 */
     uint32_t mpu6050FailureCount;
 } service_acquisition_statistics_t;
 
 /** @brief 调用者拥有的统一采集服务上下文；不拥有传感器对象。 */
 typedef struct
 {
+    /** 初始化时复制的非拥有型传感器引用。 */
     service_acquisition_config_t config;
+    /** 由本服务维护的累计诊断统计。 */
     service_acquisition_statistics_t statistics;
+    /** 最近一次 DHT20 读取结果。 */
     platform_error_t lastDht20Result;
+    /** 最近一次 MPU6050 读取结果。 */
     platform_error_t lastMpu6050Result;
+    /** 服务是否已完成依赖绑定。 */
     platform_bool_t initialized;
 } service_acquisition_t;
 //******************************** Types ***********************************//

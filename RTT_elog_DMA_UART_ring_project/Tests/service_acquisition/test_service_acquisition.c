@@ -22,6 +22,7 @@
         } \
     } while (0)
 
+/** @brief 记录双传感器桩行为、返回值和调用顺序。 */
 typedef struct
 {
     platform_error_t dht20Result;
@@ -37,6 +38,7 @@ typedef struct
 
 static fake_acquisition_runtime_t g_fakeRuntime;
 
+/** @brief 将统一采集测试替身恢复为默认成功场景。 */
 static void fake_runtime_reset(void)
 {
     memset(&g_fakeRuntime, 0, sizeof(g_fakeRuntime));
@@ -48,6 +50,7 @@ static void fake_runtime_reset(void)
     g_fakeRuntime.motion.gyroZDps = 1.5F;
 }
 
+/** @brief 创建已绑定两个传感器替身的采集服务。 */
 static service_acquisition_t create_initialized_service(
     platform_dht20_t *dht20,
     platform_mpu6050_t *mpu6050)
@@ -62,6 +65,7 @@ static service_acquisition_t create_initialized_service(
     return service;
 }
 
+/** @brief 验证服务初始化、重复初始化和反初始化约束。 */
 static int test_lifecycle_validates_dependencies(void)
 {
     service_acquisition_t service = SERVICE_ACQUISITION_INITIALIZER;
@@ -84,6 +88,7 @@ static int test_lifecycle_validates_dependencies(void)
     return 0;
 }
 
+/** @brief 验证双传感器成功时原子提交完整结果。 */
 static int test_both_success_commits_complete_result(void)
 {
     platform_dht20_t dht20 = PLATFORM_DHT20_INITIALIZER;
@@ -109,6 +114,7 @@ static int test_both_success_commits_complete_result(void)
     return 0;
 }
 
+/** @brief 验证 DHT20 失败后仍尝试 MPU6050 且不污染输出。 */
 static int test_dht20_failure_still_attempts_mpu6050_and_preserves_output(void)
 {
     platform_dht20_t dht20 = PLATFORM_DHT20_INITIALIZER;
@@ -136,6 +142,7 @@ static int test_dht20_failure_still_attempts_mpu6050_and_preserves_output(void)
     return 0;
 }
 
+/** @brief 验证 MPU6050 失败时不提交半成品结果。 */
 static int test_mpu6050_failure_preserves_output(void)
 {
     platform_dht20_t dht20 = PLATFORM_DHT20_INITIALIZER;
@@ -161,6 +168,7 @@ static int test_mpu6050_failure_preserves_output(void)
     return 0;
 }
 
+/** @brief 验证双失败场景保留两路诊断统计。 */
 static int test_both_failure_records_both_diagnostics(void)
 {
     platform_dht20_t dht20 = PLATFORM_DHT20_INITIALIZER;
