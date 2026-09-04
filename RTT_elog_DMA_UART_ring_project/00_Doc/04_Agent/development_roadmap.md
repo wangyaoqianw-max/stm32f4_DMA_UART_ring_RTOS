@@ -2,7 +2,7 @@
 
 > 文档类型：Development Phase Roadmap  
 > 状态：Baseline  
-> 日期：2026-09-03  
+> 日期：2026-09-04  
 > 适用工程：`stm32f4_DMA_UART_ring_RTOS`
 
 ---
@@ -40,13 +40,17 @@ Platform GPIO + STM32 Impl + Board Binding     VERIFIED
 Software I2C                                  VERIFIED
 LED / Indicator Module                        VERIFIED
 Button / Button Service                       VERIFIED
+DHT20 hardware connectivity                   VERIFIED
+MPU6050 hardware connectivity                 VERIFIED
 ```
+
+DHT20 与 MPU6050 已通过真实共享 Software I2C 总线连通性板测，当前硬件连接风险已排除。
 
 最终闭环仍缺：
 
 ```text
-DHT20 environment data
-MPU6050 basic motion data
+DHT20 production module
+MPU6050 production module
 UART application commands / report
 Permanent RTOS task / event organization
 Final APP Control FSM
@@ -63,8 +67,8 @@ Phase 2  Board Resource + CubeMX Configuration   COMPLETED
 Phase 3  Software I2C                            COMPLETED
 Phase 4  LED Module                              COMPLETED
 Phase 5  Button Module                           COMPLETED / HOST + KEIL + TARGET VERIFIED
-Phase 6  DHT20 Environment Module                NEXT / DESIGN PENDING
-Phase 7  MPU6050 Motion Module
+Phase 6  DHT20 Environment Module                ACTIVE / DESIGN FROZEN / READY TO IMPLEMENT
+Phase 7  MPU6050 Motion Module                   NEXT AFTER PHASE 6
 Phase 8  UART Application Communication
 Phase 9  RTOS Task / Event Design
 Phase 10 Final APP Integration
@@ -98,7 +102,7 @@ synchronous
 Platform GPIO based
 Repeated START
 microsecond timing
-Host + Keil + DHT20 target smoke verified
+Host + Keil + target smoke verified
 ```
 
 ## Phase 4 — LED
@@ -138,67 +142,102 @@ double 300 ms
 long 3000 ms
 ```
 
-验证：
-
-```text
-Platform Button Host Test          PASS
-Platform BSP Button Host Test      PASS
-Button Service Host Test           PASS
-Keil normal production rebuild     PASS
-FreeRTOS Button + Indicator smoke  PASS
-Serial Assistant / RTT             PASS
-LED visual mapping                 PASS
-Existing UART regression           PASS
-Temporary smoke cleanup            PASS
-Coding Standard Review             PASS
-```
-
 Phase 5：`COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED`。
 
 ---
 
 # 5. Phase 6 — DHT20 Environment Module
 
-当前下一阶段，只进入专项设计，不直接编码。
+当前阶段已经完成专项设计讨论并冻结设计，不再处于 DESIGN PENDING。
 
-目标：
-
-```text
-Software I2C
-    ↓
-DHT20 device capability
-    ↓
-Environment data / service semantics
-```
-
-第一阶段至少解决：
+专项设计：
 
 ```text
-initialization
-communication / status check
-temperature
-relative humidity
-data validity / CRC or status handling
-error semantics
-Host Test
-target-board verification
+00_Doc/02_架构设计/DHT20_Phase1设计.md
 ```
 
-设计阶段必须先确认：
+当前执行计划：
 
 ```text
-DHT20 Platform / Service boundary
-是否使用 platform_device_t
-I2C bus ownership
-address / command / wait timing config
-raw data -> physical value conversion
-measurement lifecycle
-error model
-Host Test fake I2C strategy
-FreeRTOS target smoke strategy
+00_Doc/04_Agent/implementation_plan.md
+DHT20 Phase 6 Implementation Plan
 ```
 
-在这些边界冻结前不写生产 DHT20 代码。
+正式链：
+
+```text
+Future APP / Acquisition Service
+    -> Platform DHT20
+    -> Platform Software I2C
+    -> Platform GPIO
+    -> STM32 GPIO Impl
+```
+
+第一版冻结边界：
+
+```text
+Platform-only DHT20 device capability
+no service_dht20
+no impl_dht20
+no platform_device_t
+no malloc/free
+no private DHT20 task
+no DHT20-owned mutex
+shared platform_i2c_t is non-owned reference
+```
+
+必须实现：
+
+```text
+platform_dht20_init()
+platform_dht20_read()
+platform_dht20_deinit()
+status / Busy handling
+frame CRC8
+OTP CRC_flag validation
+CalibrationEnable validation
+20-bit raw RH/T parsing
+float physical conversion
+atomic measurement output
+```
+
+协议关键点：
+
+```text
+7-bit address = 0x38
+measure command = AC 33 00
+STOP after command
+wait >= 80 ms
+new START read 7 bytes
+final CRC byte followed by master NACK
+```
+
+产品统一采集 / 上报周期调整为：
+
+```text
+PROJECT_ACQUISITION_PERIOD_MS = 2000U
+```
+
+该周期属于产品配置，不属于 DHT20 协议常量。DHT20 规格书也建议约每 2 秒测量一次以限制自热影响。
+
+验证策略：
+
+```text
+Keil production build
+RTT / EasyLogger observation
+Logic analyzer on PB6/PB7
+continuous ~2 s repeated target read
+```
+
+逻辑分析仪至少确认：
+
+```text
+START -> 0x70 ACK -> AC ACK -> 33 ACK -> 00 ACK -> STOP
+>= 80 ms
+START -> 0x71 ACK -> 7-byte read -> final NACK -> STOP
+```
+
+不要求 Fake I2C / Host protocol harness；已有底层能力直接走完整真实链路验证。
 
 ---
 
@@ -215,6 +254,8 @@ raw / physical-unit conversion as designed
 ```
 
 不做 Roll / Pitch / Yaw、DMP、Kalman、Complementary Filter 和高频姿态融合。
+
+硬件连通性已提前确认，但 production module 必须等待 Phase 6 关闭后再进入正式设计/实现。
 
 ---
 
@@ -252,7 +293,7 @@ Indicator Task
 
 永久 Button processing context、priority、stack、Button -> APP IPC、Indicator event delivery 等在本 Phase 冻结。
 
-Phase 5 Smoke Task / Queue 不能作为永久架构依据。
+后续统一 Acquisition Service / Acquisition Task 串行调用 DHT20 + MPU6050；不按设备数量机械创建独立 Task。
 
 ---
 
@@ -276,23 +317,27 @@ APP_CTRL_GET_STATUS
 
 最终闭环：Button / UART -> APP FSM -> Acquisition / Indicator / UART Report。
 
+RUNNING 第一阶段统一采集 / 上报周期为 2000 ms。
+
 ---
 
 # 10. 当前下一步
 
 ```text
 Phase 5 Button      CLOSED
-Phase 6 DHT20       NEXT / DESIGN PENDING
+Phase 6 DHT20       ACTIVE / READY FOR CODEX EXECUTION
 ```
 
 流程：
 
 ```text
-Inspect DHT20 + current Software I2C baseline
- -> Discuss design
- -> Freeze DHT20 design document
- -> Replace implementation_plan.md with Phase 6 plan
- -> Codex implementation
+Codex execute implementation_plan.md
+ -> Keil production build
+ -> RTT target smoke
+ -> Logic analyzer verification
+ -> remove temporary smoke harness
+ -> normal-path rebuild
+ -> update handoff and close Phase 6
 ```
 
-不得在设计冻结前直接进入 Phase 6 编码，也不得跳到 Phase 7+。
+不得跳到 Phase 7+。
