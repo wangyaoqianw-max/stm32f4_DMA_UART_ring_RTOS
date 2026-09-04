@@ -1,8 +1,8 @@
 # Final Acquisition System Requirements
 
 > 文档类型：Agent Requirements Baseline  
-> 状态：Baseline  
-> 版本：V2.3  
+> 状态：Final Phase 9 Baseline  
+> 版本：V3.0  
 > 更新时间：2026-09-04  
 > 适用工程：`stm32f4_DMA_UART_ring_RTOS`
 
@@ -10,55 +10,68 @@
 
 # 1. 文档定位
 
-本文件是 AI Agent 执行设计、编码和 Review 时使用的长期需求摘要。
+本文件是 AI Agent / Codex 进行设计、编码和 Review 时使用的长期需求摘要。
 
-最终业务行为权威文件：
+业务行为权威文件：
 
 ```text
 00_Doc/00_项目需求/最终功能需求.md
 ```
 
-当前工程基于已验证的 UART DMA RX + RingBuffer + FreeRTOS 主线，增加 GPIO、Software I2C、DHT20、MPU6050、按键、UART 应用通信和 APP Control FSM，形成最终综合闭环。
+最终软件设计：
+
+```text
+00_Doc/02_架构设计/Final_RTOS_Application_Integration_Phase9设计.md
+```
+
+当前执行计划：
+
+```text
+00_Doc/04_Agent/implementation_plan.md
+```
+
+原 RTOS Task/Event 阶段与 Final APP Integration 已合并为最终 Phase 9；不存在独立 Phase 10。
 
 ---
 
 # 2. 项目最终闭环
 
 ```text
-KEY -> Platform Button -> Button Service ----+
-                                              |
-                                              v
-PC -> UART RX -> DMA -> RingBuffer -> Command Parser
-                                              |
-                                              v
-                                       APP Control FSM
-                                              |
-                                +-------------+-------------+
-                                |                           |
-                                v                           v
-                              LED                   Sensor Acquisition
-                                                            |
-                                              +-------------+-------------+
-                                              |                           |
-                                              v                           v
-                                            DHT20                      MPU6050
-                                              \                           /
-                                               +------- Soft I2C --------+
-                                                            |
-                                                     Platform GPIO
+PA0 Button
+ -> Platform Button
+ -> Button Service
+ -> Control Task ----------------------+
+                                        |
+USART1 RX DMA                           v
+ -> UART Service / RingBuffer    APP Control FSM
+ -> Communication Task                 |
+ -> Control Queue ----------------------+
+                                        |
+                     +------------------+------------------+
+                     |                  |                  |
+                     v                  v                  v
+              Acquisition Cmd    Communication Out   Indicator Queue
+                     |                  |                  |
+                     v                  v                  v
+              Acquisition Task   Communication Task   Indicator Task
+                     |                  |                  |
+                     v                  v                  v
+           Acquisition Service    UART Service      Indicator Service
+              DHT20 -> MPU6050      TX DMA               LED
+                     |
+             Shared Software I2C
+                     |
+               Platform GPIO
+```
 
-Acquisition Result
-    -> Communication Task
-    -> UART Service
-    -> Platform UART async TX
-    -> UART DMA TX
-    -> PC Serial Assistant
+诊断：
 
-APP / Service Runtime State
-    -> Service Log
-    -> Platform Log
-    -> EasyLogger
-    -> SEGGER RTT
+```text
+APP / Service
+ -> Service Log
+ -> Platform Log
+ -> EasyLogger
+ -> SEGGER RTT
 ```
 
 ---
@@ -79,20 +92,18 @@ Log        : EasyLogger + SEGGER RTT
 Toolchain  : Keil MDK-ARM + STM32CubeMX
 ```
 
-DHT20 与 MPU6050 共用同一条 Software I2C，总线硬件连通性已完成实板确认。
-
-USART1 DMA 当前：
+UART：
 
 ```text
-RX = DMA2_Stream2 / Channel 4 / Circular / VERIFIED production path
-TX = DMA2_Stream7 / Channel 4 / Normal / CubeMX configuration READY
+RX = DMA2_Stream2 / Channel 4 / Circular / VERIFIED
+TX = DMA2_Stream7 / Channel 4 / Normal
+Platform/Service TX = IMPLEMENTED / HOST + KEIL VERIFIED
+TX target verification = Phase 9 final integration scope
 ```
-
-TX DMA Platform / Service production path 尚待 Phase 8 实现和验证。
 
 ---
 
-# 4. 系统状态与控制事件
+# 4. 系统状态与控制
 
 APP 层维护唯一业务状态：
 
@@ -101,14 +112,24 @@ STOPPED
 RUNNING
 ```
 
-启动完成后：
+启动后：
 
 ```text
-Acquisition = STOPPED
+State       = STOPPED
 LED         = OFF
 UART RX     = ACTIVE
 RTT Log     = ACTIVE
+Periodic acquisition = DISABLED
 ```
+
+允许与业务状态正交的 ONCE operation context：
+
+```text
+onceActive
+onceSource
+```
+
+它们不是第三个业务状态。
 
 统一控制事件：
 
@@ -119,11 +140,18 @@ APP_CTRL_SAMPLE_ONCE
 APP_CTRL_GET_STATUS
 ```
 
-按键和 UART 只产生控制输入，不得分别维护采集状态。
+统一来源：
+
+```text
+BUTTON
+UART
+```
 
 ---
 
-# 5. Button 基线
+# 5. Button Requirements
+
+硬件/手势参数：
 
 ```text
 active LOW / Pull-Up
@@ -133,122 +161,29 @@ double window 300 ms
 long press 3000 ms
 ```
 
-Platform Button：
+映射：
 
 ```text
-HIGH / LOW -> PRESSED / RELEASED
+SINGLE -> START
+DOUBLE -> SAMPLE_ONCE
+LONG   -> STOP
 ```
 
-Button Service：
+业务矩阵：
 
-```text
-PRESSED / RELEASED + nowMs -> NONE / SINGLE / DOUBLE / LONG
-```
+| State / Operation | SINGLE | DOUBLE | LONG |
+| --- | --- | --- | --- |
+| STOPPED, no ONCE | RUNNING | start ONCE, remain STOPPED | no business action |
+| RUNNING | remain RUNNING | no extra sample | STOPPED |
+| STOPPED, ONCE active | ignore | ignore | ignore |
 
-业务映射由 APP 决定：
-
-| 当前状态 | 按键事件 | 结果 |
-| --- | --- | --- |
-| STOPPED | SINGLE | START -> RUNNING |
-| STOPPED | DOUBLE | SAMPLE_ONCE，保持 STOPPED |
-| STOPPED | LONG | 无额外动作 |
-| RUNNING | SINGLE | 保持 RUNNING |
-| RUNNING | DOUBLE | 不额外采样 |
-| RUNNING | LONG | STOP -> STOPPED |
+Button polling 在 Control Task 中执行，不建立独立 Button Task。
 
 ---
 
-# 6. UART Application Communication Phase 8
+# 6. UART Application Requirements
 
-正式专项设计：
-
-```text
-00_Doc/02_架构设计/UART_Application_Communication_Phase8设计.md
-```
-
-当前执行计划：
-
-```text
-00_Doc/04_Agent/implementation_plan.md
-```
-
-状态：
-
-```text
-DESIGN FROZEN / PLAN READY / NOT STARTED
-```
-
-## 6.1 UART RX
-
-必须复用：
-
-```text
-USART1 RX
- -> DMA Circular + IDLE / HT / TC
- -> STM32 UART Impl
- -> Platform UART Event
- -> UART Service
- -> SPSC RingBuffer
- -> Communication Task
- -> Command Parser
- -> APP Control Event
-```
-
-不得建立第二套 UART RX，不给当前 SPSC 增加普通 Mutex。
-
-## 6.2 UART TX
-
-目标正式链：
-
-```text
-Communication Task
- -> UART Service
- -> Platform UART write_async
- -> STM32 UART Impl
- -> HAL_UART_Transmit_DMA
- -> DMA2_Stream7 Normal
- -> USART1 TX
- -> PC
-```
-
-第一版要求：
-
-```text
-one active TX transaction only
-RX + TX concurrently allowed
-second TX while active -> BUSY
-no TX RingBuffer
-no TX Queue
-no TX worker Task
-```
-
-Platform async TX buffer 由 caller 持有，在 TX_COMPLETE / CANCELED / terminal error 前必须保持有效且不得修改。
-
-UART Service 提供面向 Task 的同步完成语义；内部使用 DMA + notify wait。
-
-强保证：
-
-```text
-service_uart_write() returns
-=> DMA no longer accesses caller TX buffer
-```
-
-## 6.3 TX timeout / cancel
-
-无关 RX notification 不得延长 TX 总 timeout。
-
-使用：
-
-```text
-platform_time_get_ms()
-wraparound-safe elapsed / remaining time
-```
-
-TX timeout 后必须 cancel TX 并确认 transaction 已结束，再向调用者返回 TIMEOUT。
-
-## 6.4 UART command framing
-
-第一阶段：
+严格命令：
 
 ```text
 START\r\n
@@ -258,7 +193,7 @@ STATUS\r\n
 HELP\r\n
 ```
 
-协议规则：
+规则：
 
 ```text
 strict CRLF
@@ -266,40 +201,25 @@ uppercase only
 case-sensitive
 no trim
 no arguments
-no dynamic allocation
+fixed-size storage
 ```
 
-RingBuffer read boundary 不是 command boundary，必须支持 fragmented / coalesced arbitrary chunks。
+RingBuffer read boundary 不是 command boundary；必须支持 fragmented / coalesced chunks。
 
-命令行 buffer 建议：
+业务响应：
 
 ```text
-PROJECT_COMM_COMMAND_LINE_BUFFER_SIZE = 32U
+OK START\r\n
+OK STOP\r\n
+ERR ALREADY_RUNNING\r\n
+ERR ALREADY_STOPPED\r\n
+ERR BUSY\r\n
+ERR ACQUISITION_FAILED\r\n
+STATUS RUNNING\r\n
+STATUS STOPPED\r\n
 ```
 
-超长 / malformed line 整行丢弃到下一个 CRLF，不能从同行尾部重新解析合法命令。
-
-非法协议输入不进入 APP Communication fatal ERROR。
-
-## 6.5 Command responsibility
-
-```text
-HELP                    -> Communication local
-START                    -> APP_CTRL_START
-STOP                     -> APP_CTRL_STOP
-ONCE                     -> APP_CTRL_SAMPLE_ONCE
-STATUS                   -> APP_CTRL_GET_STATUS
-```
-
-Phase 8 只冻结逻辑 control handler，不冻结永久 Queue / Task / direct-call 机制。
-
-handler 的返回值只表示 request submission result，不表示业务执行结果。
-
-Communication 不得维护 STOPPED / RUNNING。
-
-## 6.6 Communication-local responses
-
-Phase 8 可直接实现：
+Communication-local：
 
 ```text
 HELP START STOP ONCE STATUS HELP\r\n
@@ -307,40 +227,107 @@ ERR UNKNOWN_COMMAND\r\n
 ERR COMMAND_TOO_LONG\r\n
 ```
 
-状态相关 response 的发送条件必须等待 APP FSM result。
-
-`ONCE` 不能在仅收到请求时提前声明完整业务成功。
-
-## 6.7 USART1 owner
-
-冻结：
+ONCE active 时：
 
 ```text
-Communication Task = sole USART1 product TX requester
+START / STOP / ONCE -> ERR BUSY
+STATUS               -> STATUS STOPPED
 ```
 
-未来 Acquisition Task 不直接发送 UART，只向 Communication Task 提交 acquisition result。
+成功 ONCE 不要求额外 `OK ONCE`；完整 report TX 成功即成功输出。
+
+Communication 不维护 STOPPED/RUNNING。
 
 ---
 
-# 7. USART1 / RTT 职责隔离
+# 7. UART Transport Requirements
+
+RX 保持：
 
 ```text
-UART -> 产品/业务数据与控制
-RTT  -> 初始化、运行状态、采集状态、诊断与异常
+USART1 RX
+ -> DMA Circular + IDLE / HT / TC
+ -> STM32 UART Impl
+ -> Platform UART Event
+ -> UART Service
+ -> SPSC RingBuffer
+ -> Communication Task
 ```
 
-Phase 8 production implementation 后，不允许旧：
+不得：
 
 ```text
-printf / fputc -> HAL_UART_Transmit(&huart1)
+create second UART RX path
+add ordinary mutex to current SPSC
 ```
 
-继续作为正式 USART1 旁路。
+TX：
+
+```text
+Communication Task
+ -> service_uart_write()
+ -> Platform UART write_async
+ -> STM32 UART Impl
+ -> HAL_UART_Transmit_DMA
+ -> DMA2_Stream7 Normal
+ -> USART1
+```
+
+第一版：
+
+```text
+one active TX transaction only
+RX + TX concurrently allowed
+no UART TX RingBuffer
+no UART TX Queue/worker inside UART Service
+Communication Task = sole product TX requester
+```
+
+强保证：
+
+```text
+service_uart_write() returns
+=> DMA no longer accesses caller buffer
+```
+
+USART1 只用于产品控制/数据；RTT 用于诊断。禁止 direct HAL blocking TX 重新成为产品旁路。
 
 ---
 
-# 8. 周期采集与上报
+# 8. Unified Acquisition Service Requirements
+
+Phase 9 新增统一 Acquisition Service，组合已经验证的 Platform DHT20 + MPU6050。
+
+职责：
+
+```text
+DHT20 read
+ -> MPU6050 read
+ -> complete atomic acquisition data
+```
+
+成功语义：
+
+```text
+DHT20 OK && MPU6050 OK -> OK
+otherwise             -> FAILED
+```
+
+诊断要求：即使 DHT20 失败，也继续尝试 MPU6050。
+
+输出要求：
+
+```text
+use temporary data
+commit caller output only if both sensors succeed
+failure must leave caller output unchanged
+```
+
+Service 不负责 Task、Queue、2 s scheduling、UART、LED 或 shared I2C lifecycle。
+
+---
+
+# 9. Acquisition Scheduling Requirements
 
 统一周期：
 
@@ -348,40 +335,185 @@ printf / fputc -> HAL_UART_Transmit(&huart1)
 PROJECT_ACQUISITION_PERIOD_MS = 2000U
 ```
 
-RUNNING：
+Acquisition Task 是唯一 DHT20 / MPU6050 / shared Software I2C runtime accessor。
+
+第一版不增加 I2C Mutex。
+
+STOPPED：
 
 ```text
-DHT20
+wait Acquisition Command Queue indefinitely
+```
+
+START：
+
+```text
+immediate first complete acquisition/report
+then every 2000 ms
+```
+
+RUNNING scheduling：
+
+```text
+Queue receive with timeout until absolute deadline
+nextDeadline += 2000 ms
+```
+
+不能用简单 `delay(2000)` 作为主调度模型。
+
+Overrun：不补采历史样本，不 catch-up burst。
+
+STOP during active synchronous sensor transaction：不强制中途取消；允许 transaction 安全收尾，但 STOP 后不得发布 stale periodic report，也不得继续新的周期采集。
+
+---
+
+# 10. ONCE Requirements
+
+STOPPED 且没有 active ONCE：
+
+```text
+SAMPLE_ONCE
+ -> DHT20
  -> MPU6050
- -> organize result
- -> Communication Task
- -> UART report
- -> RTT DEBUG summary
+ -> complete UART report
+ -> UART TX success
+ -> Indicator ONCE_SUCCESS
+ -> LED blink 3 times
+ -> OFF
+ -> remain STOPPED
 ```
 
-STOPPED 不执行周期采集 / 上报。
-
----
-
-# 9. DHT20 / MPU6050 基线
-
-DHT20 与 MPU6050 均已实现为 Platform lightweight sensor capability，并完成目标板验证。
-
-共同规则：
+成功定义：
 
 ```text
-share platform_i2c_t
-non-owning bus reference
-no private Task
-no private mutex
-no service_dht20 / service_mpu6050 empty wrapper
+DHT20 success
+AND MPU6050 success
+AND complete report TX success
 ```
 
-后续统一 Acquisition Service 串行调用两者。
+任一失败：
+
+```text
+clear onceActive
+no success blink
+RTT diagnostic
+```
+
+如果 acquisition 失败且请求来源为 UART，可返回：
+
+```text
+ERR ACQUISITION_FAILED\r\n
+```
+
+如果 UART transport 本身失败，不要求再尝试经同一失败通道发送 TX error response。
 
 ---
 
-# 10. Software I2C 基线
+# 11. Sensor Data / Product Report
+
+DHT20：
+
+```text
+temperature
+relative humidity
+```
+
+MPU6050：
+
+```text
+Accel X/Y/Z raw + g
+Gyro X/Y/Z raw + deg/s
+```
+
+第一版 report：
+
+```text
+ENV,T=25.34,H=62.18\r\n
+IMU,AX=0.013,AY=-0.021,AZ=0.998,GX=0.12,GY=-0.42,GZ=0.08\r\n
+```
+
+RUNNING 每 2 s 一组完整 report；START 后第一组立即产生。
+
+不实现姿态融合 / Roll / Pitch / Yaw / DMP / filters。
+
+---
+
+# 12. LED Requirements
+
+```text
+STOPPED                -> OFF
+RUNNING                -> ON
+RUNNING periodic TX    -> keep ON
+ONCE TX SUCCESS        -> blink 3 times -> OFF
+ONCE sample/TX failure -> keep OFF
+```
+
+闪烁：
+
+```text
+100 ms ON / 100 ms OFF / 3 times
+```
+
+Indicator Task 承担当前阻塞式 blink，不能阻塞 Control / Acquisition / Communication。
+
+---
+
+# 13. Final RTOS Task Model
+
+固定 4 个产品任务：
+
+| Task | Initial Stack | Priority | Core Responsibility |
+| --- | ---: | --- | --- |
+| Communication | 2048 B | ABOVE_NORMAL | UART RX parser + sole product TX |
+| Control | 1024 B | ABOVE_NORMAL | Button polling + sole APP FSM |
+| Acquisition | 1536 B | NORMAL | sensor scheduling/execution |
+| Indicator | 768 B | BELOW_NORMAL | LED semantic execution |
+
+第一版资源故意偏宽松。完整系统稳定后根据 high-water mark / Queue peak occupancy 再收缩。
+
+当前不讨论低功耗，不引入 Tickless / Button EXTI wake。
+
+CubeMX `defaultTask` 不作为第五个产品任务；实现时仅在 USER CODE 内首次运行后 `osThreadExit()`。
+
+---
+
+# 14. APP IPC Requirements
+
+```text
+Control Queue                 depth 8
+Acquisition Command Queue     depth 4
+Communication Outbound Queue  depth 8
+Indicator Queue               depth 4
+```
+
+要求：
+
+```text
+Platform Queue abstraction
+bounded
+value-copy
+no temporary stack pointer
+no infinite producer blocking
+queue full must be observable
+```
+
+第一版不引入 Queue Set / Event Group / APP state mutex。
+
+Communication Outbound Queue 无法直接唤醒 UART Service private notify wait；第一版采用：
+
+```text
+nonblocking outbound drain
+ -> app_communication_process(20 ms)
+ -> nonblocking outbound drain
+```
+
+不为此扩展新的 RTOS abstraction。
+
+---
+
+# 15. Software I2C Requirements
+
+当前冻结：
 
 ```text
 Master-only
@@ -392,65 +524,45 @@ microsecond bit timing
 no internal mutex
 ```
 
-第一阶段单一 Acquisition 执行上下文串行访问 DHT20 / MPU6050；只有真实多访问者出现时才增加 transaction-level synchronization。
+DHT20 + MPU6050 共用 PB6/PB7。
+
+唯一 Acquisition Task 串行执行：
+
+```text
+DHT20 complete transaction
+ -> MPU6050 complete transaction
+```
+
+只有未来出现真实第二个并发访问者时才讨论 transaction-level synchronization。
 
 ---
 
-# 11. LED 产品语义
+# 16. ISR / Memory / Layering Requirements
+
+ISR / HAL Callback 仅允许：
 
 ```text
-STOPPED               -> OFF
-RUNNING               -> ON
-RUNNING periodic TX   -> keep ON
-ONCE TX SUCCESS        -> blink 3 times -> OFF
-ONCE sample/TX failure -> keep OFF
+capture
+necessary copy
+lightweight state update
+ISR-safe notify
+quick exit
 ```
 
-只有成功完成业务发送后才提交 `ONCE_SUCCESS`。
-
----
-
-# 12. RTT / EasyLogger
-
-正式链：
+禁止：
 
 ```text
-APP / Service
- -> service_log
- -> Platform Log
- -> EasyLogger Adapter
- -> EasyLogger / SEGGER RTT
+Button gesture FSM in ISR
+Software I2C in ISR
+full parser in ISR
+Sensor business in ISR
+blocking LED blink in ISR
+malloc/free in ISR/business path
+ordinary mutex in ISR
+heavy formatted logs in ISR
 ```
 
-正常运行禁止逐 UART byte、逐 DMA step、逐 I2C bit / ACK、逐 Button polling 刷日志。
-
----
-
-# 13. 推荐 RTOS 执行模型
-
-已确认方向：
-
-```text
-Communication Task
-Acquisition Task
-Indicator Task
-```
-
-Phase 9 冻结：
-
-```text
-permanent Button context
-APP Control consumer execution context
-control IPC
-Acquisition result -> Communication IPC
-Indicator event delivery
-priority / stack / buffering
-Unified Acquisition Service / Task
-```
-
----
-
-# 14. 分层要求
+分层：
 
 ```text
 APP -> Service       ALLOWED
@@ -461,76 +573,86 @@ APP -> Impl          FORBIDDEN
 Service -> Impl      FORBIDDEN
 ```
 
-APP / Service 不得直接依赖 HAL、CubeMX Handle 或 Impl 私有接口。
+核心运行数据优先 static / caller-owned / value-copy storage。
 
 ---
 
-# 15. ISR / 并发 / 内存
-
-ISR / HAL Callback 只允许：
+# 17. RTT / EasyLogger Requirements
 
 ```text
-capture
-necessary copy
-lightweight state update
-ISR-safe notify
-quick exit
+UART -> product control + product data
+RTT  -> init / state / acquisition / diagnostics / errors
 ```
 
-禁止 blocking、ordinary mutex、malloc/free、完整协议、Sensor 业务、LED delay、大量格式化日志。
+建议：
 
-核心链路优先 static / caller-owned storage。
+```text
+INFO  initialization / START / STOP / ONCE / state changes
+DEBUG periodic acquisition/report summary
+WARN  recoverable sensor/I2C/UART/queue issues
+ERROR critical initialization/runtime failures
+```
+
+禁止正常运行逐 UART byte、DMA step、I2C bit/ACK、Button poll 刷日志。
 
 ---
 
-# 16. 当前范围冻结
+# 18. Final Acceptance
+
+必须验证：
+
+```text
+Boot -> STOPPED / LED OFF / UART RX active / no periodic report
+Button SINGLE -> RUNNING / LED ON / immediate first report / every 2 s
+Button LONG -> STOPPED / LED OFF / no future periodic report
+Button DOUBLE in STOPPED -> one report / TX success / 3 blinks / remain STOPPED
+UART START/STOP/ONCE/STATUS/HELP correct
+Button + UART use one APP state truth
+RX remains active during TX DMA
+DHT20 + MPU6050 shared Soft-I2C stable
+ONCE acquisition/TX failure never success-blinks
+relevant failures visible through RTT
+```
+
+完成后记录：
+
+```text
+4 Task stack high-water marks
+Queue peak occupancy / observed margins
+Host regression result
+Keil result
+Target integrated result
+```
+
+---
+
+# 19. Scope / Active Phase
 
 必须完成：
 
 ```text
-GPIO STM32 Impl + board verification
-LED
-Platform Button / Button Service
-Software I2C
-DHT20
-MPU6050 basic 6-axis
-UART reusable TX DMA path
-UART START / STOP / ONCE / STATUS / HELP
-APP Control FSM
-2 s acquisition + UART report
-ONCE success LED feedback
-RTT diagnostic coverage
-final integrated board test
+Phase 9 Final RTOS Application Integration
+Final Integrated Board Test
 ```
 
 当前不做：
 
 ```text
-Roll / Pitch / Yaw
-DMP / filters
+low-power / Tickless policy
+Button EXTI wake
 SPI / LCD / GUI
 W25Q64 / AT24C02
 Bluetooth
-complex binary protocol
-TX queue framework
-Button EXTI
-无需求驱动框架扩展
+Roll / Pitch / Yaw / DMP / filters
+complex binary UART protocol
+unneeded framework expansion
 ```
 
----
-
-# 17. 当前 Active Phase
+当前：
 
 ```text
-Phase 8 — UART Application Communication
-DESIGN FROZEN / PLAN READY / NOT STARTED
+Phase 8 = IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
+Phase 9 = DESIGN FROZEN / READY FOR CODEX
 ```
 
-进入 production 编码前，执行 Agent 必须读取：
-
-```text
-00_Doc/02_架构设计/UART_Application_Communication_Phase8设计.md
-00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
-00_Doc/04_Agent/execution_rules.md
-00_Doc/04_Agent/implementation_plan.md
-```
+Codex 必须从 `00_Doc/04_Agent/implementation_plan.md` Task 0 开始执行。
