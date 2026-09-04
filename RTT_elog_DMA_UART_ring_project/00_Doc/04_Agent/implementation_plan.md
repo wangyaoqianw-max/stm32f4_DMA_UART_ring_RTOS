@@ -722,10 +722,57 @@ Phase 1 ~ 8
 
 ```text
 Phase 9 design: FROZEN
-Phase 9 implementation: NOT STARTED
-Phase 9 Host tests: NOT RUN
-Phase 9 Keil build: NOT RUN
-Phase 9 target integration: NOT RUN
+Phase 9 implementation: IMPLEMENTED
+Phase 9 Coding Standard Review: PASS
+Phase 9 Architecture Review: PASS
+Phase 9 Host tests: PASS / 34 of 34 test groups
+Phase 9 Keil build: PASS / 0 Error(s), 14 baseline Warning(s)
+Phase 9 target integration: TARGET VERIFICATION REQUIRED
+Phase 9 resource measurement: TARGET VERIFICATION REQUIRED
+Phase 9 closure: NOT COMPLETE
+```
+
+2026-09-04 实现记录：
+
+```text
+Production tasks: Communication / Control / Acquisition / Indicator
+CubeMX defaultTask: exits through osThreadExit()
+APP Queues: 4 bounded value-copy queues
+Host compiler policy: -Wall -Wextra -Werror
+Keil ARMCC: V5.06 update 7 (build 960)
+Program Size: Code=53904 RO-data=1904 RW-data=340 ZI-data=45276
+Phase 9 added build warnings: 0
+```
+
+目标板验证记录表（连接 STM32F411CEU6 后逐项填写实际观察值）：
+
+```text
+[ ] Boot: STOPPED / LED OFF / UART RX active / RTT active / no periodic report
+[ ] Button SINGLE: LED ON / immediate complete report / subsequent interval 2000 ms
+[ ] Button LONG >= 3 s: LED OFF / no report after STOP
+[ ] STOP during sensor transaction: transaction finishes safely / stale report suppressed
+[ ] Button DOUBLE in STOPPED: exactly one complete report / TX success / blink 3 times / OFF
+[ ] UART: START / STOP / ONCE / STATUS / HELP responses match frozen protocol
+[ ] UART framing: fragmented command and multiple commands in one RX chunk
+[ ] UART concurrency: USART1 RX remains active while TX DMA is active
+[ ] FSM: Button and UART observe the same STOPPED/RUNNING truth
+[ ] ONCE busy: START / STOP / ONCE return ERR BUSY; STATUS returns STATUS STOPPED
+[ ] I2C: DHT20 transaction then MPU6050 transaction with no second accessor interleaving
+[ ] Failure: sensor or UART TX failure is visible through RTT and never success-blinks
+[ ] Recovery: RingBuffer overflow/error path and Queue fault counters are observable where feasible
+```
+
+资源记录表（完成上述压力场景后填写，不依据静态配置猜测）：
+
+```text
+Communication Task stack high-water mark: PENDING TARGET MEASUREMENT
+Control Task stack high-water mark: PENDING TARGET MEASUREMENT
+Acquisition Task stack high-water mark: PENDING TARGET MEASUREMENT
+Indicator Task stack high-water mark: PENDING TARGET MEASUREMENT
+Control Queue peak occupancy: PENDING TARGET MEASUREMENT
+Acquisition Queue peak occupancy: PENDING TARGET MEASUREMENT
+Communication Outbound Queue peak occupancy: PENDING TARGET MEASUREMENT
+Indicator Queue peak occupancy: PENDING TARGET MEASUREMENT
 ```
 
 Phase 8 已有 baseline：
@@ -736,4 +783,4 @@ Keil production rebuild: PASS / 0 Error(s)
 UART TX DMA target verification: DEFERRED TO PHASE 9
 ```
 
-Codex 应从 Task 0 开始顺序执行，不跳过测试、架构 Review 或最终目标板验证记录。
+不得在目标板场景和资源记录完成前把 Phase 9 标记为 `COMPLETED`。

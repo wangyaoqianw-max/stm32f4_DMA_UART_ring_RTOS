@@ -66,8 +66,9 @@ Phase 6  DHT20 Environment Module                COMPLETED / HOST + KEIL + TARGE
 Phase 7  MPU6050 Motion Module                   COMPLETED / HOST + KEIL + TARGET VERIFIED
 Phase 8  UART Application Communication          IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
                                                   TARGET VERIFICATION DEFERRED TO PHASE 9
-Phase 9  Final RTOS Application Integration      DESIGN FROZEN / READY FOR CODEX
-Final Integrated Board Test
+Phase 9  Final RTOS Application Integration      IMPLEMENTED / HOST + KEIL VERIFIED
+                                                  TARGET + RESOURCE VERIFICATION REQUIRED
+Final Integrated Board Test                       PENDING
 Project Core Complete
 ```
 
@@ -258,14 +259,15 @@ RTT exposes relevant failures
 # 7. 当前下一步
 
 ```text
-Phase 8 implementation completed
- -> Phase 9 design frozen
- -> Phase 9 implementation plan ready
- -> Codex executes Phase 9 Task 0 onward
+Phase 9 production implementation completed
+ -> Host regression 34/34 passed
+ -> Keil rebuild 0 errors / 14 baseline warnings
+ -> Final target scenarios and USART1 TX DMA verification
+ -> record stack high-water marks and Queue peak occupancy
  -> Final Integrated Board Test
  -> Project Core Complete
 ```
 
-当前不再进行新的架构阶段设计。
+当前不再进行新的架构阶段设计或新建 Phase 10。未连接目标板前，不把 Phase 9 标记为 `COMPLETED`。
 
 第一版不讨论低功耗；Tickless Idle、Button EXTI wake、SPI/LCD、Flash、Bluetooth、姿态融合均为后续独立扩展。

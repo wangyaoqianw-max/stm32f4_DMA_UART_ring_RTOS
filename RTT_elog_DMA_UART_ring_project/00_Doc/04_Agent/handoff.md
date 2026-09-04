@@ -76,7 +76,8 @@ Phase 6  DHT20 Environment Module                COMPLETED / HOST + KEIL + TARGE
 Phase 7  MPU6050 Motion Module                   COMPLETED / HOST + KEIL + TARGET VERIFIED
 Phase 8  UART Application Communication          IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
                                                   TARGET VERIFICATION DEFERRED TO PHASE 9
-Phase 9  Final RTOS Application Integration      DESIGN FROZEN / READY FOR CODEX
+Phase 9  Final RTOS Application Integration      IMPLEMENTED / HOST + KEIL VERIFIED
+                                                  TARGET + RESOURCE VERIFICATION REQUIRED
 Final Integrated Board Test
 Project Core Complete
 ```
@@ -618,10 +619,14 @@ unneeded framework expansion
 Phase 8 code: IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
 Phase 8 UART TX DMA target verification: DEFERRED TO PHASE 9
 Phase 9 final design: FROZEN
-Phase 9 implementation plan: READY FOR CODEX
-Phase 9 production code: NOT STARTED by this documentation update
+Phase 9 production code: IMPLEMENTED
+Phase 9 Host regression: PASS / 34 of 34 test groups
+Phase 9 Keil rebuild: PASS / 0 Error(s), 14 baseline Warning(s)
+Phase 9 target integration: TARGET VERIFICATION REQUIRED
+Phase 9 resource measurement: TARGET VERIFICATION REQUIRED
+Phase 9 closure: NOT COMPLETE
 ```
 
-本轮只完成文档收束，没有修改任何 production code / CubeMX configuration。
+当前实现包含 Unified Acquisition Service、唯一 Control FSM、Acquisition / Indicator Task、Communication outbound、4 条 APP Queue、最终 Composition Root 和 defaultTask self-exit。
 
-下一步：Codex 按 `00_Doc/04_Agent/implementation_plan.md` 从 Task 0 开始执行 Phase 9。
+下一步：连接目标板，按 `00_Doc/04_Agent/implementation_plan.md` 的目标板验证记录表完成 USART1 TX DMA、完整业务场景、Task stack high-water mark 和 Queue peak occupancy 实测。实测完成前不得标记 Phase 9 `COMPLETED`。
