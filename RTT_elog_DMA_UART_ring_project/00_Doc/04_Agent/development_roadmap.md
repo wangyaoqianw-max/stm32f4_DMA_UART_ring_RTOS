@@ -67,7 +67,7 @@ Phase 2  Board Resource + CubeMX Configuration   COMPLETED
 Phase 3  Software I2C                            COMPLETED
 Phase 4  LED Module                              COMPLETED
 Phase 5  Button Module                           COMPLETED / HOST + KEIL + TARGET VERIFIED
-Phase 6  DHT20 Environment Module                ACTIVE / DESIGN FROZEN / READY TO IMPLEMENT
+Phase 6  DHT20 Environment Module                COMPLETED / HOST + KEIL + TARGET VERIFIED
 Phase 7  MPU6050 Motion Module                   NEXT AFTER PHASE 6
 Phase 8  UART Application Communication
 Phase 9  RTOS Task / Event Design
@@ -148,7 +148,7 @@ Phase 5：`COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED`。
 
 # 5. Phase 6 — DHT20 Environment Module
 
-当前阶段已经完成专项设计讨论并冻结设计，不再处于 DESIGN PENDING。
+当前阶段已完成专项设计、production 实现、Host 回归、Keil 编译，以及 RTT 与逻辑分析仪实板验证。
 
 专项设计：
 
@@ -239,6 +239,21 @@ START -> 0x71 ACK -> 7-byte read -> final NACK -> STOP
 
 不要求 Fake I2C / Host protocol harness；已有底层能力直接走完整真实链路验证。
 
+当前验证状态：
+
+```text
+Host regression                    27 / 27 PASS
+Keil temporary Smoke compile       PASS / 0 errors
+Keil final production rebuild      PASS / 0 errors
+Keil attached target Smoke rebuild PASS / 0 errors
+DHT20 new warning                  0
+RTT target observation             PASS
+Logic analyzer PB6/PB7             PASS
+continuous ~2 s target read        PASS
+```
+
+目标板验证结果：RTT 初始化与连续读取均返回 0，温湿度数据连续合理；逻辑分析仪确认 `AC 33 00` 写事务、约 80 ms 等待、7-byte 读事务末字节 NACK，以及约 2 s 连续采集。临时 Smoke 已清理，production 启动路径已恢复。
+
 ---
 
 # 6. Phase 7 — MPU6050 Motion Module
@@ -325,19 +340,19 @@ RUNNING 第一阶段统一采集 / 上报周期为 2000 ms。
 
 ```text
 Phase 5 Button      CLOSED
-Phase 6 DHT20       ACTIVE / READY FOR CODEX EXECUTION
+Phase 6 DHT20       CLOSED / HOST + KEIL + TARGET VERIFIED
 ```
 
 流程：
 
 ```text
-Codex execute implementation_plan.md
- -> Keil production build
- -> RTT target smoke
- -> Logic analyzer verification
- -> remove temporary smoke harness
- -> normal-path rebuild
- -> update handoff and close Phase 6
+Phase 6 implementation complete
+ -> Host regression PASS
+ -> Keil production build PASS
+ -> RTT target smoke PASS
+ -> Logic analyzer verification PASS
+ -> temporary smoke removed
+ -> production startup restored
 ```
 
-不得跳到 Phase 7+。
+Phase 6 已关闭；本次提交停止于此，不实现 Phase 7。

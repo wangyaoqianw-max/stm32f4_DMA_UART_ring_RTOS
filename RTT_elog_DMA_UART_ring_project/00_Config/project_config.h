@@ -48,6 +48,8 @@
 #define PROJECT_BUTTON_DOUBLE_CLICK_MS               (300U)
 #define PROJECT_BUTTON_LONG_PRESS_MS                 (3000U)
 
+#define PROJECT_ACQUISITION_PERIOD_MS                (2000U)
+
 #define PROJECT_STATUS_LED_ACTIVE_LEVEL               PLATFORM_GPIO_LEVEL_LOW
 #define PROJECT_INDICATOR_BLINK_COUNT                 (3U)
 #define PROJECT_INDICATOR_BLINK_ON_MS                 (100U)

@@ -51,6 +51,8 @@ _Static_assert(PROJECT_BUTTON_DOUBLE_CLICK_MS == 300U,
                "unexpected button double click duration");
 _Static_assert(PROJECT_BUTTON_LONG_PRESS_MS == 3000U,
                "unexpected button long press duration");
+_Static_assert(PROJECT_ACQUISITION_PERIOD_MS == 2000U,
+               "unexpected acquisition period");
 _Static_assert(PROJECT_STATUS_LED_ACTIVE_LEVEL == PLATFORM_GPIO_LEVEL_LOW,
                "unexpected status led active level");
 _Static_assert(PROJECT_INDICATOR_BLINK_COUNT == 3U,

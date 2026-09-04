@@ -140,12 +140,12 @@ Future APP -> START / SAMPLE_ONCE / STOP
 
 ---
 
-# 5. Phase 6 — DHT20 冻结设计
+# 5. Phase 6 — DHT20 实现状态
 
 状态：
 
 ```text
-DESIGN FROZEN / IMPLEMENTATION PLAN READY
+COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
 正式设计：
@@ -159,7 +159,7 @@ DESIGN FROZEN / IMPLEMENTATION PLAN READY
 ```text
 00_Doc/04_Agent/implementation_plan.md
 DHT20 Phase 6 Implementation Plan
-Status: READY FOR CODEX EXECUTION
+Status: COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
 正式能力链：
@@ -344,7 +344,29 @@ STOP
 
 再验证约 2 s 连续采集下事务稳定。
 
-临时 DHT20 smoke harness 验证完成后必须清理，再执行正常生产 Build。
+临时 DHT20 smoke harness 已在目标板验证完成后清理，production 启动路径已恢复。
+
+当前自动验证记录：
+
+```text
+Host regression                    27 / 27 PASS
+Keil temporary Smoke compile       0 errors / 20 historical warnings
+Keil final production rebuild      0 errors / 20 historical warnings
+Keil attached target Smoke rebuild 0 errors / 20 historical warnings
+DHT20 production / Smoke warning   0 new warnings
+Temporary Keil group/include path  REMOVED
+Normal startup path                RESTORED
+```
+
+当前实现文件：
+
+```text
+03_Platform/platform_bsp/dht20/platform_dht20.h
+03_Platform/platform_bsp/dht20/platform_dht20.c
+Tests/platform_dht20/test_platform_dht20.c
+```
+
+目标板验证记录：RTT 初始化与连续读取结果均为 0，状态为 `0x18`，温湿度数据连续合理；逻辑分析仪确认 `AC 33 00`、约 80 ms 等待、7-byte read 最后一字节 NACK，以及约 2 s 周期。Target PASS。
 
 ---
 
@@ -352,35 +374,25 @@ STOP
 
 ```text
 Phase 6 — DHT20 Environment Module
-STATUS: READY FOR CODEX IMPLEMENTATION
+STATUS: COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
 下一步：
 
 ```text
-Codex execute implementation_plan.md
+Phase 6 closed
     ↓
-Keil build
-    ↓
-RTT target verification
-    ↓
-Logic analyzer verification
-    ↓
-remove temporary smoke harness
-    ↓
-normal-path rebuild
-    ↓
-update handoff / close Phase 6
+Next session starts from Phase 7 design/plan when explicitly requested
 ```
 
-Phase 6 完成前不得自动进入 Phase 7。
+本次已关闭 Phase 6，未实现 Phase 7。
 
 ---
 
 # 11. 后续路线
 
 ```text
-Phase 6  DHT20 Environment Module       ACTIVE / READY TO IMPLEMENT
+Phase 6  DHT20 Environment Module       COMPLETED / HOST + KEIL + TARGET VERIFIED
 Phase 7  MPU6050 Motion Module          NEXT AFTER PHASE 6
 Phase 8  UART Application Communication
 Phase 9  RTOS Task / Event Design

@@ -418,11 +418,11 @@ APP / Service
 Phase 3 Software I2C   COMPLETED
 Phase 4 LED            COMPLETED
 Phase 5 Button         COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
-Phase 6 DHT20          NEXT / DESIGN PENDING
+Phase 6 DHT20          COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 ```
 
 Phase 5 不再有 `implementation PENDING` 状态。
 
-进入 Phase 6 前必须先完成 DHT20 专项设计，再生成新的 `implementation_plan.md`。
+Phase 6 已按冻结专项设计实现，并完成 RTT、逻辑分析仪与连续约 2 s 实板验证。
 
 当前明确不做：SPI / LCD / GUI、W25Q64、AT24C02、Bluetooth、姿态融合、Button EXTI、无需求驱动框架扩张。

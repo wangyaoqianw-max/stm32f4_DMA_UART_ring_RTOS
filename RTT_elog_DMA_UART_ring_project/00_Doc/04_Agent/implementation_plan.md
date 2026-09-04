@@ -1,7 +1,7 @@
 # DHT20 Phase 6 Implementation Plan
 
 > 当前执行计划 / Current Active Plan  
-> 状态：READY FOR CODEX EXECUTION  
+> 状态：COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED
 > 日期：2026-09-04
 
 **Goal:** 在已验证的 Platform GPIO + Software I2C 基线上，实现 DHT20 Platform 设备能力，并通过 Keil、RTT 与逻辑分析仪完成目标板验证。
@@ -352,36 +352,84 @@ no platform_i2c_deinit() from DHT20 deinit
 # 14. Final Acceptance Checklist
 
 ```text
-[ ] platform_dht20.h/.c created
-[ ] lightweight object implemented
-[ ] shared I2C non-owning reference respected
-[ ] init/read/deinit implemented
-[ ] 7-bit 0x38 used
-[ ] AC 33 00 transaction correct
-[ ] STOP + 80 ms + new read transaction correct
-[ ] Busy check correct
-[ ] frame CRC8 correct
-[ ] OTP CRC_flag correct
-[ ] CalibrationEnable correct
-[ ] raw RH/T parsing correct
-[ ] float conversion correct
-[ ] failed read leaves output unchanged
-[ ] PROJECT_ACQUISITION_PERIOD_MS = 2000U
-[ ] Keil production build passes
-[ ] no new DHT20 production warning
-[ ] RTT target smoke passes
-[ ] logic analyzer single transaction passes
-[ ] continuous ~2 s target read passes
-[ ] optional disconnect error observed
-[ ] temporary smoke removed
-[ ] normal-path rebuild passes after cleanup
-[ ] architecture/coding review passes
-[ ] no Phase 7 / final APP scope creep
+[x] platform_dht20.h/.c created
+[x] lightweight object implemented
+[x] shared I2C non-owning reference respected
+[x] init/read/deinit implemented
+[x] 7-bit 0x38 used
+[x] AC 33 00 transaction correct
+[x] STOP + 80 ms + new read transaction correct
+[x] Busy check correct
+[x] frame CRC8 correct
+[x] OTP CRC_flag correct
+[x] CalibrationEnable correct
+[x] raw RH/T parsing correct
+[x] float conversion correct
+[x] failed read leaves output unchanged
+[x] PROJECT_ACQUISITION_PERIOD_MS = 2000U
+[x] Keil production build passes
+[x] no new DHT20 production warning
+[x] RTT target smoke passes
+[x] logic analyzer single transaction passes
+[x] continuous ~2 s target read passes
+[x] optional disconnect test disposition recorded: NOT RUN / NOT REQUIRED
+[x] temporary smoke removed
+[x] normal-path rebuild passes after temporary Keil group cleanup
+[x] architecture/coding review passes
+[x] no Phase 7 / final APP scope creep
 ```
 
 ---
 
-# 15. Stop Point
+# 15. Execution Record — 2026-09-04
+
+自动完成：
+
+```text
+Platform DHT20 contract test RED -> GREEN
+Host regression                    27 / 27 PASS
+Smoke Harness GCC syntax check     PASS
+Keil temporary Smoke compile       0 errors / 20 historical warnings
+Keil final production rebuild      0 errors / 20 historical warnings
+Keil attached target Smoke rebuild 0 errors / 20 historical warnings
+DHT20 production warning           0 new warnings
+DHT20 Smoke warning                0 new warnings
+Architecture dependency review     PASS
+Normal startup path                RESTORED
+Temporary Keil Smoke group/path    REMOVED
+```
+
+执行期间构建记录（临时日志不纳入提交）：
+
+```text
+MDK-ARM/phase6_dht20_smoke_compile.log
+MDK-ARM/phase6_dht20_final_production_build.log
+MDK-ARM/phase6_dht20_target_smoke_build.log
+```
+
+已完成验证并删除的临时目标板测试入口：
+
+```text
+Tests/dht20_smoke/dht20_smoke.c
+Tests/dht20_smoke/dht20_smoke.h
+Tests/dht20_smoke/README.md
+```
+
+真实目标板验证结果：
+
+```text
+RTT measurement observation       PASS
+PB6/PB7 logic analyzer capture    PASS
+continuous ~2 s read stability    PASS
+optional disconnect check         NOT RUN / NOT REQUIRED
+Smoke source final deletion       PASS
+```
+
+实板证据确认：初始化与读取返回 0，状态 `0x18`，温湿度连续合理；总线时序包含 `AC 33 00` 写事务、约 80 ms 等待、7-byte 读事务末字节 NACK，以及约 2 s 周期。Phase 6 标记为 COMPLETED / TARGET PASS。
+
+---
+
+# 16. Stop Point
 
 Phase 6 完成后停止。
 
