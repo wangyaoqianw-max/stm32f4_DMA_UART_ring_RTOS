@@ -32,6 +32,9 @@ typedef struct
     platform_size_t rxBufferSize;
     platform_size_t rxLastPosition;
     platform_bool_t rxActive;
+    const uint8_t *txBuffer;
+    platform_size_t txBufferSize;
+    platform_bool_t txActive;
 } stm32_uart_impl_context_t;
 //******************************** Declaring *********************************//
 
@@ -41,6 +44,9 @@ static stm32_uart_impl_context_t g_usart1Context = {
     NULL,
     NULL,
     0U,
+    0U,
+    PLATFORM_FALSE,
+    NULL,
     0U,
     PLATFORM_FALSE
 };
@@ -69,6 +75,9 @@ static platform_error_t stm32_uart_write(platform_uart_t *uart,
                                          platform_size_t dataLength,
                                          uint32_t timeoutMs,
                                          platform_size_t *writtenLength);
+static platform_error_t stm32_uart_write_async(platform_uart_t *uart,
+                                               const uint8_t *data,
+                                               platform_size_t dataLength);
 static platform_error_t stm32_uart_read(platform_uart_t *uart,
                                         uint8_t *buffer,
                                         platform_size_t bufferSize,
@@ -80,6 +89,7 @@ static platform_error_t stm32_uart_read_async(platform_uart_t *uart,
 static platform_error_t stm32_uart_cancel(platform_uart_t *uart,
                                           platform_uart_direction_t direction);
 static void stm32_uart_clear_rx_session(stm32_uart_impl_context_t *context);
+static void stm32_uart_clear_tx_transaction(stm32_uart_impl_context_t *context);
 static void stm32_uart_emit_rx_data(stm32_uart_impl_context_t *context,
                                     platform_size_t startPosition,
                                     platform_size_t dataLength);
@@ -100,7 +110,7 @@ static const platform_lifecycle_ops_t g_stm32UartLifecycleOps = {
 static const platform_uart_ops_t g_stm32UartOps = {
     stm32_uart_write,
     stm32_uart_read,
-    NULL,
+    stm32_uart_write_async,
     stm32_uart_read_async,
     stm32_uart_cancel
 };
@@ -134,6 +144,15 @@ static void stm32_uart_clear_rx_session(stm32_uart_impl_context_t *context)
         context->rxBufferSize = 0U;
         context->rxLastPosition = 0U;
         context->rxActive = PLATFORM_FALSE;
+    }
+}
+
+static void stm32_uart_clear_tx_transaction(stm32_uart_impl_context_t *context)
+{
+    if (context != NULL) {
+        context->txBuffer = NULL;
+        context->txBufferSize = 0U;
+        context->txActive = PLATFORM_FALSE;
     }
 }
 
@@ -373,6 +392,7 @@ static platform_error_t stm32_uart_lifecycle_init(void *self)
     }
 
     stm32_uart_clear_rx_session(context);
+    stm32_uart_clear_tx_transaction(context);
 
     result = stm32_uart_apply_config(context->halUart, &uart->config);
     if (result != PLATFORM_ERR_OK) {
@@ -497,6 +517,7 @@ static platform_error_t stm32_uart_lifecycle_deinit(void *self)
     }
 
     stm32_uart_clear_rx_session(context);
+    stm32_uart_clear_tx_transaction(context);
     context->platformUart = NULL;
 
     result = platform_device_set_power_state(&uart->device, PLATFORM_DEVICE_POWER_OFF);
@@ -576,6 +597,43 @@ static platform_error_t stm32_uart_read(platform_uart_t *uart,
     }
 
     *readLength = bufferSize;
+    return PLATFORM_ERR_OK;
+}
+
+static platform_error_t stm32_uart_write_async(platform_uart_t *uart,
+                                               const uint8_t *data,
+                                               platform_size_t dataLength)
+{
+    platform_error_t result = PLATFORM_ERR_OK;
+    stm32_uart_impl_context_t *context = NULL;
+
+    if ((data == NULL) || (dataLength == 0U)) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    if (dataLength > STM32_UART_HAL_MAX_TRANSFER_SIZE) {
+        return PLATFORM_ERR_OVERFLOW;
+    }
+
+    result = stm32_uart_get_context(uart, &context);
+    if (result != PLATFORM_ERR_OK) {
+        return result;
+    }
+
+    if (context->txActive == PLATFORM_TRUE) {
+        return PLATFORM_ERR_BUSY;
+    }
+
+    context->txBuffer = data;
+    context->txBufferSize = dataLength;
+    context->txActive = PLATFORM_TRUE;
+    result = stm32_uart_map_hal_status(HAL_UART_Transmit_DMA(
+        context->halUart, (uint8_t *)data, (uint16_t)dataLength));
+    if (result != PLATFORM_ERR_OK) {
+        stm32_uart_clear_tx_transaction(context);
+        return result;
+    }
+
     return PLATFORM_ERR_OK;
 }
 
@@ -686,6 +744,29 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size)
     if (huart == g_usart1Context.halUart) {
         stm32_uart_process_rx_position(&g_usart1Context, (platform_size_t)size);
     }
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+    const uint8_t *data = NULL;
+    platform_size_t dataLength = 0U;
+    platform_uart_event_t event;
+
+    if ((huart != g_usart1Context.halUart) ||
+        (g_usart1Context.txActive != PLATFORM_TRUE) ||
+        (g_usart1Context.platformUart == NULL)) {
+        return;
+    }
+
+    data = g_usart1Context.txBuffer;
+    dataLength = g_usart1Context.txBufferSize;
+    stm32_uart_clear_tx_transaction(&g_usart1Context);
+    event.type = PLATFORM_UART_EVENT_TX_COMPLETE;
+    event.direction = PLATFORM_UART_DIRECTION_TX;
+    event.data = data;
+    event.dataLength = dataLength;
+    event.error = PLATFORM_ERR_OK;
+    (void)platform_uart_notify_event(g_usart1Context.platformUart, &event);
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)

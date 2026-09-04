@@ -54,14 +54,20 @@ typedef struct
 extern UART_HandleTypeDef huart1;
 extern HAL_StatusTypeDef g_fakeHalReceiveToIdleResult;
 extern HAL_StatusTypeDef g_fakeHalAbortReceiveResult;
+extern HAL_StatusTypeDef g_fakeHalTransmitDmaResult;
 extern UART_HandleTypeDef *g_fakeHalReceiveToIdleUart;
 extern uint8_t *g_fakeHalReceiveToIdleBuffer;
 extern uint16_t g_fakeHalReceiveToIdleSize;
 extern uint32_t g_fakeHalReceiveToIdleCallCount;
 extern uint32_t g_fakeHalAbortReceiveCallCount;
+extern UART_HandleTypeDef *g_fakeHalTransmitDmaUart;
+extern uint8_t *g_fakeHalTransmitDmaBuffer;
+extern uint16_t g_fakeHalTransmitDmaSize;
+extern uint32_t g_fakeHalTransmitDmaCallCount;
 extern uint16_t g_fakeHalReceiveToIdleCallbackPosition;
 
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size);
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart);
 
 static inline HAL_StatusTypeDef HAL_UART_Init(UART_HandleTypeDef *halUart)
 {
@@ -122,6 +128,18 @@ static inline HAL_StatusTypeDef HAL_UART_AbortReceive(UART_HandleTypeDef *halUar
     g_fakeHalAbortReceiveCallCount++;
 
     return g_fakeHalAbortReceiveResult;
+}
+
+static inline HAL_StatusTypeDef HAL_UART_Transmit_DMA(UART_HandleTypeDef *halUart,
+                                                       uint8_t *data,
+                                                       uint16_t dataLength)
+{
+    g_fakeHalTransmitDmaUart = halUart;
+    g_fakeHalTransmitDmaBuffer = data;
+    g_fakeHalTransmitDmaSize = dataLength;
+    g_fakeHalTransmitDmaCallCount++;
+
+    return g_fakeHalTransmitDmaResult;
 }
 
 #define HAL_UART_ERROR_NONE (0x00000000U)
