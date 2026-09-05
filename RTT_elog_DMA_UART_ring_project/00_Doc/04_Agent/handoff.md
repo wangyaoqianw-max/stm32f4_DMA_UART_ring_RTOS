@@ -3,9 +3,10 @@
 更新时间：2026-09-05
 
 > 本文件是 AI Agent / Codex 与人工开发者恢复工程上下文时的长期入口。  
-> 当前项目核心功能阶段已经完成并通过目标板综合验证，现作为稳定基线阶段性封版。  
-> 下一步先在本工程上尝试接入显示器，用于继续验证既有分层、设备抽象与任务模型的扩展能力；显示器阶段完成后，以本工程的成熟架构与可复用模块为基底，新建独立的 Bootloader + OTA 学习工程。  
-> Bootloader 不要求复制当前完整五层应用架构，应根据启动可靠性、体积和依赖最小化原则单独裁剪。
+> Phase 1~9 核心工程已经完成并通过 Host / Keil / Target 综合验证，作为稳定 Application Baseline 保留。  
+> Display Extension 已完成硬件资源确认、CubeMX 配置和 ST7789T3 最小 Bring-up 目标板验证；临时测试代码已回退，SPI1 / LCD GPIO 的 CubeMX 配置保留。  
+> 下一对话从“正式 LCD 驱动与显示数据流实现计划”开始，不重复做硬件点亮验证，也不要直接把临时 Bring-up 代码当作正式实现。  
+> 显示阶段完成后，再以本工程的成熟架构与可复用模块为基底，新建独立 Bootloader + OTA 学习工程。
 
 ---
 
@@ -28,9 +29,10 @@ Sensors    : DHT20 + MPU6050
 I2C        : Software I2C over PB6/PB7
 Input      : PA0 User Key
 Indicator  : PC13 Status LED
+Display    : P169H002-CTP / ST7789T3 / 240x280
 ```
 
-项目最终形成：
+项目核心能力：
 
 ```text
 Button + UART unified control
@@ -43,16 +45,14 @@ Button + UART unified control
  -> LED semantic feedback
 ```
 
-项目价值重点不是业务功能数量，而是：
+Display Extension 用于继续验证：
 
 ```text
-小型 RTOS 嵌入式系统如何分层
-设备能力如何抽象与复用
-ISR / Task / Service 的边界如何划分
-跨 Task 数据如何设计
-业务状态如何保持唯一真值
-DMA / RingBuffer / Queue / Notify 如何组合
-如何通过 Host + Keil + Target 三层验证完成工程闭环
+既有五层架构如何扩展新的板级设备
+显示设备应该落在哪一层
+采集数据如何从 Acquisition 进入 Display
+是否需要新的 Display Task / Queue
+UART 产品输出职责是否需要收缩
 ```
 
 ---
@@ -71,7 +71,7 @@ Impl
 Vendor / HAL / RTOS / Hardware
 ```
 
-固定规则：
+固定依赖规则：
 
 ```text
 APP -> Service       ALLOWED
@@ -83,7 +83,7 @@ APP -> Impl          FORBIDDEN
 Service -> Impl      FORBIDDEN
 ```
 
-职责概念：
+职责：
 
 ```text
 APP      : 业务状态、任务调度、业务编排
@@ -93,7 +93,7 @@ Impl     : STM32 / FreeRTOS 等具体实现适配
 Vendor   : HAL / CMSIS / FreeRTOS / 第三方库
 ```
 
-CubeMX 生成文件只承担：
+CubeMX generated files 只承担：
 
 ```text
 hardware initialization
@@ -106,7 +106,7 @@ thin glue
 
 ---
 
-# 3. 最终阶段状态
+# 3. Phase 1~9 稳定基线
 
 ```text
 Phase 1  GPIO STM32 Impl                         COMPLETED
@@ -125,15 +125,13 @@ Project Core                                     COMPLETE / BASELINE FROZEN
 
 原 RTOS Task/Event 阶段与 Final APP Integration 已合并为 Phase 9。
 
-不存在原规划中的独立 Phase 10；当前 Phase 1~9 作为第一阶段核心工程基线正式结束。
+不存在原规划中的独立 Phase 10；Phase 1~9 作为第一阶段核心工程正式结束。
 
-`00_Doc/04_Agent/implementation_plan.md` 现在属于已完成的历史实施计划，不再作为新的施工入口。
-
-显示器接入属于新的扩展阶段，开始前应重新完成硬件资源确认、数据手册蒸馏、架构边界讨论与新的 Implementation Plan，不直接复用旧计划继续施工。
+旧 `00_Doc/04_Agent/implementation_plan.md` 属于已完成历史实施计划，不再作为新的施工入口。
 
 ---
 
-# 4. 最终产品行为
+# 4. Phase 1~9 最终产品行为
 
 默认启动：
 
@@ -178,7 +176,7 @@ STATUS\r\n
 HELP\r\n
 ```
 
-协议约束：
+协议：
 
 ```text
 strict CRLF
@@ -191,7 +189,7 @@ fixed-size storage
 
 ---
 
-# 5. UART DMA + RingBuffer 最终架构
+# 5. UART DMA + RingBuffer 稳定架构
 
 RX：
 
@@ -206,7 +204,7 @@ USART1 RX
  -> Communication Task
 ```
 
-RX 原则：
+原则：
 
 ```text
 single producer / single consumer
@@ -229,7 +227,7 @@ Communication Task
  -> UART Service ownerThread wake
 ```
 
-TX 原则：
+原则：
 
 ```text
 Communication Task = sole USART1 product TX requester
@@ -241,11 +239,13 @@ USART1 = product control/data
 RTT = diagnostics
 ```
 
+Display Extension 当前尚未冻结 UART 最终职责；“保留 UART RX 控制、LCD 接管传感器数据显示”是待正式设计的方向，不是已冻结合同。
+
 ---
 
 # 6. 最终四任务模型
 
-固定 4 个产品 Task：
+当前稳定 4 个产品 Task：
 
 ```text
 Communication Task   2048 B   ABOVE_NORMAL
@@ -279,16 +279,9 @@ Indicator Task
 - ONCE success blink
 ```
 
-CubeMX `defaultTask` 保留生成声明，但在 USER CODE 区执行：
+CubeMX `defaultTask` 在 USER CODE 区直接 `osThreadExit()`，不是第五个长期产品 Task。
 
-```c
-(void)argument;
-osThreadExit();
-```
-
-因此它不是第五个长期产品 Task。
-
-Idle Task 与 Timer Service Task 是 RTOS 内核任务。
+Display Extension 是否增加 Display Task 尚未冻结，必须在下一阶段正式讨论后决定。
 
 ---
 
@@ -316,14 +309,12 @@ APP_CTRL_GET_STATUS
 
 Button 与 UART 都映射到同一 FSM。
 
-设计经验：
+原则：
 
 ```text
 输入源可以很多
 业务状态真值只能有一个 owner
 ```
-
-这避免 Button、UART、Sensor 等模块各自保存 `running` 状态造成状态漂移。
 
 ---
 
@@ -361,11 +352,9 @@ DHT20 OK && MPU6050 OK -> complete acquisition success
 otherwise             -> whole acquisition failed
 ```
 
-即使 DHT20 失败，也继续尝试 MPU6050，用于诊断和共享总线问题区分。
-
 采用 temporary result：两者都成功才 commit caller output，失败不产生 partial business result。
 
-可复用设计原则：
+原则：
 
 ```text
 Task decides WHEN
@@ -394,11 +383,7 @@ RUNNING -> queue_receive(timeout until absolute deadline)
 nextDeadline += 2000 ms
 ```
 
-不使用简单 `delay(2000)`，避免执行耗时累积到采样周期形成长期漂移。
-
-超期时跳过 missed periods，不做 catch-up burst。
-
-STOP 若到达正在执行的同步 Sensor transaction：
+STOP 到达正在执行的同步 Sensor transaction 时：
 
 ```text
 不粗暴中断 Software I2C
@@ -409,7 +394,7 @@ STOP already observed -> discard stale periodic result
 
 ---
 
-# 10. APP IPC 最终结构
+# 10. APP IPC 稳定基线
 
 ```text
 Control Queue                  depth 8
@@ -428,9 +413,7 @@ no infinite producer block
 queue full observable
 ```
 
-业务数据通过固定大小 message / union 按值传递。
-
-第一版没有引入：
+当前没有：
 
 ```text
 APP state mutex
@@ -440,11 +423,13 @@ Event Group as business event bus
 runtime malloc/free for APP business data flow
 ```
 
+Display Extension 很可能需要新的显示数据 IPC，但 Display Queue / snapshot 合同尚未冻结。
+
 ---
 
-# 11. ONCE 完整事务语义
+# 11. ONCE 当前事务语义
 
-成功条件：
+Phase 9 当前成功条件：
 
 ```text
 DHT20 success
@@ -466,25 +451,23 @@ Control SAMPLE_ONCE
  -> blink 3 times
 ```
 
-重要工程原则：
+重要：Display Extension 若改变 UART 产品输出职责，必须重新讨论 ONCE completion semantic。
+
+不能只把 `communicationQueue` 改成 `displayQueue` 就结束，因为当前成功 LED 明确依赖 `ONCE_TX_RESULT`。
+
+待讨论选项包括但不限于：
 
 ```text
-Queue submission success
-!= business execution success
-
-Acquisition success
-!= communication success
+Acquisition success = ONCE complete
+Display publish success = ONCE complete
+Display refresh completion = ONCE complete
 ```
 
-只有完整事务成功才产生成功 LED 反馈。
-
-Communication 不直接决定 LED 业务语义，Control 负责跨模块业务编排。
+此项尚未冻结。
 
 ---
 
-# 12. Host / Keil / Target 验证闭环
-
-Phase 9 最终记录：
+# 12. Phase 9 验证闭环
 
 ```text
 Host regression : PASS / 34 of 34 test groups
@@ -492,7 +475,7 @@ Keil rebuild    : PASS / 0 Error(s)
 Target test     : PASS
 ```
 
-已完成目标板综合验证，包括：
+目标板综合验证包括：
 
 ```text
 boot STOPPED / LED OFF
@@ -506,13 +489,210 @@ UART RX while TX active
 ONCE success feedback
 ```
 
-用户已于 2026-09-05 确认目标板综合功能测试完成并符合预期。
+2026-09-05 已确认 Phase 9 目标板综合功能正常。
 
 ---
 
-# 13. 当前资源基线
+# 13. Display Extension 当前进度
 
-最终 Keil MAP 基线：
+## 13.1 屏幕与范围
+
+当前显示模组：
+
+```text
+Module      : P169H002-CTP
+Controller  : ST7789T3
+Resolution  : 240 x 280
+Interface   : 4-wire SPI display path
+Pixel       : RGB565 / 2 bytes per pixel
+Touch       : NOT IN CURRENT STAGE
+```
+
+本阶段暂不接入：
+
+```text
+TP_INT
+TP_RST
+TP_SCL
+TP_SDA
+CST816 / CTP driver
+```
+
+## 13.2 已确认板级引脚
+
+```text
+PA1  -> LCD_BL
+PA4  -> LCD_CS
+PA5  -> SPI1_SCK
+PA6  -> LCD_DC
+PA7  -> SPI1_MOSI
+PB10 -> LCD_RST
+```
+
+其中：
+
+```text
+PA4 = software CS GPIO
+PA6 = DC GPIO，不使用 SPI1_MISO
+PA1 = GPIO backlight for first stage
+```
+
+## 13.3 CubeMX 已保留配置
+
+SPI1：
+
+```text
+Master
+TX Only Simplex
+8 bit
+MSB First
+Software NSS
+CPOL High
+CPHA 2nd Edge
+SPI Mode 3
+Prescaler /8
+SPI clock 12.5 MHz
+SPI DMA disabled
+SPI interrupt disabled
+```
+
+现有 USART1 DMA 保持：
+
+```text
+DMA2 Stream2 -> USART1_RX / Circular
+DMA2 Stream7 -> USART1_TX / Normal
+```
+
+LCD GPIO 默认：
+
+```text
+LCD_CS   PA4   HIGH   Push-Pull   High Speed
+LCD_DC   PA6   HIGH   Push-Pull   High Speed
+LCD_RST  PB10  HIGH   Push-Pull   Low Speed
+LCD_BL   PA1   LOW    Push-Pull   Low Speed
+```
+
+CubeMX 已生成并保留 `spi.c/.h`，HAL SPI module 已启用，Keil 工程已纳入 `spi.c` 与 `stm32f4xx_hal_spi.c`。
+
+## 13.4 最小 Bring-up Target Verification
+
+2026-09-05 已完成最小 ST7789T3 Bring-up 测试。
+
+测试范围仅包含：
+
+```text
+GPIO control
+hardware reset
+blocking HAL_SPI_Transmit()
+ST7789 initialization
+set window
+RGB565 full-screen fill
+backlight polarity
+BLACK / WHITE / RED / GREEN / BLUE
+```
+
+人工目标板现象：
+
+```text
+前段纯黑：PA1 Low，背光关闭
+稍亮黑色后依次 WHITE / RED / GREEN / BLUE：PA1 High，背光开启
+最后纯黑：测试结束 PA1 恢复 Low
+```
+
+确认结果：
+
+```text
+LCD_BACKLIGHT_ON_LEVEL  = HIGH
+LCD_BACKLIGHT_OFF_LEVEL = LOW
+
+ST7789T3 initialization       PASS
+SPI1 Mode 3 @ 12.5 MHz       PASS
+240 x 280 display area       PASS
+X_OFFSET = 0                 PASS
+Y_OFFSET = 20                PASS
+RGB565 high-byte first       PASS
+BLACK / WHITE / RED / GREEN / BLUE PASS
+20 px offset error           NOT OBSERVED
+flower screen / unstable     NOT OBSERVED
+```
+
+因此：
+
+```text
+LCD Minimal Bring-up Target Verification = PASS
+```
+
+这些属于已经目标板确认的硬件事实，可以作为正式实现的输入条件。
+
+## 13.5 Bring-up 测试代码状态
+
+临时最小点亮测试代码已经人工回退。
+
+当前仓库保留：
+
+```text
+CubeMX SPI1 configuration
+LCD GPIO configuration
+spi.c / spi.h generated support
+HAL SPI support
+Phase 1~9 stable application code
+```
+
+不保留临时：
+
+```text
+pure-color test loop
+bring-up-only ST7789 code
+manual BL test sequence
+```
+
+正式 LCD 驱动必须重新按项目分层和接口设计实施，不直接把临时实验代码原样塞回工程。
+
+---
+
+# 14. Display Extension 已确认与未确认边界
+
+已经确认，可视为 Target-Verified Hardware Contract：
+
+```text
+P169H002-CTP / ST7789T3
+240 x 280
+PA1/PA4/PA5/PA6/PA7/PB10 mapping
+SPI1 Mode 3
+12.5 MHz first-stage clock
+blocking HAL_SPI_Transmit() is viable
+software CS
+RGB565
+X_OFFSET 0
+Y_OFFSET 20
+BL High = ON
+BL Low  = OFF
+```
+
+当前不要提前冻结：
+
+```text
+正式 ST7789 driver 文件边界
+是否立刻增加 generic platform_spi
+是否新增 Display Task
+Display Queue depth / overwrite strategy
+Display snapshot data contract
+字体资源组织
+局部刷新策略
+UART TX 是否全部退出产品输出
+STATUS / HELP / OK 是否继续走 UART
+ONCE completion semantic
+是否需要 SPI DMA
+是否需要 backlight PWM
+```
+
+下一阶段应逐项讨论、验证、再冻结。
+
+---
+
+# 15. 当前资源基线
+
+Phase 9 最终 Keil MAP：
 
 ```text
 Total RO Size   = 55808 B  / 54.50 KiB
@@ -527,235 +707,49 @@ Flash = 512 KiB
 SRAM  = 128 KiB
 ```
 
-因此当前约：
+约：
 
 ```text
 Flash usage ≈ 10.7%
 RAM linked usage ≈ 34.8%
 ```
 
-MAP 中当前最明显的 RAM 大项：
+明显 RAM 大项：
 
 ```text
 EasyLogger async buffer / elog_async.o ZI = 20480 B
 FreeRTOS heap_4 ucHeap                  = 15360 B
 ```
 
-说明当前 RAM 占用主要不是五层业务架构本身，而是：
+Display 约束：
 
 ```text
-logging buffers
-FreeRTOS heap reservation
-RTOS / middleware runtime storage
+240 * 280 * 2 = 134400 B
 ```
 
-当前优化原则：
+因此 STM32F411CEU6 不应建立全屏 RGB565 framebuffer；正式实现优先考虑小块 buffer / line buffer / direct region update。
 
-```text
-不要因为文件多就先删分层
-不要先压几百字节 Queue / RingBuffer
-先找到资源 elephant
-再用运行时数据决定是否优化
-```
-
-若未来 RAM 紧张，优先评估：
-
-```text
-1. EasyLogger 20 KiB async buffer 是否需要这么大
-2. FreeRTOS minimum-ever free heap
-3. 各 Task stack high-water mark
-4. Queue peak occupancy
-```
-
-Flash 当前非常宽裕，无需为了几 KiB 提前牺牲可读性。
-
-`app_communication` 使用浮点 `snprintf` 格式化传感器报告，会拉入 printf / float formatting library；这是未来 Flash 受限平台上的明确优化点，但当前 STM32F411 项目不需要处理。
+SPI DMA 当前没有必要因为“可能更快”就提前加入，应在正式显示刷新出现实际阻塞或 CPU 占用问题后再讨论。
 
 ---
 
-# 14. 尚未完成但不阻塞项目封版的资源测量
+# 16. 可复用经验基线
 
-功能项目已经完成，但以下属于后续可选 Resource Optimization Review：
-
-```text
-Communication Task stack high-water mark
-Control Task stack high-water mark
-Acquisition Task stack high-water mark
-Indicator Task stack high-water mark
-
-xPortGetFreeHeapSize()
-xPortGetMinimumEverFreeHeapSize()
-
-4 APP Queue observed peak occupancy
-```
-
-这些数据用于决定是否缩减：
+优先复用：
 
 ```text
-Task stack
-configTOTAL_HEAP_SIZE
-Queue depth
-logging buffer
-```
-
-没有运行时证据前，不做拍脑袋资源压缩。
-
----
-
-# 15. 本项目最值得沉淀的可复用经验
-
-后续新对话建议逐项复盘并提炼为独立知识卡 / 模板 / README：
-
-## 15.1 分层与 Composition Root
-
-重点：
-
-```text
-为什么 APP / Service 不直接依赖 Impl
-Platform / Impl 如何形成 MCU / RTOS Bridge
-app_system 为什么应该是 Composition Root
-为什么依赖先初始化、Thread 最后创建
-```
-
-可沉淀：
-
-```text
-嵌入式五层架构模板
-模块依赖规则
-Composition Root 初始化/回滚模板
-```
-
-## 15.2 Data / Context / Statistics 模型
-
-重点：
-
-```text
-Config = 静态设置 / 构造依赖
-Context = 生命周期 + runtime state
-Data = 业务数据
-Statistics = 诊断统计
-```
-
-适用于 UART、Button、Sensor、Service 等模块。
-
-## 15.3 UART DMA + RingBuffer
-
-重点：
-
-```text
-Circular DMA + IDLE / HT / TC
-DMA producer position -> delta calculation
-SPSC RingBuffer ownership
-ISR only captures/events
-Task performs parsing/business
-TX async implementation + task-facing synchronous completion
-```
-
-这是项目最重要的技术主线之一。
-
-## 15.4 RTOS IPC 与任务边界
-
-重点：
-
-```text
-什么时候拆 Task
-什么时候不要拆 Task
-Queue value-copy
-Notify 用于轻量 wake/completion
-唯一 owner 降低 mutex 需求
-```
-
-## 15.5 唯一状态真值
-
-重点：
-
-```text
-Button / UART 是输入源
-Control FSM 是唯一 state owner
-模块之间传 semantic event，不复制业务状态
-```
-
-## 15.6 时间调度
-
-重点：
-
-```text
-absolute deadline vs delay(period)
-事件 Queue + timeout 合并事件驱动和周期任务
-missed deadline skip vs catch-up
-```
-
-## 15.7 完整事务语义
-
-重点：
-
-```text
-submission success != execution success
-partial acquisition != complete acquisition
-TX success 才能形成完整 ONCE success
-```
-
-## 15.8 ISR 设计边界
-
-重点：
-
-```text
-ISR / HAL callback:
-- capture state
-- update light context
-- ISR-safe notification
-
-Task context:
-- parser
-- I2C
-- logs
-- business FSM
-- blocking LED blink
-```
-
-## 15.9 工程验证流程
-
-```text
-Design Freeze
- -> Implementation Plan
- -> Host Test
- -> Keil Build
- -> Target Test
- -> Documentation Closure
-```
-
-后续可讨论如何把这一套流程复用到新的 STM32 模块或项目。
-
-## 15.10 MAP / Runtime Resource Review
-
-重点：
-
-```text
-MAP = static resource ownership
-High Water Mark = Task stack runtime peak
-Minimum Ever Free Heap = RTOS heap worst-case margin
-Queue Peak = IPC capacity evidence
-```
-
-不要只看 `Program Size` 一行。
-
-## 15.11 复用层级
-
-本阶段复盘形成以下区分：
-
-```text
-代码级复用
+代码级
 - RingBuffer
 - platform_common
 - platform_os
 - 部分 platform_mcu
 
-能力级复用
+能力级
 - UART Service
 - Log interface / backend binding
 - UART + DMA + RingBuffer 异步字节流基础设施
 
-设计模式级复用
+设计模式级
 - Unified Acquisition Service
 - Control FSM
 - Composition Root
@@ -763,187 +757,151 @@ Queue Peak = IPC capacity evidence
 - Task / Service responsibility split
 ```
 
-不要把“可复用”简单理解为下个项目原样复制文件。
-
----
-
-# 16. 后续面试讲解主线
-
-后续新对话应把项目从“功能说明”升级成“工程问题与设计决策说明”。
-
-不建议只说：
+重要工程原则：
 
 ```text
-做了 DHT20 + MPU6050 采集和串口打印
-```
+Task decides WHEN
+Service decides HOW
+Platform decides HOW DEVICE IS ACCESSED
 
-更合适的项目定位：
-
-```text
-以 STM32F411 + FreeRTOS 为平台，围绕 UART DMA + RingBuffer 数据链路，
-设计 APP / Service / Platform / Impl / Vendor 五层架构，
-逐步接入 Button、LED、Software I2C、DHT20、MPU6050，
-通过 4 个业务 Task、Queue、Task Notify 和统一 Control FSM，
-完成控制、周期采集、异步通信、诊断与目标板验证闭环。
-```
-
-面试深挖建议按以下层次讨论：
-
-```text
-Level 1 — 项目整体数据流
-Level 2 — UART DMA + RingBuffer
-Level 3 — FreeRTOS Task / Queue / Notify
-Level 4 — 五层架构与依赖倒置
-Level 5 — APP FSM / ownership / concurrency
-Level 6 — Software I2C 与共享资源
-Level 7 — 异常、回滚、诊断与测试
-Level 8 — 资源分析与进一步优化
-Level 9 — 如果换 MCU / RTOS / Sensor，哪些层需要改
-Level 10 — 哪些设计是为了学习工程化，实际产品中会如何裁剪
-```
-
-后续应准备：
-
-```text
-30 秒项目介绍
-2 分钟项目介绍
-5~10 分钟完整架构讲解
-UART DMA 深挖问答
-FreeRTOS 深挖问答
-软件架构深挖问答
-异常与并发场景问答
-资源优化问答
-设计取舍 / 反思题
+Queue submission success != business execution success
+唯一 owner 优先于到处加 mutex
+ISR 只做 capture/event，复杂业务放 Task
+absolute deadline 优于简单 delay(period)
 ```
 
 ---
 
-# 17. 后续新对话推荐入口
+# 17. 下一对话的正式入口：Display Implementation Planning
 
-当前核心阶段已经结束，后续讨论分为以下几条主线：
+下一对话不要重新讨论“屏幕能不能点亮”；该问题已经 Target Verified。
+
+建议从以下顺序继续：
 
 ```text
-A. Display Extension（近期下一阶段）
-- 先确认 P169H002-V5-CTP 显示模组原理图 / 接口 / 引脚资源
-- 收集并蒸馏 LCD Controller / CTP 数据手册
-- 判断 SPI、触摸中断、背光等硬件资源占用
-- 讨论 Platform / BSP / Service / App 边界
-- 决定显示刷新由哪个 Task/Service owner
-- 设计冻结后建立新的 Implementation Plan
-- Agent 实现 -> Keil -> Target 验证 -> 更新本交接文档
+1. 正式 ST7789 驱动在五层架构中的落点
+   - Platform BSP 是否直接作为设备能力层
+   - Vendor reference code 只保留哪些数据/资源
+   - 是否暂缓 generic platform_spi
 
-B. 可复用经验沉淀
-- 哪些 Platform / Service 可以直接迁移到新项目
-- 哪些代码模板值得独立出来
-- 哪些文档模板可以作为以后项目标准件
-- 哪些设计思想应该写成知识卡
+2. 正式 LCD 基础 API
+   - init
+   - backlight
+   - set_window
+   - fill_rect / fill
+   - ASCII / number 基础绘制
+   - error / timeout contract
 
-C. 项目面试讲解
-- 项目故事线
-- 架构图 / 数据流图
-- 每个关键设计为什么这样选
-- 面试官可能追问什么
-- 如何区分“学习型工程化”与“真实产品合理裁剪”
+3. 字体与绘图资源
+   - lcdfont.h 是否直接使用、裁剪或重新组织
+   - 是否只保留当前页面需要的 ASCII
+   - buffer 大小和 Flash/RAM 权衡
 
-D. Resource Optimization Review（可选）
-- Task stack high-water mark
-- minimum-ever free heap
-- Queue peak occupancy
-- EasyLogger async buffer
-- MAP 文件模块级 Flash / RAM 分析
+4. Display APP / Task 模型
+   - 是否新增 Display Task
+   - Display Queue / latest-value / overwrite 策略
+   - Acquisition -> Display 数据快照合同
+   - Display Task 优先级 / stack
 
-E. Bootloader + OTA 新工程（显示器扩展之后）
-- 不在当前工程中继续堆叠 Bootloader 复杂度
-- 以当前工程为软件资产与设计经验基底创建新的独立工程
-- Application 侧可选择复用 platform_common / platform_mcu / UART Service / RingBuffer 等成熟资产
-- Bootloader 侧采用 Minimal Core + Minimal Platform + Protocol + Config 思路
-- Bootloader 优先目标：小、稳定、确定、依赖少、可恢复
-- 重点重新设计 Flash Layout、Image Metadata、Upgrade State、CRC/Hash、Confirmed/Rollback、App Jump
-- OTA 下载/复杂通信能力优先放在 Application，Bootloader 只承担必要的校验、安装、回滚和跳转职责
+5. UART 产品输出职责调整
+   - UART RX 控制是否保留
+   - 周期 sensor report 是否停止 TX
+   - STATUS / HELP / ACK 是否继续保留
+   - RTT 继续作为 diagnostics
+
+6. ONCE 语义重新定义
+   - 当前 ONCE 与 UART TX success 强耦合
+   - 显示接入后重新定义事务完成条件
+
+7. 性能优化最后讨论
+   - SPI DMA
+   - partial refresh
+   - de-dup
+   - backlight PWM
 ```
 
-恢复当前工程上下文时优先读取：
+只有前述设计讨论收束后，才创建新的 Implementation Plan；不要复用旧 Phase 1~9 implementation plan。
+
+---
+
+# 18. 推荐恢复资料
+
+新对话优先读取：
 
 ```text
 00_Doc/04_Agent/handoff.md
 00_Doc/04_Agent/architecture.md
+00_Doc/02_架构设计/P169H200屏幕参考文件/P169H002_ST7789显示接入使用文档.md
+00_Doc/02_架构设计/P169H200屏幕参考文件/P169H002-CTP NEW 规格书SPEC.md
+05_Vendors/lcd/
+RTT_elog_DMA_UART_ring_project.ioc
+Core/Src/spi.c
+Core/Src/gpio.c
+Core/Inc/main.h
+01_APP/app_system.c
+01_APP/app_acquisition.*
+01_APP/app_control.c
+01_APP/app_ipc_types.h
+```
+
+需要参考原稳定 APP 设计时再读取：
+
+```text
 00_Doc/00_项目需求/最终功能需求.md
 00_Doc/02_架构设计/Final_RTOS_Application_Integration_Phase9设计.md
 00_Doc/02_架构设计/UART_Application_Communication_Phase8设计.md
 00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
 ```
 
-开始 Bootloader + OTA 新工程时，不要直接把本工程 `implementation_plan.md` 当作施工计划；只把本工程作为架构资产、模块资产和开发流程参考。
-
 ---
 
-# 18. 当前停止点
+# 19. 当前停止点
 
 ```text
-Current core phase: CLOSED / BASELINE FROZEN
-Project architecture: FROZEN for Phase 1~9 baseline
-Production code: COMPLETE
-Host tests: PASS
-Keil build: PASS
-Target integrated test: PASS
-Project Core: COMPLETE
+Phase 1~9 core application:
+COMPLETE / BASELINE FROZEN / TARGET VERIFIED
 
-Optional runtime resource measurement: PENDING
-Optional resource optimization: NOT STARTED
+Display Extension - hardware resource review:
+PASS
 
-Immediate next phase:
-Display integration / P169H002-V5-CTP exploration
-Status: NOT DESIGNED / NOT STARTED
+Display Extension - CubeMX SPI1 + GPIO:
+PASS / GENERATED / RETAINED
+
+Display Extension - minimal ST7789 Bring-up:
+TARGET VERIFIED PASS
+TEMPORARY TEST CODE REVERTED
+
+Display Extension - formal driver architecture:
+NOT DESIGNED / NEXT DISCUSSION
+
+Display Extension - Display Task / IPC:
+NOT DESIGNED
+
+Display Extension - UART output responsibility migration:
+NOT DESIGNED
+
+Display Extension - formal Implementation Plan:
+NOT CREATED
+
+Touch / CTP:
+OUT OF CURRENT STAGE
+
+Optional runtime resource measurement:
+PENDING
 
 Planned following project:
-New Bootloader + OTA project derived from this project's reusable assets
-Status: PLANNED / SEPARATE PROJECT
+Bootloader + OTA / SEPARATE PROJECT
 ```
 
-当前基线除修复缺陷外原则上保持稳定。
-
-显示器接入视为新的增量开发阶段，应继续沿用已经形成的流程：
+下一对话的任务不是继续做实验代码，而是：
 
 ```text
-需求定义
- -> 硬件事实确认
- -> Datasheet / Reference Manual 收集
- -> 项目化资料蒸馏
- -> 架构与接口设计
- -> 施工方案讨论
- -> Design Freeze
- -> Documentation + Implementation Plan + Agent Handoff
- -> Agent Implementation
- -> Keil Integration
- -> Target Test
- -> Documentation Closure
+从已经 Target-Verified 的 LCD 硬件合同出发
+ -> 讨论正式驱动落层与 API
+ -> 讨论 Display Task / IPC / UART / ONCE 业务变化
+ -> 分阶段冻结设计
+ -> 形成新的 Implementation Plan
+ -> 再交给 Codex 正式实施
 ```
 
----
-
-# 19. 阶段性封版决定（2026-09-05）
-
-当前项目 Phase 1~9 的核心目标已经达成，本阶段正式结束。
-
-阶段封版结论：
-
-```text
-1. 现有 STM32F411 + FreeRTOS 应用工程作为后续实验的稳定 Application Baseline。
-2. UART + DMA + RingBuffer + UART Service 作为通用异步串行通信能力继续保留和复用。
-3. platform_common / platform_os / platform_mcu / log interface 作为优先验证的跨项目复用资产。
-4. Unified Acquisition Service 主要复用其边界和设计模式，不假设具体代码可无条件迁移。
-5. 下一阶段优先尝试显示器接入，用于验证本架构继续扩展 UI / Display 设备后的边界是否合理。
-6. 显示器阶段完成后，以当前项目为基底创建新的 Bootloader + OTA 工程。
-7. Bootloader 不追求与 Application 架构形式统一，优先采用更轻量的软件结构；当前五层架构仅作为设计经验和可选接口资产来源。
-```
-
-后续 Agent 恢复上下文时，必须先判断当前任务属于：
-
-```text
-当前 Application 基线维护
-Display Extension
-资源/复用/面试复盘
-新的 Bootloader + OTA 工程
-```
-
-不要把这些阶段混成一个持续膨胀的单一施工计划。
+当前 Phase 1~9 基线除修复缺陷外原则上保持稳定；Display Extension 作为独立增量阶段推进，不把所有后续设计一次性卡死。
