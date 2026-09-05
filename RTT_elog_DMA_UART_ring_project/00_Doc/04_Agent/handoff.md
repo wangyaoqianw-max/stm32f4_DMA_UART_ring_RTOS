@@ -3,8 +3,9 @@
 更新时间：2026-09-05
 
 > 本文件是 AI Agent / Codex 与人工开发者恢复工程上下文时的长期入口。  
-> 当前项目核心功能已经完成并通过目标板综合验证，后续不再以新增业务功能为主。  
-> 后续讨论重点转为：可复用工程经验与文件沉淀、资源优化评审、项目复盘，以及面试深度讲解。
+> 当前项目核心功能阶段已经完成并通过目标板综合验证，现作为稳定基线阶段性封版。  
+> 下一步先在本工程上尝试接入显示器，用于继续验证既有分层、设备抽象与任务模型的扩展能力；显示器阶段完成后，以本工程的成熟架构与可复用模块为基底，新建独立的 Bootloader + OTA 学习工程。  
+> Bootloader 不要求复制当前完整五层应用架构，应根据启动可靠性、体积和依赖最小化原则单独裁剪。
 
 ---
 
@@ -119,14 +120,16 @@ Phase 8  UART Application Communication          COMPLETED / HOST + KEIL + TARGE
 Phase 9  Final RTOS Application Integration      COMPLETED / HOST + KEIL + TARGET VERIFIED
 
 Final Integrated Board Test                      PASS
-Project Core                                     COMPLETE
+Project Core                                     COMPLETE / BASELINE FROZEN
 ```
 
 原 RTOS Task/Event 阶段与 Final APP Integration 已合并为 Phase 9。
 
-不存在独立 Phase 10。
+不存在原规划中的独立 Phase 10；当前 Phase 1~9 作为第一阶段核心工程基线正式结束。
 
 `00_Doc/04_Agent/implementation_plan.md` 现在属于已完成的历史实施计划，不再作为新的施工入口。
+
+显示器接入属于新的扩展阶段，开始前应重新完成硬件资源确认、数据手册蒸馏、架构边界讨论与新的 Implementation Plan，不直接复用旧计划继续施工。
 
 ---
 
@@ -736,6 +739,32 @@ Queue Peak = IPC capacity evidence
 
 不要只看 `Program Size` 一行。
 
+## 15.11 复用层级
+
+本阶段复盘形成以下区分：
+
+```text
+代码级复用
+- RingBuffer
+- platform_common
+- platform_os
+- 部分 platform_mcu
+
+能力级复用
+- UART Service
+- Log interface / backend binding
+- UART + DMA + RingBuffer 异步字节流基础设施
+
+设计模式级复用
+- Unified Acquisition Service
+- Control FSM
+- Composition Root
+- Data / Context / Statistics
+- Task / Service responsibility split
+```
+
+不要把“可复用”简单理解为下个项目原样复制文件。
+
 ---
 
 # 16. 后续面试讲解主线
@@ -791,35 +820,49 @@ FreeRTOS 深挖问答
 
 # 17. 后续新对话推荐入口
 
-项目核心开发已完成。
-
-新的讨论优先分为三条主线：
+当前核心阶段已经结束，后续讨论分为以下几条主线：
 
 ```text
-A. 可复用经验沉淀
+A. Display Extension（近期下一阶段）
+- 先确认 P169H002-V5-CTP 显示模组原理图 / 接口 / 引脚资源
+- 收集并蒸馏 LCD Controller / CTP 数据手册
+- 判断 SPI、触摸中断、背光等硬件资源占用
+- 讨论 Platform / BSP / Service / App 边界
+- 决定显示刷新由哪个 Task/Service owner
+- 设计冻结后建立新的 Implementation Plan
+- Agent 实现 -> Keil -> Target 验证 -> 更新本交接文档
+
+B. 可复用经验沉淀
 - 哪些 Platform / Service 可以直接迁移到新项目
 - 哪些代码模板值得独立出来
 - 哪些文档模板可以作为以后项目标准件
 - 哪些设计思想应该写成知识卡
 
-B. 项目面试讲解
+C. 项目面试讲解
 - 项目故事线
 - 架构图 / 数据流图
 - 每个关键设计为什么这样选
 - 面试官可能追问什么
 - 如何区分“学习型工程化”与“真实产品合理裁剪”
 
-C. Resource Optimization Review
+D. Resource Optimization Review（可选）
 - Task stack high-water mark
 - minimum-ever free heap
 - Queue peak occupancy
 - EasyLogger async buffer
 - MAP 文件模块级 Flash / RAM 分析
+
+E. Bootloader + OTA 新工程（显示器扩展之后）
+- 不在当前工程中继续堆叠 Bootloader 复杂度
+- 以当前工程为软件资产与设计经验基底创建新的独立工程
+- Application 侧可选择复用 platform_common / platform_mcu / UART Service / RingBuffer 等成熟资产
+- Bootloader 侧采用 Minimal Core + Minimal Platform + Protocol + Config 思路
+- Bootloader 优先目标：小、稳定、确定、依赖少、可恢复
+- 重点重新设计 Flash Layout、Image Metadata、Upgrade State、CRC/Hash、Confirmed/Rollback、App Jump
+- OTA 下载/复杂通信能力优先放在 Application，Bootloader 只承担必要的校验、安装、回滚和跳转职责
 ```
 
-如果新对话不是继续编码，不需要再从 `implementation_plan.md` Task 0 开始。
-
-恢复上下文时优先读取：
+恢复当前工程上下文时优先读取：
 
 ```text
 00_Doc/04_Agent/handoff.md
@@ -830,12 +873,15 @@ C. Resource Optimization Review
 00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
 ```
 
+开始 Bootloader + OTA 新工程时，不要直接把本工程 `implementation_plan.md` 当作施工计划；只把本工程作为架构资产、模块资产和开发流程参考。
+
 ---
 
 # 18. 当前停止点
 
 ```text
-Project architecture: FROZEN
+Current core phase: CLOSED / BASELINE FROZEN
+Project architecture: FROZEN for Phase 1~9 baseline
 Production code: COMPLETE
 Host tests: PASS
 Keil build: PASS
@@ -845,10 +891,59 @@ Project Core: COMPLETE
 Optional runtime resource measurement: PENDING
 Optional resource optimization: NOT STARTED
 
-Next focus:
-1. reusable engineering lessons / reusable files
-2. interview-oriented deep project explanation
-3. optional resource optimization review
+Immediate next phase:
+Display integration / P169H002-V5-CTP exploration
+Status: NOT DESIGNED / NOT STARTED
+
+Planned following project:
+New Bootloader + OTA project derived from this project's reusable assets
+Status: PLANNED / SEPARATE PROJECT
 ```
 
-除非后续明确提出新的业务需求，否则不要把项目重新带回功能扩展阶段。
+当前基线除修复缺陷外原则上保持稳定。
+
+显示器接入视为新的增量开发阶段，应继续沿用已经形成的流程：
+
+```text
+需求定义
+ -> 硬件事实确认
+ -> Datasheet / Reference Manual 收集
+ -> 项目化资料蒸馏
+ -> 架构与接口设计
+ -> 施工方案讨论
+ -> Design Freeze
+ -> Documentation + Implementation Plan + Agent Handoff
+ -> Agent Implementation
+ -> Keil Integration
+ -> Target Test
+ -> Documentation Closure
+```
+
+---
+
+# 19. 阶段性封版决定（2026-09-05）
+
+当前项目 Phase 1~9 的核心目标已经达成，本阶段正式结束。
+
+阶段封版结论：
+
+```text
+1. 现有 STM32F411 + FreeRTOS 应用工程作为后续实验的稳定 Application Baseline。
+2. UART + DMA + RingBuffer + UART Service 作为通用异步串行通信能力继续保留和复用。
+3. platform_common / platform_os / platform_mcu / log interface 作为优先验证的跨项目复用资产。
+4. Unified Acquisition Service 主要复用其边界和设计模式，不假设具体代码可无条件迁移。
+5. 下一阶段优先尝试显示器接入，用于验证本架构继续扩展 UI / Display 设备后的边界是否合理。
+6. 显示器阶段完成后，以当前项目为基底创建新的 Bootloader + OTA 工程。
+7. Bootloader 不追求与 Application 架构形式统一，优先采用更轻量的软件结构；当前五层架构仅作为设计经验和可选接口资产来源。
+```
+
+后续 Agent 恢复上下文时，必须先判断当前任务属于：
+
+```text
+当前 Application 基线维护
+Display Extension
+资源/复用/面试复盘
+新的 Bootloader + OTA 工程
+```
+
+不要把这些阶段混成一个持续膨胀的单一施工计划。
