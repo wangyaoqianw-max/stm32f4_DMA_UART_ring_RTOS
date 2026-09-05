@@ -1,9 +1,9 @@
-# Final Acquisition System Requirements
+# Embedded Firmware Requirements Baseline
 
 > 文档类型：Agent Requirements Baseline  
-> 状态：Final Phase 9 Baseline  
-> 版本：V3.0  
-> 更新时间：2026-09-04  
+> 状态：CORE BASELINE + DISPLAY SPI EXTENSION  
+> 版本：V3.1  
+> 更新时间：2026-09-05  
 > 适用工程：`stm32f4_DMA_UART_ring_RTOS`
 
 ---
@@ -12,176 +12,204 @@
 
 本文件是 AI Agent / Codex 进行设计、编码和 Review 时使用的长期需求摘要。
 
-业务行为权威文件：
+Phase 1~9 Core Application 已完成并通过 Host / Keil / Target 综合验证。
+
+当前 Display Extension 已完成：
 
 ```text
-00_Doc/00_项目需求/最终功能需求.md
+hardware resource confirmation
+CubeMX SPI1 + LCD GPIO
+minimal ST7789 target bring-up
+SPI Platform + STM32 Impl Phase 1
 ```
 
-最终软件设计：
+当前没有 Active Implementation Plan。
+
+下一阶段：
 
 ```text
-00_Doc/02_架构设计/Final_RTOS_Application_Integration_Phase9设计.md
-```
-
-当前执行计划：
-
-```text
-00_Doc/04_Agent/implementation_plan.md
-```
-
-原 RTOS Task/Event 阶段与 Final APP Integration 已合并为最终 Phase 9；不存在独立 Phase 10。
-
----
-
-# 2. 项目最终闭环
-
-```text
-PA0 Button
- -> Platform Button
- -> Button Service
- -> Control Task ----------------------+
-                                        |
-USART1 RX DMA                           v
- -> UART Service / RingBuffer    APP Control FSM
- -> Communication Task                 |
- -> Control Queue ----------------------+
-                                        |
-                     +------------------+------------------+
-                     |                  |                  |
-                     v                  v                  v
-              Acquisition Cmd    Communication Out   Indicator Queue
-                     |                  |                  |
-                     v                  v                  v
-              Acquisition Task   Communication Task   Indicator Task
-                     |                  |                  |
-                     v                  v                  v
-           Acquisition Service    UART Service      Indicator Service
-              DHT20 -> MPU6050      TX DMA               LED
-                     |
-             Shared Software I2C
-                     |
-               Platform GPIO
-```
-
-诊断：
-
-```text
-APP / Service
- -> Service Log
- -> Platform Log
- -> EasyLogger
- -> SEGGER RTT
+formal ST7789 Driver design discussion
 ```
 
 ---
 
-# 3. 硬件与软件环境
+# 2. Stable Layering Requirements
+
+```text
+APP -> Service       ALLOWED
+APP -> Platform      ALLOWED
+Service -> Platform  ALLOWED
+Platform -> Impl     ALLOWED
+
+APP -> Impl          FORBIDDEN
+Service -> Impl      FORBIDDEN
+```
+
+APP / Service 禁止直接依赖：
+
+```text
+HAL
+CubeMX Handle
+Impl private API
+FreeRTOS concrete handle
+```
+
+CubeMX generated files 只承担初始化、Scheduler、IRQ / HAL Callback 和薄胶水。
+
+---
+
+# 3. Hardware / Software Environment
 
 ```text
 MCU        : STM32F411CEU6 / Cortex-M4F
-Flash      : 512 KB
-RAM        : 128 KB
+Flash      : 512 KiB
+RAM        : 128 KiB
 UART       : USART1 / 115200 8N1
-Sensor     : DHT20 + MPU6050
+Sensors    : DHT20 + MPU6050
 Input      : PA0 User Key
 Indicator  : PC13 Status LED
 I2C        : Software I2C over PB6/PB7
 RTOS       : CMSIS-RTOS2 + FreeRTOS
 Log        : EasyLogger + SEGGER RTT
+Display    : P169H002-CTP / ST7789T3 / 240x280
 Toolchain  : Keil MDK-ARM + STM32CubeMX
 ```
 
-UART：
-
-```text
-RX = DMA2_Stream2 / Channel 4 / Circular / VERIFIED
-TX = DMA2_Stream7 / Channel 4 / Normal
-Platform/Service TX = IMPLEMENTED / HOST + KEIL VERIFIED
-TX target verification = Phase 9 final integration scope
-```
+Touch / CTP 当前不在范围内。
 
 ---
 
-# 4. 系统状态与控制
+# 4. Core Application Completion Status
 
-APP 层维护唯一业务状态：
+```text
+Phase 1~9                    COMPLETE
+Host regression              PASS
+Keil production build        PASS
+Final integrated target test PASS
+```
+
+核心产品行为已冻结为稳定基线，除缺陷修复或正式 Display 业务迁移外不随意重构。
+
+---
+
+# 5. Final RTOS Task Requirements
+
+固定 4 个产品任务：
+
+| Task | Initial Stack | Priority | Core Responsibility |
+| --- | ---: | --- | --- |
+| Communication | 2048 B | ABOVE_NORMAL | UART RX parser + sole product TX |
+| Control | 1024 B | ABOVE_NORMAL | Button polling + sole APP FSM |
+| Acquisition | 1536 B | NORMAL | sensor scheduling/execution |
+| Indicator | 768 B | BELOW_NORMAL | LED semantic execution |
+
+CubeMX `defaultTask` 不作为第五个产品 Task。
+
+当前 SPI / LCD Platform 基础设施不增加 Task。
+
+---
+
+# 6. APP Control Requirements
+
+唯一业务状态：
 
 ```text
 STOPPED
 RUNNING
 ```
 
-启动后：
+唯一 owner：
 
 ```text
-State       = STOPPED
-LED         = OFF
-UART RX     = ACTIVE
-RTT Log     = ACTIVE
-Periodic acquisition = DISABLED
+Control Task / APP FSM
 ```
-
-允许与业务状态正交的 ONCE operation context：
-
-```text
-onceActive
-onceSource
-```
-
-它们不是第三个业务状态。
 
 统一控制事件：
 
 ```text
-APP_CTRL_START
-APP_CTRL_STOP
-APP_CTRL_SAMPLE_ONCE
-APP_CTRL_GET_STATUS
+START
+STOP
+SAMPLE_ONCE
+GET_STATUS
 ```
 
-统一来源：
+来源：
 
 ```text
-BUTTON
+Button
 UART
 ```
 
----
-
-# 5. Button Requirements
-
-硬件/手势参数：
-
-```text
-active LOW / Pull-Up
-sample 10 ms
-debounce 30 ms
-double window 300 ms
-long press 3000 ms
-```
-
-映射：
-
-```text
-SINGLE -> START
-DOUBLE -> SAMPLE_ONCE
-LONG   -> STOP
-```
-
-业务矩阵：
-
-| State / Operation | SINGLE | DOUBLE | LONG |
-| --- | --- | --- | --- |
-| STOPPED, no ONCE | RUNNING | start ONCE, remain STOPPED | no business action |
-| RUNNING | remain RUNNING | no extra sample | STOPPED |
-| STOPPED, ONCE active | ignore | ignore | ignore |
-
-Button polling 在 Control Task 中执行，不建立独立 Button Task。
+Button / UART 不得维护独立 running flag。
 
 ---
 
-# 6. UART Application Requirements
+# 7. Acquisition Requirements
+
+Unified Acquisition Service：
+
+```text
+DHT20 read
+ -> MPU6050 read
+ -> complete atomic acquisition result
+```
+
+成功：
+
+```text
+DHT20 OK && MPU6050 OK
+```
+
+失败不得提交 partial business data。
+
+周期：
+
+```text
+START -> immediate first sample
+then every 2000 ms by absolute deadline
+```
+
+Acquisition Task 是 DHT20 / MPU6050 / shared Software I2C 唯一运行时访问者。
+
+---
+
+# 8. UART Requirements
+
+RX：
+
+```text
+USART1 RX DMA Circular
+IDLE / HT / TC
+UART Platform / Service
+SPSC RingBuffer
+Communication Task
+```
+
+要求：
+
+```text
+single producer / single consumer
+no ordinary RingBuffer mutex
+no second RX path
+```
+
+TX：
+
+```text
+Communication Task
+ -> UART Service
+ -> Platform UART async
+ -> STM32 UART Impl
+ -> USART1 TX DMA
+```
+
+Communication Task 是唯一产品 TX requester。
+
+Display 接入后是否停止周期 sensor UART TX 尚未冻结。
+
+---
+
+# 9. Current UART Protocol Requirements
 
 严格命令：
 
@@ -204,280 +232,41 @@ no arguments
 fixed-size storage
 ```
 
-RingBuffer read boundary 不是 command boundary；必须支持 fragmented / coalesced chunks。
-
-业务响应：
+当前 report：
 
 ```text
-OK START\r\n
-OK STOP\r\n
-ERR ALREADY_RUNNING\r\n
-ERR ALREADY_STOPPED\r\n
-ERR BUSY\r\n
-ERR ACQUISITION_FAILED\r\n
-STATUS RUNNING\r\n
-STATUS STOPPED\r\n
+ENV,T=...,...\r\n
+IMU,AX=...,AY=...,AZ=...,GX=...,GY=...,GZ=...\r\n
 ```
 
-Communication-local：
-
-```text
-HELP START STOP ONCE STATUS HELP\r\n
-ERR UNKNOWN_COMMAND\r\n
-ERR COMMAND_TOO_LONG\r\n
-```
-
-ONCE active 时：
-
-```text
-START / STOP / ONCE -> ERR BUSY
-STATUS               -> STATUS STOPPED
-```
-
-成功 ONCE 不要求额外 `OK ONCE`；完整 report TX 成功即成功输出。
-
-Communication 不维护 STOPPED/RUNNING。
+这些是 Phase 9 稳定基线；Display Product Output 迁移后可通过新设计修改。
 
 ---
 
-# 7. UART Transport Requirements
+# 10. Current ONCE Requirement
 
-RX 保持：
-
-```text
-USART1 RX
- -> DMA Circular + IDLE / HT / TC
- -> STM32 UART Impl
- -> Platform UART Event
- -> UART Service
- -> SPSC RingBuffer
- -> Communication Task
-```
-
-不得：
-
-```text
-create second UART RX path
-add ordinary mutex to current SPSC
-```
-
-TX：
-
-```text
-Communication Task
- -> service_uart_write()
- -> Platform UART write_async
- -> STM32 UART Impl
- -> HAL_UART_Transmit_DMA
- -> DMA2_Stream7 Normal
- -> USART1
-```
-
-第一版：
-
-```text
-one active TX transaction only
-RX + TX concurrently allowed
-no UART TX RingBuffer
-no UART TX Queue/worker inside UART Service
-Communication Task = sole product TX requester
-```
-
-强保证：
-
-```text
-service_uart_write() returns
-=> DMA no longer accesses caller buffer
-```
-
-USART1 只用于产品控制/数据；RTT 用于诊断。禁止 direct HAL blocking TX 重新成为产品旁路。
-
----
-
-# 8. Unified Acquisition Service Requirements
-
-Phase 9 新增统一 Acquisition Service，组合已经验证的 Platform DHT20 + MPU6050。
-
-职责：
-
-```text
-DHT20 read
- -> MPU6050 read
- -> complete atomic acquisition data
-```
-
-成功语义：
-
-```text
-DHT20 OK && MPU6050 OK -> OK
-otherwise             -> FAILED
-```
-
-诊断要求：即使 DHT20 失败，也继续尝试 MPU6050。
-
-输出要求：
-
-```text
-use temporary data
-commit caller output only if both sensors succeed
-failure must leave caller output unchanged
-```
-
-Service 不负责 Task、Queue、2 s scheduling、UART、LED 或 shared I2C lifecycle。
-
----
-
-# 9. Acquisition Scheduling Requirements
-
-统一周期：
-
-```text
-PROJECT_ACQUISITION_PERIOD_MS = 2000U
-```
-
-Acquisition Task 是唯一 DHT20 / MPU6050 / shared Software I2C runtime accessor。
-
-第一版不增加 I2C Mutex。
-
-STOPPED：
-
-```text
-wait Acquisition Command Queue indefinitely
-```
-
-START：
-
-```text
-immediate first complete acquisition/report
-then every 2000 ms
-```
-
-RUNNING scheduling：
-
-```text
-Queue receive with timeout until absolute deadline
-nextDeadline += 2000 ms
-```
-
-不能用简单 `delay(2000)` 作为主调度模型。
-
-Overrun：不补采历史样本，不 catch-up burst。
-
-STOP during active synchronous sensor transaction：不强制中途取消；允许 transaction 安全收尾，但 STOP 后不得发布 stale periodic report，也不得继续新的周期采集。
-
----
-
-# 10. ONCE Requirements
-
-STOPPED 且没有 active ONCE：
-
-```text
-SAMPLE_ONCE
- -> DHT20
- -> MPU6050
- -> complete UART report
- -> UART TX success
- -> Indicator ONCE_SUCCESS
- -> LED blink 3 times
- -> OFF
- -> remain STOPPED
-```
-
-成功定义：
+当前成功条件：
 
 ```text
 DHT20 success
 AND MPU6050 success
-AND complete report TX success
+AND complete UART report TX success
 ```
 
-任一失败：
+成功后：
 
 ```text
-clear onceActive
-no success blink
-RTT diagnostic
+Indicator blink 3 times
+remain STOPPED
 ```
 
-如果 acquisition 失败且请求来源为 UART，可返回：
-
-```text
-ERR ACQUISITION_FAILED\r\n
-```
-
-如果 UART transport 本身失败，不要求再尝试经同一失败通道发送 TX error response。
+Display 接入后必须重新定义 ONCE completion semantic，不能简单把 UART Queue 换成 Display Queue。
 
 ---
 
-# 11. Sensor Data / Product Report
+# 11. APP IPC Requirements
 
-DHT20：
-
-```text
-temperature
-relative humidity
-```
-
-MPU6050：
-
-```text
-Accel X/Y/Z raw + g
-Gyro X/Y/Z raw + deg/s
-```
-
-第一版 report：
-
-```text
-ENV,T=25.34,H=62.18\r\n
-IMU,AX=0.013,AY=-0.021,AZ=0.998,GX=0.12,GY=-0.42,GZ=0.08\r\n
-```
-
-RUNNING 每 2 s 一组完整 report；START 后第一组立即产生。
-
-不实现姿态融合 / Roll / Pitch / Yaw / DMP / filters。
-
----
-
-# 12. LED Requirements
-
-```text
-STOPPED                -> OFF
-RUNNING                -> ON
-RUNNING periodic TX    -> keep ON
-ONCE TX SUCCESS        -> blink 3 times -> OFF
-ONCE sample/TX failure -> keep OFF
-```
-
-闪烁：
-
-```text
-100 ms ON / 100 ms OFF / 3 times
-```
-
-Indicator Task 承担当前阻塞式 blink，不能阻塞 Control / Acquisition / Communication。
-
----
-
-# 13. Final RTOS Task Model
-
-固定 4 个产品任务：
-
-| Task | Initial Stack | Priority | Core Responsibility |
-| --- | ---: | --- | --- |
-| Communication | 2048 B | ABOVE_NORMAL | UART RX parser + sole product TX |
-| Control | 1024 B | ABOVE_NORMAL | Button polling + sole APP FSM |
-| Acquisition | 1536 B | NORMAL | sensor scheduling/execution |
-| Indicator | 768 B | BELOW_NORMAL | LED semantic execution |
-
-第一版资源故意偏宽松。完整系统稳定后根据 high-water mark / Queue peak occupancy 再收缩。
-
-当前不讨论低功耗，不引入 Tickless / Button EXTI wake。
-
-CubeMX `defaultTask` 不作为第五个产品任务；实现时仅在 USER CODE 内首次运行后 `osThreadExit()`。
-
----
-
-# 14. APP IPC Requirements
+当前稳定 Queue：
 
 ```text
 Control Queue                 depth 8
@@ -494,50 +283,14 @@ bounded
 value-copy
 no temporary stack pointer
 no infinite producer blocking
-queue full must be observable
+queue full observable
 ```
 
-第一版不引入 Queue Set / Event Group / APP state mutex。
-
-Communication Outbound Queue 无法直接唤醒 UART Service private notify wait；第一版采用：
-
-```text
-nonblocking outbound drain
- -> app_communication_process(20 ms)
- -> nonblocking outbound drain
-```
-
-不为此扩展新的 RTOS abstraction。
+Display Queue / snapshot 尚未设计。
 
 ---
 
-# 15. Software I2C Requirements
-
-当前冻结：
-
-```text
-Master-only
-7-bit
-synchronous
-Platform GPIO based
-microsecond bit timing
-no internal mutex
-```
-
-DHT20 + MPU6050 共用 PB6/PB7。
-
-唯一 Acquisition Task 串行执行：
-
-```text
-DHT20 complete transaction
- -> MPU6050 complete transaction
-```
-
-只有未来出现真实第二个并发访问者时才讨论 transaction-level synchronization。
-
----
-
-# 16. ISR / Memory / Layering Requirements
+# 12. ISR / Memory Requirements
 
 ISR / HAL Callback 仅允许：
 
@@ -552,107 +305,242 @@ quick exit
 禁止：
 
 ```text
-Button gesture FSM in ISR
-Software I2C in ISR
-full parser in ISR
-Sensor business in ISR
+business FSM in ISR
+Software I2C transaction in ISR
+full UART parser in ISR
+sensor business in ISR
 blocking LED blink in ISR
-malloc/free in ISR/business path
-ordinary mutex in ISR
+runtime malloc/free in business paths
 heavy formatted logs in ISR
 ```
 
-分层：
+核心运行数据优先：
 
 ```text
-APP -> Service       ALLOWED
-APP -> Platform      ALLOWED
-Service -> Platform  ALLOWED
-Platform -> Impl     ALLOWED
-APP -> Impl          FORBIDDEN
-Service -> Impl      FORBIDDEN
-```
-
-核心运行数据优先 static / caller-owned / value-copy storage。
-
----
-
-# 17. RTT / EasyLogger Requirements
-
-```text
-UART -> product control + product data
-RTT  -> init / state / acquisition / diagnostics / errors
-```
-
-建议：
-
-```text
-INFO  initialization / START / STOP / ONCE / state changes
-DEBUG periodic acquisition/report summary
-WARN  recoverable sensor/I2C/UART/queue issues
-ERROR critical initialization/runtime failures
-```
-
-禁止正常运行逐 UART byte、DMA step、I2C bit/ACK、Button poll 刷日志。
-
----
-
-# 18. Final Acceptance
-
-必须验证：
-
-```text
-Boot -> STOPPED / LED OFF / UART RX active / no periodic report
-Button SINGLE -> RUNNING / LED ON / immediate first report / every 2 s
-Button LONG -> STOPPED / LED OFF / no future periodic report
-Button DOUBLE in STOPPED -> one report / TX success / 3 blinks / remain STOPPED
-UART START/STOP/ONCE/STATUS/HELP correct
-Button + UART use one APP state truth
-RX remains active during TX DMA
-DHT20 + MPU6050 shared Soft-I2C stable
-ONCE acquisition/TX failure never success-blinks
-relevant failures visible through RTT
-```
-
-完成后记录：
-
-```text
-4 Task stack high-water marks
-Queue peak occupancy / observed margins
-Host regression result
-Keil result
-Target integrated result
+static
+caller-owned
+value-copy
 ```
 
 ---
 
-# 19. Scope / Active Phase
-
-必须完成：
+# 13. Logging Requirements
 
 ```text
-Phase 9 Final RTOS Application Integration
+USART1 -> product control/data
+RTT    -> initialization / state / diagnostics / errors
+```
+
+禁止正常运行逐 byte、逐 DMA step、逐 I2C bit、逐 Button poll 刷日志。
+
+---
+
+# 14. Display Hardware Requirements
+
+当前已验证屏幕：
+
+```text
+P169H002-CTP
+ST7789T3
+240 x 280
+RGB565
+```
+
+引脚：
+
+```text
+PA1  LCD_BL
+PA4  LCD_CS
+PA5  SPI1_SCK
+PA6  LCD_DC
+PA7  SPI1_MOSI
+PB10 LCD_RST
+```
+
+目标板已确认：
+
+```text
+Mode 3
+12.5 MHz current SCK
+8 bit
+MSB First
+software CS
+X_OFFSET 0
+Y_OFFSET 20
+RGB565 high-byte first
+BL High = ON
+BL Low = OFF
+```
+
+不要重新把临时 Bring-up code 当作正式驱动。
+
+---
+
+# 15. SPI Platform Requirements
+
+SPI Platform + STM32 Impl Phase 1 已完成。
+
+正式对象：
+
+```text
+platform_spi_bus_t
+platform_spi_device_t
+```
+
+公共事务：
+
+```text
+platform_spi_transaction_begin()
+platform_spi_write()
+platform_spi_transaction_end()
+```
+
+SPI Device 配置：
+
+```text
+mode
+bitOrder
+dataBits
+maxClockHz
+```
+
+Phase 1 能力：
+
+```text
+blocking synchronous TX
+8-bit only
+optional CS
+configurable CS active level
+fixed CubeMX config validation
+```
+
+Platform public API 禁止暴露：
+
+```text
+SPI_HandleTypeDef
+hspi1
+HAL_SPI_*
+```
+
+STM32 Impl 是 HAL SPI 唯一绑定位置。
+
+---
+
+# 16. SPI Transaction Requirements
+
+规则：
+
+```text
+begin success transfers transaction ownership to caller
+write requires activeDevice == device
+write does not auto-end
+successful begin must eventually call end
+second begin while bus active -> BUSY
+wrong-device write/end -> INVALID_STATE
+```
+
+CS 可以为 NULL。
+
+DC / RST / BL 是 LCD-specific signals，不进入 generic SPI。
+
+---
+
+# 17. SPI Configuration Ownership
+
+当前硬件固定配置 owner：
+
+```text
+CubeMX MX_SPI1_Init()
+```
+
+STM32 SPI Impl：
+
+```text
+validates actual Mode / FirstBit / DataSize / SCK
+uses finite blocking HAL_SPI_Transmit timeout
+does not runtime reconfigure SPI in Phase 1
+```
+
+当前实际 CubeMX Direction：
+
+```text
+SPI_DIRECTION_2LINES
+```
+
+但 Platform Phase 1 只公开 TX 能力。
+
+---
+
+# 18. Display Resource Requirements
+
+全屏 RGB565 framebuffer：
+
+```text
+240 * 280 * 2 = 134400 B
+```
+
+超过当前 128 KiB SRAM 可接受范围。
+
+因此正式显示实现不得默认采用全屏 framebuffer。
+
+优先：
+
+```text
+direct region update
+small line/block buffer
+partial refresh
+```
+
+SPI DMA 不是当前硬性需求，只有正式刷新暴露性能问题后再评估。
+
+---
+
+# 19. Current Verification Status
+
+SPI Phase 1：
+
+```text
+Focused Host tests : PASS / 2 groups
+Host regression    : PASS / 36 groups
+Keil rebuild       : PASS / 0 errors
+Target test        : NOT REQUIRED BY PLAN
+```
+
+正式 ST7789 Driver 完成后需要重新做目标板验证正式调用链。
+
+---
+
+# 20. Active Scope
+
+已经完成：
+
+```text
+Phase 1~9 Core Application
 Final Integrated Board Test
+Display hardware/CubeMX
+Minimal ST7789 Bring-up
+SPI Platform + STM32 Impl Phase 1
 ```
 
-当前不做：
+当前下一步：
 
 ```text
-low-power / Tickless policy
-Button EXTI wake
-SPI / LCD / GUI
-W25Q64 / AT24C02
+formal ST7789 Driver architecture/API discussion
+```
+
+当前不直接实施：
+
+```text
+Display Task / Queue
+UART output migration
+ONCE semantic migration
+SPI DMA
+runtime SPI reconfiguration
+Touch / CTP
+backlight PWM
+W25Q64
 Bluetooth
-Roll / Pitch / Yaw / DMP / filters
-complex binary UART protocol
-unneeded framework expansion
+low-power / Tickless
 ```
 
-当前：
-
-```text
-Phase 8 = IMPLEMENTATION COMPLETED / HOST + KEIL VERIFIED
-Phase 9 = DESIGN FROZEN / READY FOR CODEX
-```
-
-Codex 必须从 `00_Doc/04_Agent/implementation_plan.md` Task 0 开始执行。
+必须先讨论、冻结设计，再创建新的 Implementation Plan。
