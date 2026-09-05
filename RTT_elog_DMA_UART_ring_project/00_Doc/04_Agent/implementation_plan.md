@@ -1,543 +1,520 @@
-# Phase 9 Final RTOS Application Integration Implementation Plan
+# SPI Platform + STM32 Impl Phase 1 Implementation Plan
 
 > 当前执行计划 / Current Active Plan  
 > 状态：DESIGN FROZEN / READY FOR CODEX  
-> 日期：2026-09-04  
+> 日期：2026-09-05  
 > 适用工程：`stm32f4_DMA_UART_ring_RTOS`
 
-**Goal:** 在 Phase 1~8 已完成能力上完成最终 FreeRTOS 应用闭环：Button + UART 统一控制、APP Control FSM、4 个产品 Task、Unified Acquisition Service、2 s DHT20 + MPU6050 采集上报、ONCE 完整事务、Indicator 反馈以及最终综合板测。
+**Goal:** 在已经 Target-Verified 的 SPI1 + ST7789T3 硬件基础上，正式建立可复用的 SPI Bus / SPI Device Platform 抽象与 STM32 HAL Impl 适配，为下一阶段正式 ST7789 Driver 提供稳定依赖。
 
-**Architecture:** `APP -> Service -> Platform -> Impl -> Vendor`。Control Task 是唯一 STOPPED/RUNNING 业务状态 owner；Acquisition Task 是唯一 sensor / shared Software I2C runtime accessor；Communication Task 是 UART Service ownerThread 和 USART1 唯一产品 TX requester；Indicator Task 是 LED semantic executor。
+**Primary Design:** `00_Doc/02_架构设计/SPI_Platform_Impl_Phase1设计.md`
 
-**Primary Spec:** `00_Doc/02_架构设计/Final_RTOS_Application_Integration_Phase9设计.md`
-
-**Important:** 本 Phase 已合并原“RTOS Task / Event Design”和“Final APP Integration”。不存在独立 Phase 10。完成本计划与最终综合板测后，当前项目核心目标完成。
+**Important:** LCD 最小 Bring-up 已完成并回退临时代码。本计划不重新做点亮实验，不实现 ST7789 正式驱动，不引入 SPI DMA / Display Task / UART 输出迁移。
 
 ---
 
-# 0. Execution Rules / Stop Conditions
-
-Codex 开始执行前必须完整读取：
+# 0. Codex 开工前必读
 
 ```text
-00_Doc/00_项目需求/最终功能需求.md
-00_Doc/02_架构设计/Final_RTOS_Application_Integration_Phase9设计.md
-00_Doc/02_架构设计/UART_Application_Communication_Phase8设计.md
+00_Doc/02_架构设计/SPI_Platform_Impl_Phase1设计.md
 00_Doc/02_架构设计/嵌入式项目C代码设计规范.md
-00_Doc/04_Agent/execution_rules.md
 00_Doc/04_Agent/architecture.md
+00_Doc/04_Agent/execution_rules.md
 00_Doc/04_Agent/requirements.md
-00_Doc/04_Agent/development_roadmap.md
 00_Doc/04_Agent/handoff.md
 00_Doc/04_Agent/implementation_plan.md
+
+03_Platform/platform_common/
+03_Platform/platform_mcu/gpio/
+03_Platform/platform_mcu/i2c/
+03_Platform/platform_mcu/uart/
+04_Impl/impl_mcu/impl_platform_gpio.*
+04_Impl/impl_mcu/impl_platform_uart.*
+Core/Src/spi.c
+Core/Inc/spi.h
 ```
 
-全局约束：
+实施原则：
 
 ```text
 APP -> Impl FORBIDDEN
 Service -> Impl FORBIDDEN
-no direct HAL UART TX product bypass
-no second UART RX path
-RX SPSC RingBuffer stays lock-free
-Communication Task = sole USART1 product TX requester
-Control Task = sole STOPPED/RUNNING truth owner
-Acquisition Task = sole runtime DHT20/MPU6050/Soft-I2C accessor
-4 product Tasks only
-CubeMX defaultTask is not a product Task
-no I2C mutex in first version
-no Queue Set / Event Group expansion in first version
-no runtime malloc/free for APP business data flow
-APP Queue messages are bounded value-copy messages
-initialize dependencies before creating product Threads
-no low-power / Tickless / Button EXTI work in this Phase
+Platform SPI public headers contain no HAL type
+reuse existing platform_error_t / platform_device_t / lifecycle conventions
+reuse nearest existing module style before creating new abstractions
+no runtime malloc/free
+no LCD-specific DC/RST/BL logic in generic SPI
+no SPI DMA / IRQ / read / full-duplex / mutex in this Phase
+no runtime SPI mode/clock switching in this Phase
+no Bring-up-only color test restoration
 ```
 
-每个 implementation Task：
+每个 Task：
 
 ```text
-1. read nearest existing implementation + tests
-2. add/adjust contract tests first where practical
+1. inspect nearest implementation and tests
+2. add/adjust focused contract tests first where practical
 3. confirm expected RED for new behavior
 4. implement smallest production change
 5. run focused tests
-6. run regression relevant to changed module
-7. perform Coding Standard Review
-8. only then continue
+6. run relevant regression
+7. perform coding-standard review
+8. continue only after green
 ```
-
-若出现与冻结架构冲突的问题，不得自行引入第五个业务 Task、新 mutex、新 TX owner 或新 HAL bypass；先记录问题并按设计合同收束。
 
 ---
 
 # 1. Task 0 — Baseline Verification
 
-在改代码前记录当前 baseline：
+改代码前确认并记录：
 
 ```text
-Phase 8 Host regression
-Keil production rebuild
-current warning count
-current UART RX/TX architecture
-current generated defaultTask behavior
+current Host regression PASS
+Keil production build PASS / 0 errors
+SPI1 CubeMX configuration remains:
+  Master
+  TX Only Simplex
+  8 bit
+  MSB First
+  Software NSS
+  Mode 3
+  Prescaler /8
+  12.5 MHz current clock
+  DMA disabled
+  IRQ disabled
+
+LCD Bring-up temporary code is absent
+Phase 1~9 product behavior unchanged
 ```
 
-预期 baseline：
-
-```text
-Phase 8 Host regression PASS
-Keil 0 Error(s)
-Phase 8 production path intact
-TX DMA target verification still pending
-```
-
-本 Task 不做架构修改。
+本 Task 不修改架构。
 
 ---
 
-# 2. Task 1 — Static Config + APP IPC Contracts
+# 2. Task 1 — Add Generic SPI Types and Device Class Support
 
-**Modify/Create later:**
-
-```text
-00_Config/project_config.h
-01_APP/app_ipc_types.h
-```
-
-冻结初始资源：
+**Create:**
 
 ```text
-Communication Task   2048 B   ABOVE_NORMAL
-Control Task         1024 B   ABOVE_NORMAL
-Acquisition Task     1536 B   NORMAL
-Indicator Task        768 B   BELOW_NORMAL
-
-Control Queue                  depth 8
-Acquisition Command Queue      depth 4
-Communication Outbound Queue   depth 8
-Indicator Queue                depth 4
-
-PROJECT_COMM_WAIT_TIMEOUT_MS = 20U
+03_Platform/platform_mcu/spi/platform_spi_types.h
 ```
 
-定义 APP-level value contracts，至少包含：
+若最近邻 Platform MCU 模块的文件组织证明无需独立 `*_types.h`，可在不改变设计合同的前提下合并到 `platform_spi.h`；不要为文件数量机械拆分。
+
+定义至少包括：
 
 ```text
-app_ctrl_source_t
-  BUTTON
-  UART
+platform_spi_mode_t
+  MODE_0
+  MODE_1
+  MODE_2
+  MODE_3
 
-Control Queue message
-  CONTROL_REQUEST(event + source)
-  ONCE_ACQUISITION_FAILED(result)
-  ONCE_TX_RESULT(result)
+platform_spi_bit_order_t
+  MSB_FIRST
+  LSB_FIRST
 
-Acquisition command
-  START_PERIODIC
-  STOP_PERIODIC
-  SAMPLE_ONCE
-
-Communication outbound
-  CONTROL_RESPONSE
-  PERIODIC_REPORT
-  ONCE_REPORT
-
-Indicator command
-  STOPPED
-  RUNNING
-  ONCE_SUCCESS
+platform_spi_device_config_t
+  mode
+  bitOrder
+  dataBits
+  maxClockHz
 ```
+
+语义冻结：
+
+```text
+dataBits Phase 1 only supports 8
+maxClockHz must be > 0
+maxClockHz = device maximum accepted SCK, not required exact SCK
+write length = byte count
+```
+
+如现有 `platform_device_class_t` 需要新增 SPI Bus class：
+
+```text
+add generic PLATFORM_DEVICE_CLASS_SPI
+```
+
+不得把 SPI Bus 归类为 DISPLAY。
+
+先完成 compile-contract tests / static review。
+
+---
+
+# 3. Task 2 — Implement Platform SPI Bus / Device Contracts
+
+**Create:**
+
+```text
+03_Platform/platform_mcu/spi/platform_spi.h
+03_Platform/platform_mcu/spi/platform_spi.c
+```
+
+## 3.1 Bus model
+
+按现有 Platform common object / lifecycle 风格实现 `platform_spi_bus_t`。
+
+必须表达：
+
+```text
+platform_device_t base
+bus ops
+void *implContext
+activeDevice
+```
+
+`implContext` 仅用于 Impl 私有 type-erasure context；Platform 不得把它解释为 HAL handle。
+
+## 3.2 Device model
+
+实现轻量 `platform_spi_device_t`，至少保存：
+
+```text
+name
+bus non-owning reference
+optional CS GPIO non-owning reference
+CS active level
+platform_spi_device_config_t
+initialized flag
+```
+
+Device 不复制完整 Platform lifecycle 状态机。
+
+允许：
+
+```text
+cs == NULL
+```
+
+此时 transaction 仍管理 Bus ownership，但不操作 GPIO CS。
+
+## 3.3 Public APIs
+
+第一版公共接口至少：
+
+```text
+platform_spi_device_init()
+platform_spi_device_deinit()
+platform_spi_transaction_begin()
+platform_spi_write()
+platform_spi_transaction_end()
+```
+
+精确命名可按仓库公共 API 习惯微调，但不得改变冻结语义。
+
+---
+
+# 4. Task 3 — Platform SPI Transaction State Machine Tests First
+
+在现有 Host test harness 中增加最接近 Platform SPI 的测试，不建立第二套测试框架。
+
+最低覆盖：
+
+```text
+valid device init PASS
+NULL mandatory pointer rejected
+invalid mode rejected
+invalid bit order rejected
+maxClockHz == 0 rejected
+unsupported dataBits rejected deterministically
+optional NULL CS accepted
+
+device begin when bus not STARTED -> INVALID_STATE
+begin success -> activeDevice == device
+second begin while active -> BUSY
+write without begin -> INVALID_STATE
+write from non-active device -> INVALID_STATE
+end from wrong device -> INVALID_STATE
+end success -> activeDevice == NULL
+
+device deinit while active -> BUSY
+bus stop/deinit while active -> BUSY
+```
+
+GPIO spy/mock 场景若现有 harness 支持，还应覆盖：
+
+```text
+begin with CS -> set active level
+end with CS -> set inactive level
+NULL CS -> no GPIO access
+CS inactive failure on end -> software activeDevice still cleared, error returned
+```
+
+---
+
+# 5. Task 4 — Define Bus Ops and applyConfig Contract
+
+Platform Bus ops 第一版只保留：
+
+```text
+applyConfig()
+write()
+```
+
+不加入：
+
+```text
+read
+transfer
+async
+DMA
+lock/unlock
+```
+
+`applyConfig()` 必须在 `transaction_begin()` 中执行一次，而不是每次 `write()` 执行。
+
+Phase 1 合同：
+
+```text
+current mode == requested mode
+current bit order == requested bit order
+current data bits == requested data bits == 8
+actual SPI clock <= device maxClockHz
+```
+
+满足 -> `PLATFORM_ERR_OK`
+
+合法但当前固定硬件配置无法满足 -> `PLATFORM_ERR_NOT_SUPPORTED`
+
+禁止静默忽略 device config。
+
+---
+
+# 6. Task 5 — Implement STM32 SPI Impl
+
+**Create:**
+
+```text
+04_Impl/impl_mcu/impl_platform_spi.h
+04_Impl/impl_mcu/impl_platform_spi.c
+```
+
+实现具体 SPI1 construct/binding，风格参考现有 UART Impl：
+
+```text
+Platform bus
+ -> void *implContext
+ -> STM32 private SPI context
+ -> SPI_HandleTypeDef *
+ -> &hspi1
+```
+
+Platform header 不得暴露 `SPI_HandleTypeDef`。
+
+## 6.1 Hardware lifecycle
+
+Phase 1 保持：
+
+```text
+MX_SPI1_Init() = hardware configuration owner
+```
+
+因此 SPI Impl lifecycle init 不再次建立第二套 `HAL_SPI_Init()` 配置源。
+
+Impl lifecycle 负责：
+
+```text
+validate private context
+validate HAL SPI handle / initialized hardware state
+clear active transaction state as appropriate
+follow existing Platform lifecycle transition rules
+```
+
+start/stop/deinit 必须复用当前 Platform common lifecycle 语义；不要为 SPI 发明新状态。
+
+## 6.2 applyConfig STM32 implementation
+
+从 `hspi1.Init` 与实际 RCC/PCLK 配置读取/推导：
+
+```text
+CPOL / CPHA -> SPI mode
+FirstBit -> bit order
+DataSize -> data bits
+BaudRatePrescaler + peripheral clock -> actual SCK
+```
+
+不得长期硬编码：
+
+```text
+actualClockHz = 12500000
+```
+
+12.5 MHz 是当前已验证硬件事实，不是 Impl 固定常量。
+
+Phase 1 只 validation，不动态修改：
+
+```text
+CPOL
+CPHA
+FirstBit
+DataSize
+BaudRatePrescaler
+```
+
+## 6.3 Blocking write
+
+Impl write 使用：
+
+```text
+HAL_SPI_Transmit()
+```
+
+采用有限 timeout，不使用 `HAL_MAX_DELAY`。
+
+Timeout 在 Phase 1 为 STM32 Impl 内部策略，不向 Platform public API 暴露 HAL-style timeout 参数。
+
+HAL error mapping沿用现有错误体系：
+
+```text
+HAL_OK      -> PLATFORM_ERR_OK
+HAL_BUSY    -> PLATFORM_ERR_BUSY
+HAL_TIMEOUT -> PLATFORM_ERR_TIMEOUT
+HAL_ERROR   -> PLATFORM_ERR_IO
+```
+
+如 UART Impl 已存在通用 mapping 风格，优先保持一致。
+
+---
+
+# 7. Task 6 — Complete Transaction Semantics
+
+`platform_spi_transaction_begin(device)` 顺序：
+
+```text
+validate device
+validate initialized
+validate bus STARTED
+validate activeDevice == NULL
+applyConfig(device config)
+set CS active if present
+activeDevice = device
+return OK
+```
+
+`platform_spi_write(device, data, length)`：
+
+```text
+validate data / length
+validate device initialized
+validate bus STARTED
+validate activeDevice == device
+call bus->ops->write()
+```
+
+同步语义：
+
+```text
+return only after transfer completed or failed
+caller may reuse/modify buffer after return
+```
+
+`platform_spi_transaction_end(device)`：
+
+```text
+validate activeDevice == device
+set CS inactive if present
+clear activeDevice
+return result
+```
+
+重要：
+
+```text
+begin success transfers transaction ownership to caller
+write success/failure does NOT auto-end
+caller MUST call end after successful begin
+```
+
+若 CS inactive GPIO 操作失败：
+
+```text
+clear activeDevice anyway
+return GPIO error
+```
+
+---
+
+# 8. Task 7 — Device Init / Deinit Semantics
+
+`platform_spi_device_init()`：
+
+```text
+validate configuration
+bind bus
+bind optional CS
+save active level
+save config
+set CS inactive if present
+initialized = true
+```
+
+推荐实际系统顺序：
+
+```text
+CubeMX hardware init
+ -> Platform GPIO ready
+ -> SPI Bus construct
+ -> SPI Bus lifecycle init/start
+ -> SPI Device init
+ -> future ST7789 init
+```
+
+`platform_spi_device_deinit()`：
+
+```text
+active transaction owned by this device -> BUSY
+set CS inactive if present
+clear references/config
+initialized = false
+```
+
+所有关系均为 non-owning static references；不得 malloc/free。
+
+---
+
+# 9. Task 8 — Production Build Integration
+
+将新增 production source 按现有工程组织加入 Keil project/group 与 include path。
+
+检查：
+
+```text
+no duplicate generated SPI source
+no modification of unrelated CubeMX generated regions
+platform_spi does not include HAL header
+impl_platform_spi is the HAL binding location
+existing SPI1 CubeMX config unchanged
+```
+
+如 Host test build 使用显式 source list，同步加入必要 Platform SPI test source/mocks。
+
+---
+
+# 10. Task 9 — Focused Tests + Full Regression
+
+Focused tests 必须覆盖：
+
+```text
+SPI Device config validation
+Bus lifecycle state validation
+transaction ownership
+CS active/inactive behavior
+NULL CS behavior
+applyConfig compatible config
+applyConfig incompatible config
+blocking write forwarding
+HAL error mapping
+```
+
+然后运行全部现有 Host regression。
 
 要求：
 
 ```text
-no HAL / FreeRTOS concrete handles in APP IPC public types
-no pointer to caller temporary stack data
-sensor result copied by value
-fixed-size message union / struct
-```
-
-完成后做 compile-contract review，确认不存在不必要跨层依赖。
-
----
-
-# 3. Task 2 — Unified Acquisition Service (Test First)
-
-**Create later:**
-
-```text
-02_Service/service_acquisition/service_acquisition.h
-02_Service/service_acquisition/service_acquisition.c
-```
-
-先在现有 Host test harness 中增加最接近 Service 层的 contract tests；不要猜造第二套 test framework。
-
-必须覆盖：
-
-```text
-DHT20 OK + MPU6050 OK
- -> Service OK
- -> complete caller data committed
-
-DHT20 fail + MPU6050 OK
- -> whole acquisition failed
- -> MPU6050 still attempted
- -> caller data unchanged
-
-DHT20 OK + MPU6050 fail
- -> whole acquisition failed
- -> caller data unchanged
-
-DHT20 fail + MPU6050 fail
- -> both attempted
- -> whole acquisition failed
- -> caller data unchanged
-
-request/success/failure/per-sensor statistics correct
-last per-sensor result diagnostic state correct
-```
-
-实现约束：
-
-```text
-DHT20 first
-MPU6050 second
-always attempt both for diagnostics
-atomic temporary result
-commit only when both succeed
-non-owning Platform sensor references
-no Task / Queue / UART / LED logic
-no ownership of shared Software I2C lifecycle
-```
-
-完成 focused test + Service regression + Coding Standard Review。
-
----
-
-# 4. Task 3 — Control Task + APP Control FSM (Test First)
-
-**Create later:**
-
-```text
-01_APP/app_control.h
-01_APP/app_control.c
-```
-
-Control Task responsibilities：
-
-```text
-PA0 Button polling every 10 ms
-service_button_process()
-Button gesture -> APP_CTRL event
-Control Queue consumer
-sole STOPPED/RUNNING FSM
-orchestrate Acquisition / Communication / Indicator Queues
-```
-
-FSM Context：
-
-```text
-state = STOPPED / RUNNING
-onceActive
-onceSource
-nextButtonSampleDeadlineMs
-```
-
-`onceActive` 不是第三个业务状态。
-
-先测试：
-
-```text
-boot state STOPPED
-STOPPED + START -> RUNNING
-RUNNING + START -> already running
-RUNNING + STOP -> STOPPED
-STOPPED + STOP -> already stopped
-STOPPED + ONCE -> onceActive, remains STOPPED
-RUNNING + ONCE -> already running
-ONCE active + UART START/STOP/ONCE -> BUSY
-ONCE active + Button START/STOP/ONCE-equivalent -> ignore
-STATUS while ONCE active -> STOPPED
-Button SINGLE/DOUBLE/LONG map into same FSM
-ONCE acquisition failure clears onceActive and never posts success indicator
-ONCE TX success clears onceActive and posts ONCE_SUCCESS exactly once
-ONCE TX failure clears onceActive and never posts success indicator
-```
-
-Button 调度使用 monotonic deadline + bounded Queue receive，不用 `delay(10)` 主循环。
-
-Queue submission failure 必须可观察；Control Task 不得永久阻塞等待 Queue 空间。
-
----
-
-# 5. Task 4 — Acquisition Task Scheduling (Test First Where Practical)
-
-**Create later:**
-
-```text
-01_APP/app_acquisition.h
-01_APP/app_acquisition.c
-```
-
-Responsibilities：
-
-```text
-Acquisition Command Queue consumer
-sole runtime caller of Unified Acquisition Service
-periodicEnabled execution context
-absolute scheduling deadline
-publish periodic/ONCE results by value
-```
-
-冻结调度：
-
-```text
-STOPPED -> queue_receive(WAIT_FOREVER)
-START -> immediate first sample
-next deadline = first trigger time + 2000 ms
-RUNNING -> queue_receive(timeout until deadline)
-periodic deadline advances += 2000 ms
-missed periods are skipped, never catch-up burst sampled
-```
-
-STOP during active synchronous transaction：
-
-```text
-no unsafe mid-I2C cancellation
-finish current low-level transaction safely
-process pending STOP before periodic publish
-if STOP observed -> discard stale periodic result
-no later periodic acquisition until next START
-```
-
-ONCE：
-
-```text
-sample success -> Communication Outbound Queue / ONCE_REPORT
-sample failure -> Control Queue / ONCE_ACQUISITION_FAILED
-```
-
-不得直接 UART TX，不得直接 LED control。
-
----
-
-# 6. Task 5 — Indicator Task
-
-**Create later:**
-
-```text
-01_APP/app_indicator.h
-01_APP/app_indicator.c
-```
-
-第一版：
-
-```text
-Indicator Queue WAIT_FOREVER
- -> map APP indicator command
- -> service_indicator_handle_event()
-```
-
-语义：
-
-```text
-STOPPED -> OFF
-RUNNING -> ON
-ONCE_SUCCESS -> blink 3 times, 100 ms on/off -> OFF
-```
-
-现有约 600 ms blocking blink 只允许阻塞 Indicator Task。
-
-第一版接受：ONCE 闪烁期间若 START 到达，RUNNING LED event 最多等待本次闪烁完成；业务状态本身必须已经由 Control FSM 更新。
-
----
-
-# 7. Task 6 — Communication Outbound Integration
-
-**Modify later:**
-
-```text
-01_APP/app_communication.h
-01_APP/app_communication.c
-```
-
-保留现有：
-
-```text
-strict CRLF parser
-UART Service ownerThread
-RX DMA + RingBuffer SPSC
-Communication-local HELP / invalid / overflow handling
-```
-
-新增：
-
-```text
-Communication Outbound Queue binding
-nonblocking outbound drain
-business response formatting
-periodic acquisition report formatting
-ONCE report formatting
-ONCE TX completion -> Control Queue
-```
-
-第一版 loop：
-
-```text
-drain outbound queue nonblocking
- -> app_communication_process(PROJECT_COMM_WAIT_TIMEOUT_MS = 20 ms)
- -> drain outbound queue nonblocking
-```
-
-不引入 Queue Set 或第二套 wake abstraction。
-
-状态响应：
-
-```text
-OK START\r\n
-OK STOP\r\n
-ERR ALREADY_RUNNING\r\n
-ERR ALREADY_STOPPED\r\n
-ERR BUSY\r\n
-ERR ACQUISITION_FAILED\r\n
-STATUS RUNNING\r\n
-STATUS STOPPED\r\n
-```
-
-保留：
-
-```text
-HELP START STOP ONCE STATUS HELP\r\n
-ERR UNKNOWN_COMMAND\r\n
-ERR COMMAND_TOO_LONG\r\n
-```
-
-完整 report：
-
-```text
-ENV,T=...,...\r\n
-IMU,AX=...,AY=...,AZ=...,GX=...,GY=...,GZ=...\r\n
-```
-
-ONCE：
-
-```text
-complete report TX OK -> ONCE_TX_RESULT OK exactly once
-any report TX failure -> ONCE_TX_RESULT failure exactly once
-```
-
-成功 ONCE 不强制追加 `OK ONCE`；完整 report TX 本身即成功输出。
-
-Queue-full submission of UART control request：
-
-```text
-respond ERR BUSY
-increment submit failure statistic
-```
-
----
-
-# 8. Task 7 — app_system Final Composition Root
-
-**Modify later:**
-
-```text
-01_APP/app_system.c
-```
-
-静态持有并装配：
-
-```text
-Platform UART / LED / Button / Software I2C / DHT20 / MPU6050
-Service UART / Button / Indicator / Acquisition
-4 Platform Queues
-4 APP contexts
-4 Platform Threads
-fixed UART DMA / RingBuffer storage
-```
-
-初始化顺序必须是：
-
-```text
-hardware/platform objects
- -> shared Software I2C
- -> DHT20 / MPU6050
- -> LED / Button
- -> Services
- -> Queues
- -> APP contexts
- -> Threads LAST
-```
-
-修复 Phase 8 的临时 `controlHandler = NULL` wiring，Communication control handler 只负责将 UART request 以 `source = UART` 投递到 Control Queue。
-
-Threads 必须全部依赖有效后才创建。
-
-不得在 composition root 引入业务循环。
-
----
-
-# 9. Task 8 — CubeMX defaultTask Self-Exit
-
-**Modify later only in generated USER CODE area:**
-
-```text
-Core/Src/freertos.c
-```
-
-最终：
-
-```c
-(void)argument;
-osThreadExit();
-```
-
-删除 defaultTask 产品运行意义；不把它重用为 Control / Acquisition / Communication / Indicator。
-
-验证：
-
-```text
-CubeMX user-code-safe placement
-no infinite osDelay(1) default loop
-4 product Tasks remain the only application Tasks
-Idle / Timer Service remain normal RTOS kernel Tasks
-```
-
-不得修改无关 CubeMX generated region。
-
----
-
-# 10. Task 9 — Host Regression + Architecture / Coding Review
-
-运行全部现有 Host regression，并加入 Phase 9 新测试。
-
-至少确认：
-
-```text
-Unified Acquisition all-or-nothing contract PASS
-Control FSM matrix PASS
-Button/UART share one FSM PASS
-ONCE completion semantics PASS
-Acquisition scheduling contract PASS
-Communication formatting/outbound contract PASS
-existing UART RX/TX tests PASS
-existing Button/Indicator/Sensor tests PASS
-```
-
-静态 Review：
-
-```text
-4 product Tasks only
-no APP -> Impl
-no Service -> Impl
-no direct HAL UART product TX
-no duplicate systemRunning truth
-no second Software I2C accessor
-no I2C mutex
-no APP temporary pointer queued
-no Queue Set expansion
-no business runtime malloc/free
-threads created after dependencies
+all prior tests remain PASS
+no Phase 1~9 behavior change
+no new architecture violation
 ```
 
 执行 `嵌入式项目C代码设计规范.md` 的 Coding Standard Review。
@@ -550,237 +527,117 @@ threads created after dependencies
 
 ```text
 0 compile errors
-no new Phase 9 production warnings
+no new relevant warnings
 ```
 
-检查：
+静态检查：
 
 ```text
-all new production files included in Keil groups
-all include paths correct
-no host-only symbol leaked to production build
-FreeRTOS heap still has safe creation margin with loose initial Task stacks/Queues
+Platform SPI public interface HAL-free
+APP/Service do not include Impl SPI
+no LCD-specific DC/RST/BL in generic SPI
+no DMA/IRQ/mutex implementation added
+no runtime dynamic SPI reconfiguration added
 ```
-
-不要因为第一版 RAM 使用偏宽松而提前压栈。
 
 ---
 
-# 12. Task 11 — Final Target Integrated Verification
+# 12. Task 11 — Optional Target Smoke Verification
 
-## 12.1 Boot
+LCD 最小 Bring-up 已经 PASS，因此默认不重复整套色块测试。
 
-```text
-boot complete
-STOPPED
-LED OFF
-UART RX active
-RTT active
-no periodic sensor report
-```
+只有在 Host + Keil 无法充分验证新的 Platform -> Impl 调用链时，才做最小受控 target smoke test。
 
-## 12.2 Button START
+允许：
 
 ```text
-STOPPED SINGLE
- -> RUNNING
- -> LED ON
- -> immediate first complete DHT20 + MPU6050 report
- -> then every 2 s
+short controlled Platform SPI transaction
+verify no regression / no hang
 ```
 
-## 12.3 Button STOP
+禁止：
 
 ```text
-RUNNING LONG >= 3 s
- -> STOPPED
- -> LED OFF
- -> no future periodic report
+restore old bring-up-only pure-color loop as production code
+reintroduce direct HAL LCD driver path
+use temporary test code as formal ST7789 implementation
 ```
-
-若 STOP 到达 active sensor transaction，允许 transaction 安全收尾，但不得发送 STOP 后的 stale periodic report。
-
-## 12.4 Button ONCE
-
-```text
-STOPPED DOUBLE
- -> one complete DHT20 + MPU6050 sample
- -> one complete UART report
- -> TX success
- -> LED blink 3 times
- -> OFF
- -> remain STOPPED
-```
-
-失败不成功闪烁。
-
-## 12.5 UART Commands
-
-验证：
-
-```text
-START
-STOP
-ONCE
-STATUS
-HELP
-fragmented command
-multiple commands in one RX chunk
-RX while TX DMA active
-ERR ALREADY_RUNNING
-ERR ALREADY_STOPPED
-ERR BUSY
-ERR ACQUISITION_FAILED
-```
-
-Button 与 UART 必须观察同一个 APP state truth。
-
-## 12.6 Shared Software I2C
-
-验证周期运行和 ONCE 下：
-
-```text
-DHT20 complete transaction
- -> MPU6050 complete transaction
-no interleaving second accessor
-```
-
-## 12.7 Failure Visibility
-
-通过 RTT 验证至少：
-
-```text
-DHT20 failure
-MPU6050 failure
-UART TX failure/timeout path where feasible
-RingBuffer overflow/error path where feasible
-Queue internal fault counters/logging where feasible
-```
-
-ONCE sample/TX failure不得成功闪烁。
 
 ---
 
-# 13. Task 12 — Resource Measurement, Not Premature Optimization
+# 13. Completion Gate
 
-完整系统稳定运行后记录：
-
-```text
-Communication Task stack high-water mark
-Control Task stack high-water mark
-Acquisition Task stack high-water mark
-Indicator Task stack high-water mark
-Control Queue peak occupancy
-Acquisition Queue peak occupancy
-Communication Outbound Queue peak occupancy
-Indicator Queue peak occupancy
-```
-
-第一轮目标是证明资源足够，不是立刻缩小。
-
-只有在完整业务压力场景有证据后才考虑：
+本计划完成后必须成立：
 
 ```text
-reduce Task stack
-reduce Queue depth
-adjust priority if measured latency shows need
+03_Platform/platform_mcu/spi exists
+04_Impl/impl_mcu/impl_platform_spi exists
+SPI Bus / Device model compile and tests PASS
+SPI1 HAL binding exists only in Impl side
+blocking transaction begin/write/end works
+current fixed SPI1 config is strictly validated
+Host regression PASS
+Keil rebuild PASS / 0 errors
 ```
 
-不得为了“看起来省 RAM”牺牲第一版稳定性。
+并且下一阶段正式 ST7789 Driver 可以只依赖：
+
+```text
+Platform SPI
+Platform GPIO
+Platform delay/time capability
+```
+
+不得依赖：
+
+```text
+HAL_SPI_Transmit
+SPI_HandleTypeDef
+hspi1
+CubeMX SPI implementation internals
+```
 
 ---
 
-# 14. Task 13 — Documentation / Project Closure
+# 14. Explicitly Deferred
 
-只有 Host + Keil + Final Target verification 完成后才能：
-
-```text
-mark Phase 9 COMPLETED
-record actual verification results
-record stack high-water marks / Queue observations
-update handoff
-update roadmap
-update implementation execution record
-```
-
-最终路线：
+以下内容不得在本计划中顺带实现：
 
 ```text
-Phase 1 ~ 8
- -> Phase 9 Final RTOS Application Integration
- -> Final Integrated Board Test
- -> PROJECT CORE COMPLETE
+ST7789 formal driver
+Display Platform BSP
+font/text rendering
+Display Task
+Display Queue / snapshot IPC
+UART periodic sensor TX removal
+ONCE semantic migration
+SPI read / full duplex
+SPI DMA
+SPI interrupt transfer
+SPI bus mutex
+runtime CPOL/CPHA/clock switching
+backlight PWM
+Touch / CTP
 ```
 
-不要创建 Phase 10。
+这些在 SPI Phase 1 完成并 review 后，重新讨论并形成下一份设计与实施计划。
 
 ---
 
-# 15. Execution Record
+# 15. Codex Stop Condition
 
-当前：
+完成 SPI Platform + Impl Phase 1 后停止。
 
-```text
-Phase 9 design: FROZEN
-Phase 9 implementation: IMPLEMENTED
-Phase 9 Coding Standard Review: PASS
-Phase 9 Architecture Review: PASS
-Phase 9 Host tests: PASS / 34 of 34 test groups
-Phase 9 Keil build: PASS / 0 Error(s), 14 baseline Warning(s)
-Phase 9 target integration: TARGET VERIFICATION REQUIRED
-Phase 9 resource measurement: TARGET VERIFICATION REQUIRED
-Phase 9 closure: NOT COMPLETE
-```
+不要自动继续写 ST7789 Driver。
 
-2026-09-04 实现记录：
+最终向人工开发者报告：
 
 ```text
-Production tasks: Communication / Control / Acquisition / Indicator
-CubeMX defaultTask: exits through osThreadExit()
-APP Queues: 4 bounded value-copy queues
-Host compiler policy: -Wall -Wextra -Werror
-Keil ARMCC: V5.06 update 7 (build 960)
-Program Size: Code=53904 RO-data=1904 RW-data=340 ZI-data=45276
-Phase 9 added build warnings: 0
+changed files
+new tests
+Host regression result
+Keil build result
+any target smoke result
+remaining limitations
+whether completion gate is satisfied
 ```
-
-目标板验证记录表（连接 STM32F411CEU6 后逐项填写实际观察值）：
-
-```text
-[ ] Boot: STOPPED / LED OFF / UART RX active / RTT active / no periodic report
-[ ] Button SINGLE: LED ON / immediate complete report / subsequent interval 2000 ms
-[ ] Button LONG >= 3 s: LED OFF / no report after STOP
-[ ] STOP during sensor transaction: transaction finishes safely / stale report suppressed
-[ ] Button DOUBLE in STOPPED: exactly one complete report / TX success / blink 3 times / OFF
-[ ] UART: START / STOP / ONCE / STATUS / HELP responses match frozen protocol
-[ ] UART framing: fragmented command and multiple commands in one RX chunk
-[ ] UART concurrency: USART1 RX remains active while TX DMA is active
-[ ] FSM: Button and UART observe the same STOPPED/RUNNING truth
-[ ] ONCE busy: START / STOP / ONCE return ERR BUSY; STATUS returns STATUS STOPPED
-[ ] I2C: DHT20 transaction then MPU6050 transaction with no second accessor interleaving
-[ ] Failure: sensor or UART TX failure is visible through RTT and never success-blinks
-[ ] Recovery: RingBuffer overflow/error path and Queue fault counters are observable where feasible
-```
-
-资源记录表（完成上述压力场景后填写，不依据静态配置猜测）：
-
-```text
-Communication Task stack high-water mark: PENDING TARGET MEASUREMENT
-Control Task stack high-water mark: PENDING TARGET MEASUREMENT
-Acquisition Task stack high-water mark: PENDING TARGET MEASUREMENT
-Indicator Task stack high-water mark: PENDING TARGET MEASUREMENT
-Control Queue peak occupancy: PENDING TARGET MEASUREMENT
-Acquisition Queue peak occupancy: PENDING TARGET MEASUREMENT
-Communication Outbound Queue peak occupancy: PENDING TARGET MEASUREMENT
-Indicator Queue peak occupancy: PENDING TARGET MEASUREMENT
-```
-
-Phase 8 已有 baseline：
-
-```text
-Host regression: PASS
-Keil production rebuild: PASS / 0 Error(s)
-UART TX DMA target verification: DEFERRED TO PHASE 9
-```
-
-不得在目标板场景和资源记录完成前把 Phase 9 标记为 `COMPLETED`。
