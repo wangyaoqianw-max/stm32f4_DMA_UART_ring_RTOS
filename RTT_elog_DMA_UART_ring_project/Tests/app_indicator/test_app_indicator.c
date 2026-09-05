@@ -5,7 +5,7 @@
  *
  * @file test_app_indicator.c
  * @brief 验证 Indicator Task 的 Queue 与 Service 语义映射。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *

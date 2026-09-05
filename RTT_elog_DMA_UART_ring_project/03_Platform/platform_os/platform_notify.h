@@ -3,7 +3,7 @@
  *
  * @file platform_notify.h
  * @brief 定义基于 Thread Flag 的 Task 与 ISR 通知接口。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *****************************************************************************/

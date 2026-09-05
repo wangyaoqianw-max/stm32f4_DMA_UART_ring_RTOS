@@ -5,7 +5,7 @@
  *
  * @file test_platform_bsp_led.c
  * @brief 验证 Platform BSP Status LED 装配行为
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-03
  * @version V1.0
  *

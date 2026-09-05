@@ -5,7 +5,7 @@
  *
  * @file service_indicator.h
  * @brief 定义提示灯语义事件服务接口。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-03
  * @version V1.0
  *

@@ -5,7 +5,7 @@
  *
  * @file app_control_types.h
  * @brief 定义 APP 控制输入的公共事件合同。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *

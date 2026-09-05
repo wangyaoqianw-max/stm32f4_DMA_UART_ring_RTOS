@@ -5,7 +5,7 @@
  *
  * @file test_platform_led.c
  * @brief 验证 Platform LED 轻量对象契约
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-03
  * @version V1.0
  *

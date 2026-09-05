@@ -5,7 +5,7 @@
  *
  * @file test_platform_bsp_gpio.c
  * @brief 验证 Platform BSP GPIO 板级绑定行为
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-02
  * @version V1.0
  *

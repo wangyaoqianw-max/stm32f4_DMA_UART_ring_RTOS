@@ -5,7 +5,7 @@
  *
  * @file test_platform_gpio.c
  * @brief 验证 Platform GPIO 对象构造契约
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-01
  * @version V1.0
  *

@@ -1,6 +1,14 @@
 /******************************************************************************
+ * Copyright (C) 2026 YaoQian Wang
+ *
+ * All Rights Reserved.
+ *
  * @file test_platform_log.c
  * @brief 验证 Platform Log 公共 API 与 EasyLogger 适配契约。
+ * @author YaoQian Wang
+ * @date 2026-09-05
+ * @version V1.0
+ *
  *****************************************************************************/
 
 #include <stdarg.h>

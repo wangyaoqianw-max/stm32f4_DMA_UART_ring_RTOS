@@ -5,7 +5,7 @@
  *
  * @file service_uart.c
  * @brief UART 接收 Service 生命周期实现
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *
@@ -59,6 +59,10 @@ static platform_error_t service_uart_rebuild_events(const service_uart_t *servic
     return PLATFORM_ERR_OK;
 }
 
+/*
+ * 统一完成成功、取消和错误发送路径；可由 UART 回调触发，因此仅写入
+ * TX 事务字段后用 ISR 安全的通知唤醒等待方。
+ */
 static void service_uart_finish_tx(service_uart_t *service,
                                    platform_error_t result,
                                    platform_size_t completedLength)
@@ -82,6 +86,7 @@ static void service_uart_finish_tx(service_uart_t *service,
                                        SERVICE_UART_NOTIFY_WAKE_FLAG);
 }
 
+/* 仅取消活动 TX；取消成功后保证等待方能够观察到 CANCELED 结果。 */
 static platform_error_t service_uart_cancel_active_tx(service_uart_t *service)
 {
     platform_error_t result = PLATFORM_ERR_OK;
@@ -101,6 +106,7 @@ static platform_error_t service_uart_cancel_active_tx(service_uart_t *service)
     return PLATFORM_ERR_OK;
 }
 
+/* 按剩余超时等待 TX 完成通知，并以 TX 状态而非通知位作为最终真值。 */
 static platform_error_t service_uart_wait_tx_complete(service_uart_t *service,
                                                        uint32_t timeoutMs)
 {

@@ -5,7 +5,7 @@
  *
  * @file platform_gpio.h
  * @brief Platform GPIO 轻量对象和公共接口
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-01
  * @version V1.0
  *

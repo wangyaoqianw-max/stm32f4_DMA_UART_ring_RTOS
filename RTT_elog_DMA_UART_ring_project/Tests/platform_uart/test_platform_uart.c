@@ -5,7 +5,7 @@
  *
  * @file test_platform_uart.c
  * @brief 验证 Platform UART 对象和传输行为
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-28
  * @version V1.0
  *

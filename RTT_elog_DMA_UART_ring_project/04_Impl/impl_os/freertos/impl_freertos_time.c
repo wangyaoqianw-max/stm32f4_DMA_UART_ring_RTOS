@@ -5,7 +5,7 @@
  *
  * @file impl_freertos_time.c
  * @brief 实现 CMSIS-RTOS2 Time / Delay Adapter。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *****************************************************************************/

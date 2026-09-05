@@ -5,7 +5,7 @@
  *
  * @file impl_platform_delay.c
  * @brief STM32 Cortex-M4 Platform 微秒延时实现
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-02
  * @version V1.0
  *

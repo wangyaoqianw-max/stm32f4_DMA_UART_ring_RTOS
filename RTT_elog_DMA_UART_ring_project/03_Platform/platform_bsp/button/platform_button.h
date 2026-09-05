@@ -5,7 +5,7 @@
  *
  * @file platform_button.h
  * @brief Platform Button 轻量对象和公共接口
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-03
  * @version V1.0
  *

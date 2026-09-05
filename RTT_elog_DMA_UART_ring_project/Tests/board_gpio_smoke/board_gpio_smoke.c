@@ -5,7 +5,7 @@
  *
  * @file board_gpio_smoke.c
  * @brief 目标板 GPIO 纵向 Smoke Test 临时实现
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-02
  * @version V1.0
  *

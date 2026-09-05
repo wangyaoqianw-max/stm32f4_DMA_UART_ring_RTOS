@@ -3,7 +3,7 @@
  *
  * @file platform_queue.h
  * @brief 定义固定大小、值拷贝语义的 Platform Queue 接口。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *****************************************************************************/

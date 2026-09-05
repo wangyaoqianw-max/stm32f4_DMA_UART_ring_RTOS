@@ -5,7 +5,7 @@
  *
  * @file board_gpio_smoke.h
  * @brief 目标板 GPIO Smoke Test 临时入口
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-02
  * @version V1.0
  *

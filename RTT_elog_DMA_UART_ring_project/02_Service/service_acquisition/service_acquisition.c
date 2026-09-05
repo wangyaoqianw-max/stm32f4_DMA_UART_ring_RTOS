@@ -5,7 +5,7 @@
  *
  * @file service_acquisition.c
  * @brief 实现 DHT20 与 MPU6050 顺序采集和结果原子提交。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *

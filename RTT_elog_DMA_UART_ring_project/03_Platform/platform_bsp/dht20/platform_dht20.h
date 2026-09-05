@@ -5,7 +5,7 @@
  *
  * @file platform_dht20.h
  * @brief Platform DHT20 轻量设备对象和公共接口
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *

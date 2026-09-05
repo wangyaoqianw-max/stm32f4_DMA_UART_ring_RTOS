@@ -5,7 +5,7 @@
  *
  * @file service_button.h
  * @brief 提供纯时间驱动的 Button 手势识别 Service 公共接口。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-03
  * @version V1.0
  *
@@ -51,6 +51,10 @@ typedef enum
     SERVICE_BUTTON_GESTURE_LONG_HOLD
 } service_button_gesture_state_t;
 
+/**
+ * @brief 由调用者持有的 Button 消抖、手势状态和时间基准。
+ * @note 同一对象的 process 调用必须使用同一单调毫秒时钟。
+ */
 typedef struct
 {
     platform_button_state_t rawState;

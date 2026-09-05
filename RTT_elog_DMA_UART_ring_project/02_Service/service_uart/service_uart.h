@@ -5,7 +5,7 @@
  *
  * @file service_uart.h
  * @brief UART 传输 Service 公共接口
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *

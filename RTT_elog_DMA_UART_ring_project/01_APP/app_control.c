@@ -5,7 +5,7 @@
  *
  * @file app_control.c
  * @brief 实现唯一 APP Control FSM 与 deadline 驱动的 Control Task。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *

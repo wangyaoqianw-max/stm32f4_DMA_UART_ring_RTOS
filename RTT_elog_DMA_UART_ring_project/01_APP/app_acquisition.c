@@ -5,7 +5,7 @@
  *
  * @file app_acquisition.c
  * @brief 实现绝对周期采集、STOP 抑制和 ONCE 结果发布。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *

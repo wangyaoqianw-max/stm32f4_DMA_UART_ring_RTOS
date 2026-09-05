@@ -5,7 +5,7 @@
  *
  * @file service_indicator.c
  * @brief 实现提示灯语义事件与三闪时序。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-03
  * @version V1.0
  *
@@ -19,6 +19,7 @@
 //******************************** Includes *********************************//
 
 //******************************** Private Functions *************************//
+/* 在 Task Context 执行一次亮灭周期；延时失败时保留底层操作的首个错误。 */
 static platform_error_t service_indicator_blink_once(service_indicator_t *service)
 {
     platform_error_t result = platform_led_on(service->led);
@@ -40,6 +41,7 @@ static platform_error_t service_indicator_blink_once(service_indicator_t *servic
     return platform_time_delay_ms(PROJECT_INDICATOR_BLINK_OFF_MS);
 }
 
+/* 串行完成配置次数的亮灭周期，因此该语义事件会阻塞当前调用任务。 */
 static platform_error_t service_indicator_handle_once_success(service_indicator_t *service)
 {
     platform_error_t result = PLATFORM_ERR_OK;

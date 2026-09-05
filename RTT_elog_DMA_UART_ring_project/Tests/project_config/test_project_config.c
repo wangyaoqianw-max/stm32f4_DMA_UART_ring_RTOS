@@ -5,7 +5,7 @@
  *
  * @file test_project_config.c
  * @brief 验证产品级静态配置
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *

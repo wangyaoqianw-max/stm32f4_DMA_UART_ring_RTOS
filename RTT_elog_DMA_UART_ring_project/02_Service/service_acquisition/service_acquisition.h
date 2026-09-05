@@ -5,7 +5,7 @@
  *
  * @file service_acquisition.h
  * @brief 定义 DHT20 与 MPU6050 统一原子采集服务。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *

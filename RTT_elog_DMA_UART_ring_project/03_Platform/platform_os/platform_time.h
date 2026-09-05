@@ -3,7 +3,7 @@
  *
  * @file platform_time.h
  * @brief 定义 Platform OS 的毫秒时间与延时接口。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *****************************************************************************/

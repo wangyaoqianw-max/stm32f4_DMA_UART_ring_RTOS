@@ -5,7 +5,7 @@
  *
  * @file test_app_control.c
  * @brief 验证唯一 APP Control FSM、Button 映射和 deadline 轮询。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *

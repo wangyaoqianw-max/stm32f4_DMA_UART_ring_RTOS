@@ -5,7 +5,7 @@
  *
  * @file test_platform_i2c.c
  * @brief 验证 Platform Software I2C 同步事务合同
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-02
  * @version V1.0
  *

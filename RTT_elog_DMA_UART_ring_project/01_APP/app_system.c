@@ -5,7 +5,7 @@
  *
  * @file app_system.c
  * @brief APP 系统 Composition Root 实现。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *

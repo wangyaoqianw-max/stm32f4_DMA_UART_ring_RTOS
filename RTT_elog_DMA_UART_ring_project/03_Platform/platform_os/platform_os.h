@@ -3,7 +3,7 @@
  *
  * @file platform_os.h
  * @brief Platform OS 公共聚合头文件。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *****************************************************************************/

@@ -5,7 +5,7 @@
  *
  * @file test_app_communication.c
  * @brief 验证通信 APP 对象初始化和观测接口。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *

@@ -3,7 +3,7 @@
  *
  * @file platform_semaphore.h
  * @brief 定义 Binary 与 Counting Semaphore 的 Platform 接口。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *****************************************************************************/

@@ -5,7 +5,7 @@
  *
  * @file test_platform_os_headers.c
  * @brief 验证 Platform OS 公共头文件不依赖 CMSIS 或 FreeRTOS 头文件。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *****************************************************************************/

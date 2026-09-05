@@ -22,16 +22,18 @@
 //******************************** Includes *********************************//
 
 //******************************** Declaring *********************************//
-/*生命周期函数指针结构体*/
-// void *self 表示当前对象本身，类似于this指针
-typedef struct 
+/**
+ * @brief Platform 对象的生命周期操作集合。
+ * @note self 指向绑定对象但不转移所有权；调用顺序由对象状态机约束。
+ */
+typedef struct
 {
-    platform_error_t (*init)    (void *self); //对象初始化入口
-    platform_error_t (*start)   (void *self); //对象启动入口
-    platform_error_t (*process) (void *self); //周期处理入口
-    platform_error_t (*stop)    (void *self); //对象停止入口
-    platform_error_t (*deinit)  (void *self); //对象资源释放入口
-}platform_lifecycle_ops_t;
+    platform_error_t (*init)(void *self);
+    platform_error_t (*start)(void *self);
+    platform_error_t (*process)(void *self);
+    platform_error_t (*stop)(void *self);
+    platform_error_t (*deinit)(void *self);
+} platform_lifecycle_ops_t;
 
 //******************************** Declaring *********************************//
 #endif

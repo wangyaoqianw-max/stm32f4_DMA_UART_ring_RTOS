@@ -5,7 +5,7 @@
  *
  * @file test_impl_platform_gpio.c
  * @brief 验证 STM32 GPIO Impl Context 绑定和构造行为
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-01
  * @version V1.0
  *

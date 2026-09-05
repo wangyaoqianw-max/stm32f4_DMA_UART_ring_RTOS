@@ -5,7 +5,7 @@
  *
  * @file test_app_system.c
  * @brief 验证 Phase 9 Composition Root 的依赖顺序、资源和回滚。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *

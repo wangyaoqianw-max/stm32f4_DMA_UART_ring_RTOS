@@ -5,7 +5,7 @@
  *
  * @file platform_bsp_gpio.h
  * @brief Platform BSP 逻辑 GPIO 构造契约
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-02
  * @version V1.0
  *

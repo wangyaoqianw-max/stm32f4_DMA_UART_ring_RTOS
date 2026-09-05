@@ -5,7 +5,7 @@
  *
  * @file service_button.c
  * @brief 实现纯时间驱动的 Button 手势识别 Service。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-03
  * @version V1.0
  *

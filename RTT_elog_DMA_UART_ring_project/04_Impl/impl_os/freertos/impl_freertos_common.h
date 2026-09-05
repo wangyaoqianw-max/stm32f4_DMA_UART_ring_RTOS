@@ -5,7 +5,7 @@
  *
  * @file impl_freertos_common.h
  * @brief 定义 FreeRTOS CMSIS-RTOS2 Adapter 的内部公共辅助接口。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *****************************************************************************/

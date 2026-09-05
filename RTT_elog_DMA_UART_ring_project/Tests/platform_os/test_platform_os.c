@@ -3,7 +3,7 @@
  *
  * @file test_platform_os.c
  * @brief 验证 FreeRTOS Platform OS Adapter 的时间映射与错误语义。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *****************************************************************************/

@@ -5,7 +5,7 @@
  *
  * @file test_service_indicator.c
  * @brief 验证 Indicator Service 事件语义与 Platform 边界。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-03
  * @version V1.0
  *

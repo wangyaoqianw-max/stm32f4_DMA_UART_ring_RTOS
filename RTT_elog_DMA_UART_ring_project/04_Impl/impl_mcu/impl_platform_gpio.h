@@ -5,7 +5,7 @@
  *
  * @file impl_platform_gpio.h
  * @brief STM32 通用 GPIO 的 Platform Impl 构造接口
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-01
  * @version V1.0
  *

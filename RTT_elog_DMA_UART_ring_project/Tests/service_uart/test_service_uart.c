@@ -5,7 +5,7 @@
  *
  * @file test_service_uart.c
  * @brief 验证 UART Service 对象生命周期
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *

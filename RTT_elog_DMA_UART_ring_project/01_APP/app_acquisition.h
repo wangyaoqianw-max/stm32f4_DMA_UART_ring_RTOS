@@ -5,7 +5,7 @@
  *
  * @file app_acquisition.h
  * @brief 定义 Phase 9 Acquisition Task 调度与发布接口。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *

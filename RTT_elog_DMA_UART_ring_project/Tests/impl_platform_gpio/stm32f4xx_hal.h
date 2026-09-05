@@ -5,7 +5,7 @@
  *
  * @file stm32f4xx_hal.h
  * @brief GPIO STM32 Impl Host Test 使用的最小 HAL 替身
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-01
  * @version V1.0
  *

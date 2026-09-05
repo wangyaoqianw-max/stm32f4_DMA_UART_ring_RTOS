@@ -5,7 +5,7 @@
  *
  * @file platform_gpio_types.h
  * @brief Platform GPIO 公共数据类型
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-01
  * @version V1.0
  *

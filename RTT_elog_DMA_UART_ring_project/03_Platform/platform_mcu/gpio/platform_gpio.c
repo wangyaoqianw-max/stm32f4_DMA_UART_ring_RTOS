@@ -5,7 +5,7 @@
  *
  * @file platform_gpio.c
  * @brief Platform GPIO 抽象接口实现
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-01
  * @version V1.0
  *

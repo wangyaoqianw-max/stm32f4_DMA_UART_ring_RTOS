@@ -5,7 +5,7 @@
  *
  * @file platform_i2c.c
  * @brief Platform I2C 同步事务公共接口实现
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-02
  * @version V1.0
  *
@@ -64,6 +64,7 @@ static platform_error_t platform_i2c_scl_read(
     return platform_gpio_read(i2c->scl, level);
 }
 
+/* 释放 SCL 后轮询物理电平，以支持从设备 clock stretching。 */
 static platform_error_t platform_i2c_wait_scl_high(platform_i2c_t *i2c)
 {
     platform_gpio_level_t level = PLATFORM_GPIO_LEVEL_LOW;
@@ -91,6 +92,7 @@ static platform_error_t platform_i2c_wait_scl_high(platform_i2c_t *i2c)
     return PLATFORM_ERR_TIMEOUT;
 }
 
+/* 仅当 SDA 和 SCL 均被上拉为高电平时，允许开始一笔新事务。 */
 static platform_error_t platform_i2c_check_bus_idle(platform_i2c_t *i2c)
 {
     platform_gpio_level_t sdaLevel = PLATFORM_GPIO_LEVEL_LOW;
@@ -406,6 +408,7 @@ static platform_error_t platform_i2c_receive_data(
     return PLATFORM_ERR_OK;
 }
 
+/* 事务入口先校验总线空闲；START 失败时仍恢复线路释放状态。 */
 static platform_error_t platform_i2c_begin_transaction(platform_i2c_t *i2c)
 {
     platform_error_t result = platform_i2c_check_bus_idle(i2c);
@@ -434,6 +437,7 @@ static platform_error_t platform_i2c_release_bus(platform_i2c_t *i2c)
     return firstError;
 }
 
+/* 事务出口优先发送 STOP；失败后继续释放两条开漏线路。 */
 static platform_error_t platform_i2c_end_transaction(platform_i2c_t *i2c)
 {
     platform_error_t cleanupResult = platform_i2c_stop(i2c);
@@ -454,6 +458,7 @@ static platform_error_t platform_i2c_fail_transaction(
     return originalError;
 }
 
+/* 初始化时至多提供 9 个 SCL 脉冲释放被从机占用的 SDA，再生成 STOP。 */
 static platform_error_t platform_i2c_bus_recover(platform_i2c_t *i2c)
 {
     platform_gpio_level_t sdaLevel = PLATFORM_GPIO_LEVEL_LOW;

@@ -5,7 +5,7 @@
  *
  * @file test_impl_platform_delay_safety.c
  * @brief 验证 DWT 延时单段等待不会跨越半个计数器回绕周期
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-02
  * @version V1.0
  *

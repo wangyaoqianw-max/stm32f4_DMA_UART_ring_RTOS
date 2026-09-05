@@ -5,7 +5,7 @@
  *
  * @file test_app_communication_outbound.c
  * @brief 验证业务响应、传感器报告和 ONCE TX 完成语义。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *

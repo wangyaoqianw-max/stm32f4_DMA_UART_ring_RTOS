@@ -5,7 +5,7 @@
  *
  * @file service_log.c
  * @brief Service Log 初始化策略和 Platform Log 转发实现。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-31
  * @version V1.0
  *

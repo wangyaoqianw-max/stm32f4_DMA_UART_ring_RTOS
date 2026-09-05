@@ -5,7 +5,7 @@
  *
  * @file test_service_acquisition.c
  * @brief 验证统一采集服务的原子提交和双传感器诊断合同。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *

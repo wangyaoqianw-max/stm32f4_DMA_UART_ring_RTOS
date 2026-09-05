@@ -5,7 +5,7 @@
  *
  * @file test_app_acquisition.c
  * @brief 验证 Acquisition Task 的绝对周期、STOP 抑制和 ONCE 发布。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *

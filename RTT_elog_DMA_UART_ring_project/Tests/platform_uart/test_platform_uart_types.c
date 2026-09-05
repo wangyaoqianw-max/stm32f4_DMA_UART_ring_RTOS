@@ -5,7 +5,7 @@
  *
  * @file test_platform_uart_types.c
  * @brief 验证 Platform UART 公共类型契约
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-28
  * @version V1.0
  *

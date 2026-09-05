@@ -5,7 +5,7 @@
  *
  * @file app_control.h
  * @brief 定义 Phase 9 唯一 APP Control FSM 与 Control Task 接口。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *

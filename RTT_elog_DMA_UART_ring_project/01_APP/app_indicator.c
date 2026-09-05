@@ -5,7 +5,7 @@
  *
  * @file app_indicator.c
  * @brief 实现 Indicator Queue 到 Indicator Service 的语义映射。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *

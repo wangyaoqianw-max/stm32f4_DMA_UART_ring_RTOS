@@ -1,6 +1,14 @@
 /******************************************************************************
+ * Copyright (C) 2026 YaoQian Wang
+ *
+ * All Rights Reserved.
+ *
  * @file test_impl_platform_uart.c
  * @brief USART1 DMA RX Phase 2A Host Tests
+ * @author YaoQian Wang
+ * @date 2026-09-05
+ * @version V1.0
+ *
  *****************************************************************************/
 
 #include "platform_uart.h"

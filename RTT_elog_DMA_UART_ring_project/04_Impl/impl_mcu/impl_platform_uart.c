@@ -26,6 +26,10 @@
 //******************************** Defines *********************************//
 
 //******************************** Declaring *********************************//
+/*
+ * USART1 的 Impl 私有 DMA 上下文。RX/TX 缓冲区均为非拥有型引用，
+ * 活动标志决定取消、回调和生命周期停止时可访问的会话范围。
+ */
 typedef struct
 {
     UART_HandleTypeDef *halUart;
@@ -145,6 +149,7 @@ static platform_error_t stm32_uart_map_hal_status(HAL_StatusTypeDef halStatus)
     }
 }
 
+/* 在 DMA 已停止或初始化前失效 RX 缓冲区引用，阻止旧会话继续被回调使用。 */
 static void stm32_uart_clear_rx_session(stm32_uart_impl_context_t *context)
 {
     if (context != NULL) {
@@ -155,6 +160,7 @@ static void stm32_uart_clear_rx_session(stm32_uart_impl_context_t *context)
     }
 }
 
+/* 在完成、取消或停止后失效 TX 缓冲区引用，结束发送事务所有权。 */
 static void stm32_uart_clear_tx_transaction(stm32_uart_impl_context_t *context)
 {
     if (context != NULL) {
@@ -431,6 +437,7 @@ static platform_error_t stm32_uart_map_parity(platform_uart_parity_t parity,
     }
 }
 
+/* 配置并初始化 HAL UART，只有成功后才发布 Platform 的 INITIALIZED 状态。 */
 static platform_error_t stm32_uart_lifecycle_init(void *self)
 {
     platform_error_t result = PLATFORM_ERR_OK;
@@ -474,6 +481,7 @@ static platform_error_t stm32_uart_lifecycle_init(void *self)
     return platform_device_set_power_state(&uart->device, PLATFORM_DEVICE_POWER_IDLE);
 }
 
+/* 不启动 DMA；仅将已初始化 UART 发布为可接受读写请求的 ACTIVE 状态。 */
 static platform_error_t stm32_uart_lifecycle_start(void *self)
 {
     platform_error_t result = PLATFORM_ERR_OK;
@@ -514,6 +522,7 @@ static platform_error_t stm32_uart_lifecycle_process(void *self)
     return PLATFORM_ERR_OK;
 }
 
+/* 同步终止活动 DMA 后清除会话引用，再将对象转换为 STOPPED/IDLE。 */
 static platform_error_t stm32_uart_lifecycle_stop(void *self)
 {
     platform_error_t result = PLATFORM_ERR_OK;
@@ -560,6 +569,7 @@ static platform_error_t stm32_uart_lifecycle_stop(void *self)
     return platform_device_set_power_state(&uart->device, PLATFORM_DEVICE_POWER_IDLE);
 }
 
+/* 仅在 STOPPED 后反初始化 HAL，避免 DMA 或回调访问已释放的 UART 资源。 */
 static platform_error_t stm32_uart_lifecycle_deinit(void *self)
 {
     platform_error_t result = PLATFORM_ERR_OK;

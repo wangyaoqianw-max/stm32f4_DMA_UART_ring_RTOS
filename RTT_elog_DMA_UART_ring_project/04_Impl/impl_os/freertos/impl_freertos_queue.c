@@ -3,7 +3,7 @@
  *
  * @file impl_freertos_queue.c
  * @brief 实现基于 CMSIS-RTOS2 Message Queue 的 Platform Queue Adapter。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *****************************************************************************/

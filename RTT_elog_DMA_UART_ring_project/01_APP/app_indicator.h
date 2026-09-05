@@ -5,7 +5,7 @@
  *
  * @file app_indicator.h
  * @brief 定义 Phase 9 Indicator Task 接口。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *

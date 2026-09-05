@@ -5,7 +5,7 @@
  *
  * @file test_service_log.c
  * @brief 验证 Service Log 公共接口、策略和日志参数转发。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-31
  * @version V1.0
  *

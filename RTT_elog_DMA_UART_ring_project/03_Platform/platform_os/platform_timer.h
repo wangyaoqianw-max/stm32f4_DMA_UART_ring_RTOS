@@ -3,7 +3,7 @@
  *
  * @file platform_timer.h
  * @brief 定义运行于 RTOS Timer Task 的 Software Timer 接口。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *****************************************************************************/
@@ -21,6 +21,10 @@ typedef enum {
 
 typedef void (*platform_timer_callback_t)(void *argument);
 
+/**
+ * @brief 创建软件定时器所需的静态配置。
+ * @note callback 在 RTOS Timer Task 中执行，argument 的有效期由调用者保证。
+ */
 typedef struct {
     const char *name;
     platform_timer_type_t type;

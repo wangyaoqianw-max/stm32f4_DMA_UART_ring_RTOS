@@ -5,7 +5,7 @@
  *
  * @file main.h
  * @brief Platform BSP GPIO Host Test 使用的 CubeMX 资源宏替身
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-02
  * @version V1.0
  *

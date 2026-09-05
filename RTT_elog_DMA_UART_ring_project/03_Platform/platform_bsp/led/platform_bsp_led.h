@@ -5,7 +5,7 @@
  *
  * @file platform_bsp_led.h
  * @brief Platform BSP Status LED 构造契约
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-03
  * @version V1.0
  *

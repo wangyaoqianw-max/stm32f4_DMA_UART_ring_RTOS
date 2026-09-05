@@ -3,7 +3,7 @@
  *
  * @file platform_mutex.h
  * @brief 定义 Task Context 使用的 Platform Mutex 接口。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *****************************************************************************/

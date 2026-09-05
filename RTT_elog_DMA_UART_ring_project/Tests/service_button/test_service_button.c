@@ -5,7 +5,7 @@
  *
  * @file test_service_button.c
  * @brief 验证 Button Service 的生命周期和初始采样语义。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-03
  * @version V1.0
  *

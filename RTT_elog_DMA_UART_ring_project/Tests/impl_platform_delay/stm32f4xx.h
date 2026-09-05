@@ -5,7 +5,7 @@
  *
  * @file stm32f4xx.h
  * @brief Platform 微秒延时 Host Test 的最小 CMSIS 替身
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-02
  * @version V1.0
  *

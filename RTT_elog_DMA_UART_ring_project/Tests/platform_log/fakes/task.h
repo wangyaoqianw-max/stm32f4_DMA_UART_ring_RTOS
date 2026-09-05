@@ -1,7 +1,7 @@
 /******************************************************************************
  * @file task.h
  * @brief Platform Log Host Test 使用的最小 FreeRTOS task fake 声明。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-31
  * @version V1.0
  *****************************************************************************/

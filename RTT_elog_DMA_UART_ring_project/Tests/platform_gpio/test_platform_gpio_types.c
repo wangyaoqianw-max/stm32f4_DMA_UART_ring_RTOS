@@ -5,7 +5,7 @@
  *
  * @file test_platform_gpio_types.c
  * @brief 验证 Platform GPIO 公共类型契约和 Header Isolation
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-01
  * @version V1.0
  *

@@ -5,7 +5,7 @@
  *
  * @file test_impl_platform_delay.c
  * @brief 验证 Platform 微秒延时实现能够提供既有公共符号
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-02
  * @version V1.0
  *

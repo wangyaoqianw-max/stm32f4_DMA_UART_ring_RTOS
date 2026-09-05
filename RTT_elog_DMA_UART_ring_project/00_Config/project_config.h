@@ -5,7 +5,7 @@
  *
  * @file project_config.h
  * @brief 定义产品级静态配置。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *

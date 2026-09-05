@@ -5,7 +5,7 @@
  *
  * @file platform_i2c.h
  * @brief Platform I2C 同步事务公共接口
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-02
  * @version V1.0
  *

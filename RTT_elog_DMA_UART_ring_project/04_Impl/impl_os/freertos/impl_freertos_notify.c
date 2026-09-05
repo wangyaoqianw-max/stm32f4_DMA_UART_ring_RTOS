@@ -3,7 +3,7 @@
  *
  * @file impl_freertos_notify.c
  * @brief 实现基于 CMSIS-RTOS2 Thread Flags 的 Platform Notification Adapter。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *****************************************************************************/

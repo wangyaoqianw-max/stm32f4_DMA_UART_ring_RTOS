@@ -5,7 +5,7 @@
  *
  * @file test_platform_mpu6050.c
  * @brief 验证 Platform MPU6050 Phase 7 公共合同
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *

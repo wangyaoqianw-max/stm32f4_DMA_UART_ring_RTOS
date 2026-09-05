@@ -5,7 +5,7 @@
  *
  * @file platform_dht20.c
  * @brief Platform DHT20 同步测量接口实现
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *
@@ -34,6 +34,7 @@
 //******************************** Defines *********************************//
 
 //******************************** Private Functions ***********************//
+/* 按 DHT20 协议计算前 6 字节的 CRC-8（初值 0xFF，多项式 0x31）。 */
 static uint8_t platform_dht20_crc8(const uint8_t *data, uint32_t length)
 {
     uint8_t crc = PLATFORM_DHT20_CRC_INITIAL_VALUE;
@@ -55,6 +56,7 @@ static uint8_t platform_dht20_crc8(const uint8_t *data, uint32_t length)
     return crc;
 }
 
+/* 对象和其非拥有型共享 I2C 引用都必须仍处于初始化状态。 */
 static platform_error_t platform_dht20_validate_initialized(
     const platform_dht20_t *dht20)
 {

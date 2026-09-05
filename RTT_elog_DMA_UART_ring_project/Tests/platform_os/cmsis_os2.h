@@ -3,7 +3,7 @@
  *
  * @file cmsis_os2.h
  * @brief Platform OS Host Test 使用的最小 Fake CMSIS-RTOS2 声明。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *****************************************************************************/

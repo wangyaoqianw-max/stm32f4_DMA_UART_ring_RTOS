@@ -5,7 +5,7 @@
  *
  * @file test_app_ipc_types.c
  * @brief 验证 Phase 9 APP IPC 值拷贝合同。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *

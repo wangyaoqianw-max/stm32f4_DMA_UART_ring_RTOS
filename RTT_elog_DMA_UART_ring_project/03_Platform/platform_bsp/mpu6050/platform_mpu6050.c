@@ -5,7 +5,7 @@
  *
  * @file platform_mpu6050.c
  * @brief Platform MPU6050 Phase 7 同步六轴读取实现
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *
@@ -74,6 +74,7 @@ static platform_error_t platform_mpu6050_validate_initialized(
     return PLATFORM_ERR_OK;
 }
 
+/* 将寄存器地址和值作为一个连续 I2C 写帧发送，避免调用者重复组包。 */
 static platform_error_t platform_mpu6050_write_register(
     platform_i2c_t *i2c,
     uint8_t address,
@@ -91,6 +92,7 @@ static platform_error_t platform_mpu6050_write_register(
                               PLATFORM_MPU6050_REGISTER_WRITE_LENGTH);
 }
 
+/* 将传感器高字节在前的补码轴数据拼接为有符号 16 位原始值。 */
 static int16_t platform_mpu6050_parse_axis(uint8_t high, uint8_t low)
 {
     return (int16_t)(((uint16_t)high << 8U) | (uint16_t)low);

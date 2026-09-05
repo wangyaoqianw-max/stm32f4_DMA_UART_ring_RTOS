@@ -3,7 +3,7 @@
  *
  * @file platform_thread.h
  * @brief 定义 Platform Thread 的配置与 Task Context 操作接口。
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-08-30
  * @version V1.0
  *****************************************************************************/
@@ -23,6 +23,10 @@ typedef enum {
 
 typedef void (*platform_thread_entry_t)(void *argument);
 
+/**
+ * @brief 创建线程所需的静态配置。
+ * @note name、entry 和 argument 只被引用；stackSizeBytes 的单位为 byte。
+ */
 typedef struct {
     const char *name;
     platform_thread_entry_t entry;

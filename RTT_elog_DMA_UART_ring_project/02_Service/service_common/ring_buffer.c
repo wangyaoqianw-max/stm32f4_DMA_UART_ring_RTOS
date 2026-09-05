@@ -17,6 +17,7 @@
 //******************************** Includes *********************************//
 
 //******************************** Functions ********************************//
+/* 校验 SPSC 对象已绑定有效存储；storageSize 至少保留一个空槽区分满和空。 */
 static platform_error_t ring_buffer_validate(const ring_buffer_t *ringBuffer)
 {
     if (ringBuffer == NULL) {
@@ -30,6 +31,7 @@ static platform_error_t ring_buffer_validate(const ring_buffer_t *ringBuffer)
     return PLATFORM_ERR_OK;
 }
 
+/* 根据读写快照计算可读长度，不修改 Producer 或 Consumer 的索引。 */
 static platform_size_t ring_buffer_calculate_readable_size(const ring_buffer_t *ringBuffer,
                                                            platform_size_t readIndex,
                                                            platform_size_t writeIndex)

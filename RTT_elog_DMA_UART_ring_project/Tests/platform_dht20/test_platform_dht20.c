@@ -5,7 +5,7 @@
  *
  * @file test_platform_dht20.c
  * @brief 验证 Platform DHT20 第一阶段公共合同
- * @author Codex
+ * @author YaoQian Wang
  * @date 2026-09-04
  * @version V1.0
  *
