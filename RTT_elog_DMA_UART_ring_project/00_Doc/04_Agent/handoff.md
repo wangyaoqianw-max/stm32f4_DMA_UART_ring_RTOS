@@ -5,9 +5,92 @@
 > 本文件是 AI Agent / Codex 与人工开发者恢复工程上下文时的长期入口。  
 > Phase 1~9 核心工程已经完成并通过 Host / Keil / Target 综合验证，作为稳定 Application Baseline 保留。  
 > Display Extension 已完成硬件资源确认、CubeMX SPI1 配置和 ST7789T3 最小 Bring-up 目标板验证。临时 Bring-up 测试代码已经回退。  
-> 当前新施工阶段已经冻结为 **SPI Platform + STM32 Impl Phase 1**。  
+> **SPI Platform + STM32 Impl Phase 1** 已完成实现与非板级验证。
 > 当前正式执行入口：`00_Doc/04_Agent/implementation_plan.md`。  
 > 当前主设计：`00_Doc/02_架构设计/SPI_Platform_Impl_Phase1设计.md`。
+
+---
+
+# 0. SPI Platform + STM32 Impl Phase 1 完成记录
+
+完成状态：
+
+```text
+Implementation : COMPLETE
+Host focused   : PASS 2 / 2
+Host regression: PASS 36 / 36
+Keil Production full rebuild: PASS / 0 errors / 13 existing warnings
+Target test    : NOT RUN BY PLAN
+```
+
+本阶段新增：
+
+```text
+03_Platform/platform_mcu/spi/platform_spi_types.h
+03_Platform/platform_mcu/spi/platform_spi.h
+03_Platform/platform_mcu/spi/platform_spi.c
+04_Impl/impl_mcu/impl_platform_spi.h
+04_Impl/impl_mcu/impl_platform_spi.c
+Tests/platform_spi/test_platform_spi.c
+Tests/impl_platform_spi/spi.h
+Tests/impl_platform_spi/test_impl_platform_spi.c
+```
+
+本阶段修改：
+
+```text
+03_Platform/platform_common/platform_device.h
+MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx
+00_Doc/04_Agent/handoff.md
+```
+
+已经建立的合同：
+
+```text
+SPI Bus + lightweight SPI Device
+explicit begin / write / end transaction
+optional CS + configurable active level
+blocking TX + finite timeout
+STM32 SPI1 private HAL binding
+fixed CubeMX configuration validation
+```
+
+类型约束：
+
+```text
+状态布尔值统一使用 platform_bool_t / PLATFORM_TRUE / PLATFORM_FALSE
+长度统一使用 platform_size_t
+8/32 位字段沿用 platform_types.h 当前已有的 uint8_t / uint32_t
+Platform 公共头文件不暴露 HAL 类型
+```
+
+实际配置偏差记录：
+
+```text
+冻结设计曾按 TX Only Simplex 描述。
+实际 .ioc 与 Core/Src/spi.c 均为 SPI_DIRECTION_2LINES。
+经人工确认，本阶段按实际配置继续，不修改 CubeMX 生成配置。
+Platform 对外能力仍限制为 TX-only，不新增 read / transfer API。
+```
+
+验证边界：
+
+```text
+本阶段按计划不做板测。
+SPI 与屏幕的目标板联调推迟到正式屏幕实现阶段。
+当前未实现 DMA / IRQ / async / read / mutex / dynamic reconfiguration。
+```
+
+代码规范审查：
+
+```text
+PASS
+- Platform 无 HAL 类型泄漏
+- APP / Service 无 Impl 或 HAL 依赖
+- 使用平台布尔类型和平台长度类型
+- 无 LCD 控制脚语义下沉到通用 SPI
+- git diff --check 通过
+```
 
 ---
 
@@ -821,10 +904,13 @@ SPI Platform + STM32 Impl Phase 1 design:
 DESIGN FROZEN
 
 SPI Platform + STM32 Impl Phase 1 implementation plan:
-READY FOR CODEX
+COMPLETE / HOST 36 OF 36 / KEIL FULL REBUILD PASS
+
+SPI Platform + STM32 Impl Phase 1 target test:
+NOT RUN BY PLAN / DEFERRED TO SCREEN IMPLEMENTATION
 
 Formal ST7789 Driver:
-NOT STARTED / NEXT AFTER SPI PHASE 1
+NOT STARTED / NEXT STAGE
 
 Display Task / IPC / UART migration:
 NOT DESIGNED
