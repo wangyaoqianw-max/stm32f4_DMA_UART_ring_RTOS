@@ -39,9 +39,58 @@ typedef struct
     uint32_t writeCount;
 } fake_gpio_context_t;
 
-static platform_error_t fake_lifecycle(void *self)
+static platform_error_t fake_lifecycle_init(void *self)
+{
+    platform_spi_bus_t *bus = (platform_spi_bus_t *)self;
+
+    if (bus->device.object.state != PLATFORM_OBJECT_CREATED) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+    bus->device.object.state = PLATFORM_OBJECT_INITIALIZED;
+
+    return PLATFORM_ERR_OK;
+}
+
+static platform_error_t fake_lifecycle_start(void *self)
+{
+    platform_spi_bus_t *bus = (platform_spi_bus_t *)self;
+
+    if ((bus->device.object.state != PLATFORM_OBJECT_INITIALIZED) &&
+        (bus->device.object.state != PLATFORM_OBJECT_STOPPED)) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+    bus->device.object.state = PLATFORM_OBJECT_STARTED;
+
+    return PLATFORM_ERR_OK;
+}
+
+static platform_error_t fake_lifecycle_process(void *self)
 {
     (void)self;
+    return PLATFORM_ERR_OK;
+}
+
+static platform_error_t fake_lifecycle_stop(void *self)
+{
+    platform_spi_bus_t *bus = (platform_spi_bus_t *)self;
+
+    if (bus->device.object.state != PLATFORM_OBJECT_STARTED) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+    bus->device.object.state = PLATFORM_OBJECT_STOPPED;
+
+    return PLATFORM_ERR_OK;
+}
+
+static platform_error_t fake_lifecycle_deinit(void *self)
+{
+    platform_spi_bus_t *bus = (platform_spi_bus_t *)self;
+
+    if (bus->device.object.state != PLATFORM_OBJECT_STOPPED) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+    bus->device.object.state = PLATFORM_OBJECT_CREATED;
+
     return PLATFORM_ERR_OK;
 }
 
@@ -107,11 +156,11 @@ static platform_error_t fake_gpio_deinit(platform_gpio_t *gpio)
 }
 
 static const platform_lifecycle_ops_t g_fakeLifecycleOps = {
-    fake_lifecycle,
-    fake_lifecycle,
-    fake_lifecycle,
-    fake_lifecycle,
-    fake_lifecycle
+    fake_lifecycle_init,
+    fake_lifecycle_start,
+    fake_lifecycle_process,
+    fake_lifecycle_stop,
+    fake_lifecycle_deinit
 };
 
 static const platform_spi_bus_ops_t g_fakeSpiOps = {
@@ -238,6 +287,29 @@ static int test_bus_init_rejects_missing_contract_fields(void)
     incompleteOps.write = NULL;
     params.ops = &incompleteOps;
     TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == platform_spi_bus_init(&bus, &params));
+
+    return 0;
+}
+
+static int test_bus_lifecycle_facade_runs_complete_lifecycle(void)
+{
+    platform_spi_bus_t bus = PLATFORM_SPI_BUS_INITIALIZER;
+    fake_spi_context_t context = make_spi_context(PLATFORM_ERR_OK,
+                                                  PLATFORM_ERR_OK);
+    platform_spi_bus_init_params_t params = make_bus_params(&context);
+
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_spi_bus_init(&bus, &params));
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_spi_bus_lifecycle_init(&bus));
+    TEST_ASSERT(PLATFORM_OBJECT_INITIALIZED == bus.device.object.state);
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_spi_bus_lifecycle_start(&bus));
+    TEST_ASSERT(PLATFORM_OBJECT_STARTED == bus.device.object.state);
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_spi_bus_lifecycle_stop(&bus));
+    TEST_ASSERT(PLATFORM_OBJECT_STOPPED == bus.device.object.state);
+    TEST_ASSERT(PLATFORM_ERR_OK == platform_spi_bus_lifecycle_deinit(&bus));
+    TEST_ASSERT(PLATFORM_OBJECT_CREATED == bus.device.object.state);
+
+    TEST_ASSERT(PLATFORM_ERR_NULL_POINTER ==
+                platform_spi_bus_lifecycle_init(NULL));
 
     return 0;
 }
@@ -458,6 +530,10 @@ int main(void)
         return result;
     }
     result = test_bus_init_rejects_missing_contract_fields();
+    if (result != 0) {
+        return result;
+    }
+    result = test_bus_lifecycle_facade_runs_complete_lifecycle();
     if (result != 0) {
         return result;
     }

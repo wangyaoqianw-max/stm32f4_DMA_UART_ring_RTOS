@@ -22,19 +22,19 @@
 
 _Static_assert(APP_CTRL_SOURCE_BUTTON != APP_CTRL_SOURCE_UART,
                "control sources must be distinct");
-_Static_assert(APP_CONTROL_MESSAGE_CONTROL_REQUEST != APP_CONTROL_MESSAGE_ONCE_TX_RESULT,
+_Static_assert(APP_CONTROL_MESSAGE_CONTROL_REQUEST != APP_CONTROL_MESSAGE_ONCE_COMPLETE,
                "control message kinds must be distinct");
 _Static_assert(APP_ACQUISITION_COMMAND_START_PERIODIC != APP_ACQUISITION_COMMAND_SAMPLE_ONCE,
                "acquisition commands must be distinct");
-_Static_assert(APP_COMM_OUTBOUND_PERIODIC_REPORT != APP_COMM_OUTBOUND_ONCE_REPORT,
-               "outbound report kinds must be distinct");
+_Static_assert(APP_DISPLAY_MESSAGE_SYSTEM_STATE != APP_DISPLAY_MESSAGE_MEASUREMENT,
+               "display message kinds must be distinct");
 _Static_assert(APP_INDICATOR_STOPPED != APP_INDICATOR_ONCE_SUCCESS,
                "indicator commands must be distinct");
 
 int main(void)
 {
     app_control_message_t controlMessage = {0};
-    app_communication_outbound_message_t outboundMessage = {0};
+    app_display_message_t displayMessage = {0};
 
     controlMessage.type = APP_CONTROL_MESSAGE_CONTROL_REQUEST;
     controlMessage.payload.request.event = APP_CTRL_START;
@@ -42,11 +42,21 @@ int main(void)
     TEST_ASSERT(controlMessage.payload.request.event == APP_CTRL_START);
     TEST_ASSERT(controlMessage.payload.request.source == APP_CTRL_SOURCE_UART);
 
-    outboundMessage.type = APP_COMM_OUTBOUND_ONCE_REPORT;
-    outboundMessage.payload.acquisition.environment.temperatureC = 25.0F;
-    outboundMessage.payload.acquisition.motion.accelZG = 1.0F;
-    TEST_ASSERT(outboundMessage.payload.acquisition.environment.temperatureC == 25.0F);
-    TEST_ASSERT(outboundMessage.payload.acquisition.motion.accelZG == 1.0F);
+    controlMessage.type = APP_CONTROL_MESSAGE_ONCE_COMPLETE;
+    controlMessage.payload.result = PLATFORM_ERR_CHECKSUM;
+    TEST_ASSERT(controlMessage.payload.result == PLATFORM_ERR_CHECKSUM);
+
+    displayMessage.type = APP_DISPLAY_MESSAGE_SYSTEM_STATE;
+    displayMessage.payload.systemState = APP_CONTROL_STATE_RUNNING;
+    TEST_ASSERT(displayMessage.payload.systemState == APP_CONTROL_STATE_RUNNING);
+
+    displayMessage.type = APP_DISPLAY_MESSAGE_MEASUREMENT;
+    displayMessage.payload.measurement.environment.temperatureC = 25.0F;
+    displayMessage.payload.measurement.motion.accelZG = 1.0F;
+    TEST_ASSERT(displayMessage.payload.measurement.environment.temperatureC == 25.0F);
+    TEST_ASSERT(displayMessage.payload.measurement.motion.accelZG == 1.0F);
+
+    TEST_ASSERT(APP_CONTROL_RESPONSE_OK_ONCE < APP_CONTROL_RESPONSE_MAX);
 
     return 0;
 }

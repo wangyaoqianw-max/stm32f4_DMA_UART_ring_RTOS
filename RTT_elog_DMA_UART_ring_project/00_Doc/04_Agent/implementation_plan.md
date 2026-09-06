@@ -1,8 +1,18 @@
 # Active Implementation Plan — RTOS Display Integration
 
-> 状态：ACTIVE / READY FOR EXECUTION  
+> 状态：IMPLEMENTED / HOST + KEIL VERIFIED / TARGET PENDING
 > 日期：2026-09-06  
 > 设计依据：`00_Doc/02_架构设计/RTOS_Display_Integration_Design.md`
+
+当前验证证据：
+
+```text
+Host full regression      PASS 40/40
+Keil full rebuild         PASS / 0 errors
+Modified production code no new warnings
+Target verification       PENDING MANUAL BOARD TEST
+Resource observation      PENDING MANUAL BOARD TEST
+```
 
 ---
 
@@ -684,6 +694,8 @@ COMPLETE / HOST + KEIL + TARGET VERIFIED
 ---
 
 # 16. Completion Criteria
+
+当前状态：实现、Host、Keil、静态架构检查和文档同步已完成；Target verification、目标板 failure isolation 与资源观测尚未执行，因此本计划不得标记 COMPLETE。
 
 只有以下全部完成，计划才可标记 COMPLETE：
 

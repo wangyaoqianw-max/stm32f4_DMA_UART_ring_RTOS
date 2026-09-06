@@ -88,6 +88,34 @@ platform_error_t platform_spi_bus_init(
     const platform_spi_bus_init_params_t *params);
 
 /**
+ * @brief 通过 Platform facade 初始化 SPI Bus 生命周期
+ * @param[in,out] bus : 已构造、处于 CREATED 状态的 SPI Bus
+ * @return platform_error_t : 生命周期初始化结果
+ */
+platform_error_t platform_spi_bus_lifecycle_init(platform_spi_bus_t *bus);
+
+/**
+ * @brief 通过 Platform facade 启动 SPI Bus
+ * @param[in,out] bus : 已完成生命周期初始化或已停止的 SPI Bus
+ * @return platform_error_t : 生命周期启动结果
+ */
+platform_error_t platform_spi_bus_lifecycle_start(platform_spi_bus_t *bus);
+
+/**
+ * @brief 通过 Platform facade 停止 SPI Bus
+ * @param[in,out] bus : 已启动且没有活动事务的 SPI Bus
+ * @return platform_error_t : 生命周期停止结果
+ */
+platform_error_t platform_spi_bus_lifecycle_stop(platform_spi_bus_t *bus);
+
+/**
+ * @brief 通过 Platform facade 反初始化 SPI Bus
+ * @param[in,out] bus : 已初始化但未启动，或已停止且没有活动事务的 SPI Bus
+ * @return platform_error_t : 生命周期反初始化结果
+ */
+platform_error_t platform_spi_bus_lifecycle_deinit(platform_spi_bus_t *bus);
+
+/**
  * @brief 初始化挂接到 SPI Bus 的从设备描述符
  * @param[in,out] device : 使用 PLATFORM_SPI_DEVICE_INITIALIZER 清零的设备描述符
  * @param[in] name : 设备名称，不得为 NULL

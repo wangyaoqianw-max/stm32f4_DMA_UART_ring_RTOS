@@ -33,9 +33,9 @@ typedef struct
     service_acquisition_t *service;
     /** Control FSM 发来的周期/ONCE 命令 Queue。 */
     platform_queue_t *commandQueue;
-    /** 完整传感器结果的 Communication Outbound Queue。 */
-    platform_queue_t *communicationQueue;
-    /** ONCE 失败完成消息回传到 Control FSM 的 Queue。 */
+    /** 完整传感器结果的 Display Queue。 */
+    platform_queue_t *displayQueue;
+    /** ONCE 完成消息回传到 Control FSM 的 Queue。 */
     platform_queue_t *controlQueue;
 } app_acquisition_config_t;
 
@@ -59,11 +59,11 @@ typedef struct
     uint32_t onceSampleCount;
     /** Unified Acquisition Service 返回失败的次数。 */
     uint32_t sampleFailureCount;
-    /** 成功投递到 Communication Queue 的周期报告数。 */
+    /** 成功投递到 Display Queue 的周期测量数。 */
     uint32_t periodicPublishCount;
-    /** 成功投递到 Communication Queue 的 ONCE 报告数。 */
+    /** 成功投递到 Display Queue 的 ONCE 测量数。 */
     uint32_t oncePublishCount;
-    /** 向 Communication 或 Control Queue 投递失败次数。 */
+    /** 向 Display 或 Control Queue 投递失败次数。 */
     uint32_t queueSubmitFailureCount;
     /** 因采样期间观察到 STOP 而丢弃的周期结果数。 */
     uint32_t stalePeriodicDiscardCount;

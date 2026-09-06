@@ -5,7 +5,7 @@
 > 本文件是 AI Agent / Codex 与人工开发者恢复工程上下文时的长期入口。  
 > Phase 1~9 Core Application 已完成并通过 Host / Keil / Target 综合验证。  
 > Display Extension 的硬件资源、CubeMX SPI1 + LCD GPIO、最小 Bring-up、SPI Platform + STM32 Impl、ST7789 + Minimal Graphics 均已完成。  
-> RTOS Display Integration Design 已冻结；下一步进入独立 Implementation Plan 与实现验证。
+> RTOS Display Integration 已完成代码、Host 与 Keil 验证；下一步执行人工目标板验收与资源观测。
 
 ---
 
@@ -22,12 +22,14 @@ Temporary Bring-up Code                   REVERTED
 SPI Platform + STM32 Impl Phase 1         COMPLETE / HOST + KEIL VERIFIED
 ST7789 + Minimal Graphics Phase 1         COMPLETE / HOST + KEIL VERIFIED
 RTOS Display Integration Design           FROZEN
-Display Task / IPC                        DESIGNED / NOT IMPLEMENTED
-UART Product Output Migration             DESIGNED / NOT IMPLEMENTED
-ONCE Semantic Migration                   DESIGNED / NOT IMPLEMENTED
+Display Task / IPC                        IMPLEMENTED / HOST + KEIL VERIFIED
+UART Product Output Migration             IMPLEMENTED / HOST + KEIL VERIFIED
+ONCE Semantic Migration                   IMPLEMENTED / HOST + KEIL VERIFIED
 Touch / CTP                               DEFERRED
 
-Current Active Implementation Plan        RTOS DISPLAY INTEGRATION
+RTOS Display Integration                  TARGET VERIFICATION PENDING
+Host Full Regression                      PASS 40/40
+Keil Full Rebuild                         PASS / 0 ERRORS
 ```
 
 正式设计文档：
@@ -41,7 +43,7 @@ Current Active Implementation Plan        RTOS DISPLAY INTEGRATION
 下一正式动作：
 
 ```text
-Execute RTOS Display Integration Implementation Plan
+Flash current Keil image and execute the RTOS Display Integration board checklist
 ```
 
 ---
@@ -340,7 +342,7 @@ no runtime dynamic reconfiguration
 no DMA
 ```
 
-正式 Display Integration 需要补齐：
+正式 Display Integration 已补齐：
 
 ```text
 Platform BSP display-SPI bus constructor
@@ -618,7 +620,7 @@ Display -X-> Control business result
 
 # 12. Composition Root Direction
 
-`app_system.c` 将新增：
+`app_system.c` 已新增：
 
 ```text
 g_displaySpiBus
@@ -681,7 +683,7 @@ PROJECT_DISPLAY_BOOT_DURATION_MS      = 1000
 
 ---
 
-# 14. 当前 Active Implementation Plan
+# 14. 当前 Implementation Plan 状态
 
 正式计划：
 
@@ -689,13 +691,14 @@ PROJECT_DISPLAY_BOOT_DURATION_MS      = 1000
 00_Doc/04_Agent/implementation_plan.md
 ```
 
-目标：
+当前结果：
 
 ```text
-Implement RTOS Display Integration
- -> Host verification
- -> Keil rebuild
- -> Target verification
+Implementation           COMPLETE
+Host verification        PASS 40/40
+Keil rebuild             PASS / 0 errors
+Target verification      PENDING MANUAL BOARD TEST
+Resource observation     PENDING MANUAL BOARD TEST
 ```
 
 不要重新设计或重做：
@@ -725,4 +728,24 @@ Main UI information architecture
 00_Doc/02_架构设计/Final_RTOS_Application_Integration_Phase9设计.md
 00_Doc/02_架构设计/SPI_Platform_Impl_Phase1设计.md
 00_Doc/02_架构设计/ST7789_Graphics_Phase1设计.md
+```
+
+---
+
+# 16. 待执行目标板验收
+
+烧录当前 Keil 产物后依次确认：
+
+```text
+1. Boot Page 正常显示，约 1 s 后进入 Main UI
+2. 初始 STATE = STOPPED，所有 measurement = --
+3. START 后 STATE = RUNNING，并立即完成第一次双传感器采集
+4. RUNNING 下约每 2 s 更新 DHT20 + MPU6050，且无明显整屏闪烁
+5. STOP 后 STATE = STOPPED，并保留最后一次有效 measurement
+6. Button ONCE 更新 measurement，成功时 LED 闪烁 3 次，STATE 保持 STOPPED
+7. UART ONCE 更新 measurement，返回 OK ONCE，成功时 LED 闪烁 3 次
+8. UART START / STOP / STATUS / HELP、未知命令和超长命令行为保持正常
+9. UART 不再输出周期或 ONCE 的 ENV/IMU measurement report
+10. 通过断开 LCD 等安全方式验证 Display 故障不破坏 UART、Control、Acquisition、Indicator
+11. 记录五个产品 Task high-water mark 及 Display/Communication Queue peak occupancy
 ```

@@ -28,12 +28,15 @@ typedef struct
     platform_queue_t controlQueue;
     platform_queue_t acquisitionQueue;
     platform_queue_t communicationQueue;
+    platform_queue_t displayQueue;
     platform_queue_t indicatorQueue;
     app_control_message_t receiveMessage;
     app_acquisition_command_t acquisitionMessages[8];
-    app_communication_outbound_message_t communicationMessages[16];
+    app_control_response_t communicationMessages[16];
+    app_display_message_t displayMessages[8];
     app_indicator_command_t indicatorMessages[8];
     platform_error_t queueSendResult;
+    platform_error_t displayQueueSendResult;
     platform_error_t queueReceiveResult;
     platform_error_t buttonReadResult;
     platform_error_t buttonProcessResult;
@@ -43,6 +46,7 @@ typedef struct
     uint32_t acquisitionCount;
     uint32_t communicationCount;
     uint32_t indicatorCount;
+    uint32_t displayCount;
     uint32_t receiveCallCount;
     uint32_t lastReceiveTimeoutMs;
     uint32_t nowMs;
@@ -59,8 +63,10 @@ static void fake_runtime_reset(void)
     g_fakeRuntime.controlQueue.native = &g_fakeRuntime.controlQueue;
     g_fakeRuntime.acquisitionQueue.native = &g_fakeRuntime.acquisitionQueue;
     g_fakeRuntime.communicationQueue.native = &g_fakeRuntime.communicationQueue;
+    g_fakeRuntime.displayQueue.native = &g_fakeRuntime.displayQueue;
     g_fakeRuntime.indicatorQueue.native = &g_fakeRuntime.indicatorQueue;
     g_fakeRuntime.queueSendResult = PLATFORM_ERR_OK;
+    g_fakeRuntime.displayQueueSendResult = PLATFORM_ERR_OK;
     g_fakeRuntime.queueReceiveResult = PLATFORM_ERR_TIMEOUT;
     g_fakeRuntime.buttonReadResult = PLATFORM_ERR_OK;
     g_fakeRuntime.buttonProcessResult = PLATFORM_ERR_OK;
@@ -82,6 +88,7 @@ static app_control_t create_control(
         .controlQueue = &g_fakeRuntime.controlQueue,
         .acquisitionQueue = &g_fakeRuntime.acquisitionQueue,
         .communicationQueue = &g_fakeRuntime.communicationQueue,
+        .displayQueue = &g_fakeRuntime.displayQueue,
         .indicatorQueue = &g_fakeRuntime.indicatorQueue
     };
 
@@ -98,6 +105,7 @@ static void fake_clear_outputs(void)
     g_fakeRuntime.acquisitionCount = 0U;
     g_fakeRuntime.communicationCount = 0U;
     g_fakeRuntime.indicatorCount = 0U;
+    g_fakeRuntime.displayCount = 0U;
 }
 
 /** @brief 验证初始 STOPPED 状态及 Button deadline。 */
@@ -112,6 +120,7 @@ static int test_boots_stopped_and_initializes_deadline(void)
         .controlQueue = &g_fakeRuntime.controlQueue,
         .acquisitionQueue = &g_fakeRuntime.acquisitionQueue,
         .communicationQueue = &g_fakeRuntime.communicationQueue,
+        .displayQueue = &g_fakeRuntime.displayQueue,
         .indicatorQueue = &g_fakeRuntime.indicatorQueue
     };
 
@@ -148,19 +157,23 @@ static int test_uart_start_and_stop_share_one_state_machine(void)
                 APP_ACQUISITION_COMMAND_START_PERIODIC);
     TEST_ASSERT(g_fakeRuntime.indicatorCount == 1U);
     TEST_ASSERT(g_fakeRuntime.indicatorMessages[0] == APP_INDICATOR_RUNNING);
-    TEST_ASSERT(g_fakeRuntime.communicationMessages[0].payload.controlResponse ==
+    TEST_ASSERT(g_fakeRuntime.displayMessages[0].type ==
+                APP_DISPLAY_MESSAGE_SYSTEM_STATE);
+    TEST_ASSERT(g_fakeRuntime.displayMessages[0].payload.systemState ==
+                APP_CONTROL_STATE_RUNNING);
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[0] ==
                 APP_CONTROL_RESPONSE_OK_START);
 
     fake_clear_outputs();
     TEST_ASSERT(app_control_process_event(
                 &control, APP_CTRL_GET_STATUS, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
-    TEST_ASSERT(g_fakeRuntime.communicationMessages[0].payload.controlResponse ==
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[0] ==
                 APP_CONTROL_RESPONSE_STATUS_RUNNING);
 
     fake_clear_outputs();
     TEST_ASSERT(app_control_process_event(
                 &control, APP_CTRL_SAMPLE_ONCE, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
-    TEST_ASSERT(g_fakeRuntime.communicationMessages[0].payload.controlResponse ==
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[0] ==
                 APP_CONTROL_RESPONSE_ALREADY_RUNNING);
 
     fake_clear_outputs();
@@ -168,7 +181,7 @@ static int test_uart_start_and_stop_share_one_state_machine(void)
                 &control, APP_CTRL_START, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
     TEST_ASSERT(control.context.state == APP_CONTROL_STATE_RUNNING);
     TEST_ASSERT(g_fakeRuntime.acquisitionCount == 0U);
-    TEST_ASSERT(g_fakeRuntime.communicationMessages[0].payload.controlResponse ==
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[0] ==
                 APP_CONTROL_RESPONSE_ALREADY_RUNNING);
 
     fake_clear_outputs();
@@ -178,13 +191,15 @@ static int test_uart_start_and_stop_share_one_state_machine(void)
     TEST_ASSERT(g_fakeRuntime.acquisitionMessages[0] ==
                 APP_ACQUISITION_COMMAND_STOP_PERIODIC);
     TEST_ASSERT(g_fakeRuntime.indicatorMessages[0] == APP_INDICATOR_STOPPED);
-    TEST_ASSERT(g_fakeRuntime.communicationMessages[0].payload.controlResponse ==
+    TEST_ASSERT(g_fakeRuntime.displayMessages[0].payload.systemState ==
+                APP_CONTROL_STATE_STOPPED);
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[0] ==
                 APP_CONTROL_RESPONSE_OK_STOP);
 
     fake_clear_outputs();
     TEST_ASSERT(app_control_process_event(
                 &control, APP_CTRL_STOP, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
-    TEST_ASSERT(g_fakeRuntime.communicationMessages[0].payload.controlResponse ==
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[0] ==
                 APP_CONTROL_RESPONSE_ALREADY_STOPPED);
 
     return 0;
@@ -212,27 +227,27 @@ static int test_once_busy_status_and_failure_completion(void)
 
     TEST_ASSERT(app_control_process_event(
                 &control, APP_CTRL_START, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
-    TEST_ASSERT(g_fakeRuntime.communicationMessages[0].payload.controlResponse ==
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[0] ==
                 APP_CONTROL_RESPONSE_BUSY);
     TEST_ASSERT(app_control_process_event(
                 &control, APP_CTRL_STOP, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
-    TEST_ASSERT(g_fakeRuntime.communicationMessages[1].payload.controlResponse ==
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[1] ==
                 APP_CONTROL_RESPONSE_BUSY);
     TEST_ASSERT(app_control_process_event(
                 &control, APP_CTRL_SAMPLE_ONCE, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
-    TEST_ASSERT(g_fakeRuntime.communicationMessages[2].payload.controlResponse ==
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[2] ==
                 APP_CONTROL_RESPONSE_BUSY);
     TEST_ASSERT(app_control_process_event(
                 &control, APP_CTRL_GET_STATUS, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
-    TEST_ASSERT(g_fakeRuntime.communicationMessages[3].payload.controlResponse ==
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[3] ==
                 APP_CONTROL_RESPONSE_STATUS_STOPPED);
 
     fake_clear_outputs();
-    completion.type = APP_CONTROL_MESSAGE_ONCE_ACQUISITION_FAILED;
+    completion.type = APP_CONTROL_MESSAGE_ONCE_COMPLETE;
     completion.payload.result = PLATFORM_ERR_IO;
     TEST_ASSERT(app_control_process_message(&control, &completion) == PLATFORM_ERR_OK);
     TEST_ASSERT(control.context.onceActive == PLATFORM_FALSE);
-    TEST_ASSERT(g_fakeRuntime.communicationMessages[0].payload.controlResponse ==
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[0] ==
                 APP_CONTROL_RESPONSE_ACQUISITION_FAILED);
     TEST_ASSERT(g_fakeRuntime.indicatorCount == 0U);
 
@@ -259,7 +274,7 @@ static int test_queue_failure_is_observable_and_does_not_change_state(void)
 }
 
 /** @brief 验证 ONCE 发送完成结果决定成功指示。 */
-static int test_once_tx_completion_controls_success_indicator(void)
+static int test_once_completion_controls_success_indicator_and_uart_response(void)
 {
     platform_button_t button = PLATFORM_BUTTON_INITIALIZER;
     service_button_t buttonService = SERVICE_BUTTON_INITIALIZER;
@@ -272,7 +287,7 @@ static int test_once_tx_completion_controls_success_indicator(void)
                 &control, APP_CTRL_SAMPLE_ONCE, APP_CTRL_SOURCE_BUTTON) == PLATFORM_ERR_OK);
 
     fake_clear_outputs();
-    completion.type = APP_CONTROL_MESSAGE_ONCE_TX_RESULT;
+    completion.type = APP_CONTROL_MESSAGE_ONCE_COMPLETE;
     completion.payload.result = PLATFORM_ERR_TIMEOUT;
     TEST_ASSERT(app_control_process_message(&control, &completion) == PLATFORM_ERR_OK);
     TEST_ASSERT(control.context.onceActive == PLATFORM_FALSE);
@@ -286,6 +301,35 @@ static int test_once_tx_completion_controls_success_indicator(void)
     TEST_ASSERT(control.context.onceActive == PLATFORM_FALSE);
     TEST_ASSERT(g_fakeRuntime.indicatorCount == 1U);
     TEST_ASSERT(g_fakeRuntime.indicatorMessages[0] == APP_INDICATOR_ONCE_SUCCESS);
+
+    TEST_ASSERT(app_control_process_event(
+                &control, APP_CTRL_SAMPLE_ONCE, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
+    fake_clear_outputs();
+    completion.payload.result = PLATFORM_ERR_OK;
+    TEST_ASSERT(app_control_process_message(&control, &completion) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.indicatorMessages[0] == APP_INDICATOR_ONCE_SUCCESS);
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[0] == APP_CONTROL_RESPONSE_OK_ONCE);
+
+    return 0;
+}
+
+/** @brief 验证 Display Queue 失败不回滚 START 成功语义。 */
+static int test_display_publish_failure_does_not_roll_back_control_state(void)
+{
+    platform_button_t button = PLATFORM_BUTTON_INITIALIZER;
+    service_button_t buttonService = SERVICE_BUTTON_INITIALIZER;
+    app_control_t control;
+
+    fake_runtime_reset();
+    control = create_control(&button, &buttonService);
+    g_fakeRuntime.displayQueueSendResult = PLATFORM_ERR_FULL;
+
+    TEST_ASSERT(app_control_process_event(
+                &control, APP_CTRL_START, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
+    TEST_ASSERT(control.context.state == APP_CONTROL_STATE_RUNNING);
+    TEST_ASSERT(g_fakeRuntime.indicatorMessages[0] == APP_INDICATOR_RUNNING);
+    TEST_ASSERT(g_fakeRuntime.communicationMessages[0] == APP_CONTROL_RESPONSE_OK_START);
+    TEST_ASSERT(control.statistics.queueSubmitFailureCount == 1U);
 
     return 0;
 }
@@ -346,6 +390,9 @@ static int test_run_once_uses_deadline_as_queue_timeout(void)
 
     TEST_ASSERT(app_control_run_once(&control) == PLATFORM_ERR_OK);
     TEST_ASSERT(g_fakeRuntime.receiveCallCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.displayCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.displayMessages[0].payload.systemState ==
+                APP_CONTROL_STATE_STOPPED);
     TEST_ASSERT(g_fakeRuntime.lastReceiveTimeoutMs == 0U);
     TEST_ASSERT(g_fakeRuntime.buttonReadCount == 1U);
     TEST_ASSERT(g_fakeRuntime.buttonProcessCount == 1U);
@@ -368,7 +415,13 @@ platform_error_t platform_queue_send(
             *(const app_acquisition_command_t *)item;
     } else if (queue == &g_fakeRuntime.communicationQueue) {
         g_fakeRuntime.communicationMessages[g_fakeRuntime.communicationCount++] =
-            *(const app_communication_outbound_message_t *)item;
+            *(const app_control_response_t *)item;
+    } else if (queue == &g_fakeRuntime.displayQueue) {
+        if (g_fakeRuntime.displayQueueSendResult != PLATFORM_ERR_OK) {
+            return g_fakeRuntime.displayQueueSendResult;
+        }
+        g_fakeRuntime.displayMessages[g_fakeRuntime.displayCount++] =
+            *(const app_display_message_t *)item;
     } else if (queue == &g_fakeRuntime.indicatorQueue) {
         g_fakeRuntime.indicatorMessages[g_fakeRuntime.indicatorCount++] =
             *(const app_indicator_command_t *)item;
@@ -443,7 +496,11 @@ int main(void)
     if (result != 0) {
         return result;
     }
-    result = test_once_tx_completion_controls_success_indicator();
+    result = test_once_completion_controls_success_indicator_and_uart_response();
+    if (result != 0) {
+        return result;
+    }
+    result = test_display_publish_failure_does_not_roll_back_control_state();
     if (result != 0) {
         return result;
     }

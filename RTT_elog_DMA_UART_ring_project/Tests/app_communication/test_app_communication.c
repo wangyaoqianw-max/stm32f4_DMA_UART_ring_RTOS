@@ -252,7 +252,7 @@ static int test_init_and_getters(void)
     app_communication_t communication = APP_COMMUNICATION_INITIALIZER;
     platform_uart_t uart = PLATFORM_UART_INITIALIZER;
     service_uart_t service = SERVICE_UART_INITIALIZER;
-    app_communication_config_t config = {&uart, &service, NULL, NULL, NULL, NULL};
+    app_communication_config_t config = {&uart, &service, NULL, NULL, NULL};
     app_communication_status_t status = {0};
     app_communication_statistics_t statistics = {0};
 
@@ -306,7 +306,7 @@ static int test_start_runs_uart_then_service(void)
     app_communication_t communication = APP_COMMUNICATION_INITIALIZER;
     platform_uart_t uart = PLATFORM_UART_INITIALIZER;
     service_uart_t service = SERVICE_UART_INITIALIZER;
-    app_communication_config_t config = {&uart, &service, NULL, NULL, NULL, NULL};
+    app_communication_config_t config = {&uart, &service, NULL, NULL, NULL};
     platform_lifecycle_ops_t lifecycle = {0};
 
     lifecycle.init = fake_uart_lifecycle_init;
@@ -334,7 +334,7 @@ static int test_start_failure_stops_following_operations(void)
     app_communication_t communication = APP_COMMUNICATION_INITIALIZER;
     platform_uart_t uart = PLATFORM_UART_INITIALIZER;
     service_uart_t service = SERVICE_UART_INITIALIZER;
-    app_communication_config_t config = {&uart, &service, NULL, NULL, NULL, NULL};
+    app_communication_config_t config = {&uart, &service, NULL, NULL, NULL};
     platform_lifecycle_ops_t lifecycle = {0};
 
     lifecycle.init = fake_uart_lifecycle_init;
@@ -361,7 +361,7 @@ static int test_service_start_failure_rolls_back_uart(void)
     app_communication_t communication = APP_COMMUNICATION_INITIALIZER;
     platform_uart_t uart = PLATFORM_UART_INITIALIZER;
     service_uart_t service = SERVICE_UART_INITIALIZER;
-    app_communication_config_t config = {&uart, &service, NULL, NULL, NULL, NULL};
+    app_communication_config_t config = {&uart, &service, NULL, NULL, NULL};
     platform_lifecycle_ops_t lifecycle = {0};
 
     lifecycle.init = fake_uart_lifecycle_init;
@@ -387,7 +387,7 @@ static int test_process_drains_rx_and_treats_timeout_as_idle(void)
     app_communication_t communication = APP_COMMUNICATION_INITIALIZER;
     platform_uart_t uart = PLATFORM_UART_INITIALIZER;
     service_uart_t service = SERVICE_UART_INITIALIZER;
-    app_communication_config_t config = {&uart, &service, NULL, NULL, NULL, NULL};
+    app_communication_config_t config = {&uart, &service, NULL, NULL, NULL};
 
     fake_runtime_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == app_communication_init(&communication, &config));
@@ -627,7 +627,7 @@ static int test_process_prioritizes_error_recovery_after_drain(void)
     app_communication_t communication = APP_COMMUNICATION_INITIALIZER;
     platform_uart_t uart = PLATFORM_UART_INITIALIZER;
     service_uart_t service = SERVICE_UART_INITIALIZER;
-    app_communication_config_t config = {&uart, &service, NULL, NULL, NULL, NULL};
+    app_communication_config_t config = {&uart, &service, NULL, NULL, NULL};
 
     fake_runtime_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == app_communication_init(&communication, &config));
@@ -654,7 +654,7 @@ static int test_process_recovers_data_loss_by_stop_and_start(void)
     app_communication_t communication = APP_COMMUNICATION_INITIALIZER;
     platform_uart_t uart = PLATFORM_UART_INITIALIZER;
     service_uart_t service = SERVICE_UART_INITIALIZER;
-    app_communication_config_t config = {&uart, &service, NULL, NULL, NULL, NULL};
+    app_communication_config_t config = {&uart, &service, NULL, NULL, NULL};
 
     fake_runtime_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == app_communication_init(&communication, &config));
@@ -675,7 +675,7 @@ static int test_process_treats_stopped_as_fatal(void)
     app_communication_t communication = APP_COMMUNICATION_INITIALIZER;
     platform_uart_t uart = PLATFORM_UART_INITIALIZER;
     service_uart_t service = SERVICE_UART_INITIALIZER;
-    app_communication_config_t config = {&uart, &service, NULL, NULL, NULL, NULL};
+    app_communication_config_t config = {&uart, &service, NULL, NULL, NULL};
 
     fake_runtime_reset();
     TEST_ASSERT(PLATFORM_ERR_OK == app_communication_init(&communication, &config));

@@ -26,21 +26,22 @@
 typedef struct
 {
     platform_queue_t commandQueue;
-    platform_queue_t communicationQueue;
+    platform_queue_t displayQueue;
     platform_queue_t controlQueue;
     app_acquisition_command_t commands[8];
-    app_communication_outbound_message_t outboundMessages[8];
+    app_display_message_t displayMessages[8];
     app_control_message_t controlMessages[8];
     service_acquisition_data_t sampleData;
     platform_error_t sampleResult;
     platform_error_t queueSendResult;
     uint32_t commandReadIndex;
     uint32_t commandCount;
-    uint32_t outboundCount;
+    uint32_t displayCount;
     uint32_t controlCount;
     uint32_t sampleCallCount;
     uint32_t receiveCallCount;
     uint32_t receiveTimeouts[8];
+    uint32_t controlSendTimeouts[8];
     uint32_t nowMs;
     uint32_t advanceDuringSampleMs;
     platform_bool_t enqueueStopDuringSample;
@@ -53,7 +54,7 @@ static void fake_runtime_reset(void)
 {
     memset(&g_fakeRuntime, 0, sizeof(g_fakeRuntime));
     g_fakeRuntime.commandQueue.native = &g_fakeRuntime.commandQueue;
-    g_fakeRuntime.communicationQueue.native = &g_fakeRuntime.communicationQueue;
+    g_fakeRuntime.displayQueue.native = &g_fakeRuntime.displayQueue;
     g_fakeRuntime.controlQueue.native = &g_fakeRuntime.controlQueue;
     g_fakeRuntime.sampleResult = PLATFORM_ERR_OK;
     g_fakeRuntime.queueSendResult = PLATFORM_ERR_OK;
@@ -76,7 +77,7 @@ static app_acquisition_t create_acquisition(service_acquisition_t *service)
     app_acquisition_config_t config = {
         .service = service,
         .commandQueue = &g_fakeRuntime.commandQueue,
-        .communicationQueue = &g_fakeRuntime.communicationQueue,
+        .displayQueue = &g_fakeRuntime.displayQueue,
         .controlQueue = &g_fakeRuntime.controlQueue
     };
 
@@ -93,7 +94,7 @@ static int test_init_validates_dependencies_and_starts_disabled(void)
     app_acquisition_config_t config = {
         .service = &service,
         .commandQueue = &g_fakeRuntime.commandQueue,
-        .communicationQueue = &g_fakeRuntime.communicationQueue,
+        .displayQueue = &g_fakeRuntime.displayQueue,
         .controlQueue = &g_fakeRuntime.controlQueue
     };
 
@@ -125,9 +126,9 @@ static int test_start_samples_immediately_and_sets_absolute_deadline(void)
     TEST_ASSERT(g_fakeRuntime.sampleCallCount == 1U);
     TEST_ASSERT(acquisition.context.periodicEnabled == PLATFORM_TRUE);
     TEST_ASSERT(acquisition.context.nextSampleDeadlineMs == 2100U);
-    TEST_ASSERT(g_fakeRuntime.outboundCount == 1U);
-    TEST_ASSERT(g_fakeRuntime.outboundMessages[0].type == APP_COMM_OUTBOUND_PERIODIC_REPORT);
-    TEST_ASSERT(g_fakeRuntime.outboundMessages[0].payload.acquisition.environment.temperatureC == 25.0F);
+    TEST_ASSERT(g_fakeRuntime.displayCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.displayMessages[0].type == APP_DISPLAY_MESSAGE_MEASUREMENT);
+    TEST_ASSERT(g_fakeRuntime.displayMessages[0].payload.measurement.environment.temperatureC == 25.0F);
 
     return 0;
 }
@@ -149,7 +150,7 @@ static int test_periodic_deadline_does_not_accumulate_sample_time(void)
     TEST_ASSERT(g_fakeRuntime.receiveTimeouts[2] == PLATFORM_OS_NO_WAIT);
     TEST_ASSERT(g_fakeRuntime.sampleCallCount == 2U);
     TEST_ASSERT(acquisition.context.nextSampleDeadlineMs == 4100U);
-    TEST_ASSERT(g_fakeRuntime.outboundCount == 2U);
+    TEST_ASSERT(g_fakeRuntime.displayCount == 2U);
 
     return 0;
 }
@@ -194,7 +195,7 @@ static int test_stop_arriving_during_sample_discards_stale_periodic_result(void)
     TEST_ASSERT(app_acquisition_run_once(&acquisition) == PLATFORM_ERR_OK);
     TEST_ASSERT(g_fakeRuntime.sampleCallCount == 1U);
     TEST_ASSERT(acquisition.context.periodicEnabled == PLATFORM_FALSE);
-    TEST_ASSERT(g_fakeRuntime.outboundCount == 0U);
+    TEST_ASSERT(g_fakeRuntime.displayCount == 0U);
     TEST_ASSERT(acquisition.statistics.stalePeriodicDiscardCount == 1U);
 
     TEST_ASSERT(app_acquisition_run_once(&acquisition) == PLATFORM_ERR_OK);
@@ -204,8 +205,8 @@ static int test_stop_arriving_during_sample_discards_stale_periodic_result(void)
     return 0;
 }
 
-/** @brief 验证 ONCE 成功和失败分别发布到正确 Queue。 */
-static int test_once_success_and_failure_publish_to_correct_queues(void)
+/** @brief 验证 ONCE 总是可靠提交统一完成消息。 */
+static int test_once_success_and_failure_submit_reliable_completion(void)
 {
     service_acquisition_t service = SERVICE_ACQUISITION_INITIALIZER;
     app_acquisition_t acquisition;
@@ -214,19 +215,42 @@ static int test_once_success_and_failure_publish_to_correct_queues(void)
     acquisition = create_acquisition(&service);
     fake_enqueue_command(APP_ACQUISITION_COMMAND_SAMPLE_ONCE);
     TEST_ASSERT(app_acquisition_run_once(&acquisition) == PLATFORM_ERR_OK);
-    TEST_ASSERT(g_fakeRuntime.outboundCount == 1U);
-    TEST_ASSERT(g_fakeRuntime.outboundMessages[0].type == APP_COMM_OUTBOUND_ONCE_REPORT);
-    TEST_ASSERT(g_fakeRuntime.controlCount == 0U);
+    TEST_ASSERT(g_fakeRuntime.displayCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.displayMessages[0].type == APP_DISPLAY_MESSAGE_MEASUREMENT);
+    TEST_ASSERT(g_fakeRuntime.controlCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.controlMessages[0].type == APP_CONTROL_MESSAGE_ONCE_COMPLETE);
+    TEST_ASSERT(g_fakeRuntime.controlMessages[0].payload.result == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.controlSendTimeouts[0] == PLATFORM_OS_WAIT_FOREVER);
     TEST_ASSERT(acquisition.context.periodicEnabled == PLATFORM_FALSE);
 
     g_fakeRuntime.sampleResult = PLATFORM_ERR_CHECKSUM;
     fake_enqueue_command(APP_ACQUISITION_COMMAND_SAMPLE_ONCE);
     TEST_ASSERT(app_acquisition_run_once(&acquisition) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.controlCount == 2U);
+    TEST_ASSERT(g_fakeRuntime.controlMessages[1].type == APP_CONTROL_MESSAGE_ONCE_COMPLETE);
+    TEST_ASSERT(g_fakeRuntime.controlMessages[1].payload.result == PLATFORM_ERR_CHECKSUM);
+    TEST_ASSERT(g_fakeRuntime.controlSendTimeouts[1] == PLATFORM_OS_WAIT_FOREVER);
+    TEST_ASSERT(g_fakeRuntime.displayCount == 1U);
+
+    return 0;
+}
+
+/** @brief 验证 Display Queue 满不改变 ONCE 采集成功结果。 */
+static int test_once_success_is_independent_from_display_publish(void)
+{
+    service_acquisition_t service = SERVICE_ACQUISITION_INITIALIZER;
+    app_acquisition_t acquisition;
+
+    fake_runtime_reset();
+    acquisition = create_acquisition(&service);
+    g_fakeRuntime.queueSendResult = PLATFORM_ERR_FULL;
+    fake_enqueue_command(APP_ACQUISITION_COMMAND_SAMPLE_ONCE);
+
+    TEST_ASSERT(app_acquisition_run_once(&acquisition) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.displayCount == 0U);
     TEST_ASSERT(g_fakeRuntime.controlCount == 1U);
-    TEST_ASSERT(g_fakeRuntime.controlMessages[0].type ==
-                APP_CONTROL_MESSAGE_ONCE_ACQUISITION_FAILED);
-    TEST_ASSERT(g_fakeRuntime.controlMessages[0].payload.result == PLATFORM_ERR_CHECKSUM);
-    TEST_ASSERT(g_fakeRuntime.outboundCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.controlMessages[0].payload.result == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.controlSendTimeouts[0] == PLATFORM_OS_WAIT_FOREVER);
 
     return 0;
 }
@@ -251,14 +275,16 @@ platform_error_t platform_queue_send(
     const void *item,
     uint32_t timeoutMs)
 {
-    TEST_ASSERT(timeoutMs == PLATFORM_OS_NO_WAIT);
-    if (g_fakeRuntime.queueSendResult != PLATFORM_ERR_OK) {
-        return g_fakeRuntime.queueSendResult;
-    }
-    if (queue == &g_fakeRuntime.communicationQueue) {
-        g_fakeRuntime.outboundMessages[g_fakeRuntime.outboundCount++] =
-            *(const app_communication_outbound_message_t *)item;
+    if (queue == &g_fakeRuntime.displayQueue) {
+        TEST_ASSERT(timeoutMs == PLATFORM_OS_NO_WAIT);
+        if (g_fakeRuntime.queueSendResult != PLATFORM_ERR_OK) {
+            return g_fakeRuntime.queueSendResult;
+        }
+        g_fakeRuntime.displayMessages[g_fakeRuntime.displayCount++] =
+            *(const app_display_message_t *)item;
     } else if (queue == &g_fakeRuntime.controlQueue) {
+        TEST_ASSERT(timeoutMs == PLATFORM_OS_WAIT_FOREVER);
+        g_fakeRuntime.controlSendTimeouts[g_fakeRuntime.controlCount] = timeoutMs;
         g_fakeRuntime.controlMessages[g_fakeRuntime.controlCount++] =
             *(const app_control_message_t *)item;
     } else {
@@ -319,5 +345,9 @@ int main(void)
     if (result != 0) {
         return result;
     }
-    return test_once_success_and_failure_publish_to_correct_queues();
+    result = test_once_success_and_failure_submit_reliable_completion();
+    if (result != 0) {
+        return result;
+    }
+    return test_once_success_is_independent_from_display_publish();
 }

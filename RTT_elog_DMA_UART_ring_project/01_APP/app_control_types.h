@@ -19,6 +19,14 @@
 //******************************** Includes *********************************//
 
 //******************************** Types ***********************************//
+/** @brief APP Control FSM 唯一业务状态。 */
+typedef enum
+{
+    APP_CONTROL_STATE_STOPPED = 0,
+    APP_CONTROL_STATE_RUNNING,
+    APP_CONTROL_STATE_MAX
+} app_control_state_t;
+
 /**
  * @brief APP 层接收的统一控制事件
  */

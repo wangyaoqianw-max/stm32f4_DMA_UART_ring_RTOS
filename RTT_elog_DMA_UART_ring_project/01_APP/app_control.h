@@ -27,13 +27,6 @@
 //******************************** Defines *********************************//
 
 //******************************** Types ***********************************//
-typedef enum
-{
-    APP_CONTROL_STATE_STOPPED = 0,
-    APP_CONTROL_STATE_RUNNING,
-    APP_CONTROL_STATE_MAX
-} app_control_state_t;
-
 /** @brief Control Task 的非拥有型硬件、Service 与 Queue 依赖。 */
 typedef struct
 {
@@ -47,6 +40,8 @@ typedef struct
     platform_queue_t *acquisitionQueue;
     /** 发往 Communication Task 的业务输出 Queue。 */
     platform_queue_t *communicationQueue;
+    /** 发往 Display Task 的状态快照 Queue。 */
+    platform_queue_t *displayQueue;
     /** 发往 Indicator Task 的 LED 语义 Queue。 */
     platform_queue_t *indicatorQueue;
 } app_control_config_t;
@@ -64,6 +59,8 @@ typedef struct
     uint32_t nextButtonSampleDeadlineMs;
     /** Control 对象是否完成初始化。 */
     platform_bool_t initialized;
+    /** 是否已在 Task 运行上下文发布初始 STOPPED。 */
+    platform_bool_t initialStatePublished;
 } app_control_context_t;
 
 /** @brief Control Task 的累计运行与故障统计。 */

@@ -54,10 +54,8 @@ typedef struct
     app_control_event_handler_t controlHandler;
     /** controlHandler 的调用者持有上下文。 */
     void *controlContext;
-    /** Control 与 Acquisition 生产的业务输出 Queue。 */
+    /** Control 生产的业务响应 Queue。 */
     platform_queue_t *outboundQueue;
-    /** ONCE TX completion 回传到唯一 Control FSM 的 Queue。 */
-    platform_queue_t *controlQueue;
 } app_communication_config_t;
 
 /**
@@ -115,12 +113,6 @@ typedef struct
     uint32_t controlResponseCount;
     /** 业务控制响应发送失败数量。 */
     uint32_t controlResponseFailureCount;
-    /** 成功发送的完整双行传感器报告数量。 */
-    uint32_t reportCount;
-    /** 完整双行传感器报告发送失败数量。 */
-    uint32_t reportFailureCount;
-    /** ONCE TX 结果回传 Control Queue 失败数量。 */
-    uint32_t onceCompletionSubmitFailureCount;
 } app_communication_statistics_t;
 
 /**

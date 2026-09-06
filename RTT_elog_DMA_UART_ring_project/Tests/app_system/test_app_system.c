@@ -14,12 +14,16 @@
 #include "app_acquisition.h"
 #include "app_communication.h"
 #include "app_control.h"
+#include "app_display.h"
 #include "app_indicator.h"
 #include "app_system.h"
 #include "button/platform_bsp_button.h"
 #include "led/platform_bsp_led.h"
+#include "platform_bsp_spi.h"
+#include "platform_bsp_st7789.h"
 #include "platform_bsp_uart.h"
 #include "platform_queue.h"
+#include "platform_spi.h"
 #include "platform_thread.h"
 #include "service_log.h"
 
@@ -55,14 +59,29 @@ typedef struct
     uint32_t queueDeleteCount;
     uint32_t serviceDeinitCount;
     uint32_t hardwareDeinitCount;
+    uint32_t spiLifecycleInitCount;
+    uint32_t spiLifecycleStartCount;
+    uint32_t spiLifecycleStopCount;
+    uint32_t spiLifecycleDeinitCount;
+    uint32_t st7789RuntimeInitCount;
+    uint32_t rollbackSequence;
+    uint32_t lastHardwareDeinitSequence;
+    uint32_t spiStopSequence;
+    uint32_t spiDeinitSequence;
     uint32_t failThreadCreateCall;
-    platform_size_t queueDepths[4];
-    platform_size_t queueItemSizes[4];
-    const char *threadNames[4];
-    uint32_t threadStacks[4];
-    platform_thread_priority_t threadPriorities[4];
+    platform_bool_t failSpiStart;
+    platform_size_t queueDepths[5];
+    platform_size_t queueItemSizes[5];
+    const char *threadNames[5];
+    uint32_t threadStacks[5];
+    platform_thread_priority_t threadPriorities[5];
+    platform_thread_t *createdThreads[5];
+    uint32_t terminatedThreadIndices[5];
+    platform_queue_t *createdQueues[5];
+    uint32_t deletedQueueIndices[5];
     app_communication_config_t communicationConfig;
     platform_queue_t *controlQueue;
+    platform_queue_t *displayQueue;
     app_control_message_t submittedControlMessage;
     uint32_t controlSubmitCount;
 } fake_system_runtime_t;
@@ -106,17 +125,48 @@ static void fake_record_app(void)
     g_fakeRuntime.appInitCount++;
 }
 
+/** @brief 验证 SPI start 失败会反初始化已初始化 Bus 并保持可重试。 */
+static int test_spi_start_failure_rolls_back_and_allows_retry(void)
+{
+    fake_runtime_reset();
+    g_fakeRuntime.failSpiStart = PLATFORM_TRUE;
+
+    TEST_ASSERT(app_system_init() == PLATFORM_ERR_NO_RESOURCE);
+    TEST_ASSERT(g_fakeRuntime.spiLifecycleInitCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.spiLifecycleStartCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.spiLifecycleStopCount == 0U);
+    TEST_ASSERT(g_fakeRuntime.spiLifecycleDeinitCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.queueCreateCount == 0U);
+    TEST_ASSERT(g_fakeRuntime.threadCreateCount == 0U);
+
+    return 0;
+}
+
 /** @brief 验证线程创建失败会完整回滚并允许重试。 */
 static int test_thread_failure_rolls_back_and_allows_retry(void)
 {
     fake_runtime_reset();
-    g_fakeRuntime.failThreadCreateCall = 3U;
+    g_fakeRuntime.failThreadCreateCall = 5U;
 
     TEST_ASSERT(app_system_init() == PLATFORM_ERR_NO_RESOURCE);
-    TEST_ASSERT(g_fakeRuntime.threadTerminateCount == 2U);
-    TEST_ASSERT(g_fakeRuntime.queueDeleteCount == 4U);
+    TEST_ASSERT(g_fakeRuntime.threadTerminateCount == 4U);
+    TEST_ASSERT(g_fakeRuntime.queueDeleteCount == 5U);
     TEST_ASSERT(g_fakeRuntime.serviceDeinitCount == 4U);
     TEST_ASSERT(g_fakeRuntime.hardwareDeinitCount == 5U);
+    TEST_ASSERT(g_fakeRuntime.spiLifecycleStopCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.spiLifecycleDeinitCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.terminatedThreadIndices[0] == 3U);
+    TEST_ASSERT(g_fakeRuntime.terminatedThreadIndices[1] == 2U);
+    TEST_ASSERT(g_fakeRuntime.terminatedThreadIndices[2] == 1U);
+    TEST_ASSERT(g_fakeRuntime.terminatedThreadIndices[3] == 0U);
+    TEST_ASSERT(g_fakeRuntime.deletedQueueIndices[0] == 4U);
+    TEST_ASSERT(g_fakeRuntime.deletedQueueIndices[1] == 3U);
+    TEST_ASSERT(g_fakeRuntime.deletedQueueIndices[2] == 2U);
+    TEST_ASSERT(g_fakeRuntime.deletedQueueIndices[3] == 1U);
+    TEST_ASSERT(g_fakeRuntime.deletedQueueIndices[4] == 0U);
+    TEST_ASSERT(g_fakeRuntime.lastHardwareDeinitSequence <
+                g_fakeRuntime.spiStopSequence);
+    TEST_ASSERT(g_fakeRuntime.spiStopSequence < g_fakeRuntime.spiDeinitSequence);
 
     fake_runtime_reset();
     TEST_ASSERT(app_system_init() == PLATFORM_ERR_OK);
@@ -124,43 +174,49 @@ static int test_thread_failure_rolls_back_and_allows_retry(void)
     return 0;
 }
 
-/** @brief 验证最终装配顺序、Queue 合同和四任务参数。 */
+/** @brief 验证最终装配顺序、Queue 合同和五任务参数。 */
 static int test_final_composition_order_and_resources(void)
 {
     static const char *expectedNames[] = {
         "communication",
         "control",
         "acquisition",
-        "indicator"
+        "indicator",
+        "display"
     };
-    static const uint32_t expectedStacks[] = {2048U, 1024U, 1536U, 768U};
+    static const uint32_t expectedStacks[] = {2048U, 1024U, 1536U, 768U, 1536U};
     static const platform_thread_priority_t expectedPriorities[] = {
         PLATFORM_THREAD_PRIORITY_ABOVE_NORMAL,
         PLATFORM_THREAD_PRIORITY_ABOVE_NORMAL,
         PLATFORM_THREAD_PRIORITY_NORMAL,
-        PLATFORM_THREAD_PRIORITY_BELOW_NORMAL
+        PLATFORM_THREAD_PRIORITY_BELOW_NORMAL,
+        PLATFORM_THREAD_PRIORITY_NORMAL
     };
-    static const platform_size_t expectedDepths[] = {8U, 4U, 8U, 4U};
+    static const platform_size_t expectedDepths[] = {8U, 4U, 8U, 4U, 4U};
     static const platform_size_t expectedItemSizes[] = {
         sizeof(app_control_message_t),
         sizeof(app_acquisition_command_t),
-        sizeof(app_communication_outbound_message_t),
-        sizeof(app_indicator_command_t)
+        sizeof(app_control_response_t),
+        sizeof(app_indicator_command_t),
+        sizeof(app_display_message_t)
     };
     uint32_t index;
 
-    TEST_ASSERT(g_fakeRuntime.constructCount == 5U);
-    TEST_ASSERT(g_fakeRuntime.hardwareInitCount == 5U);
+    TEST_ASSERT(g_fakeRuntime.constructCount == 7U);
+    TEST_ASSERT(g_fakeRuntime.hardwareInitCount == 7U);
+    TEST_ASSERT(g_fakeRuntime.spiLifecycleInitCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.spiLifecycleStartCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.st7789RuntimeInitCount == 0U);
     TEST_ASSERT(g_fakeRuntime.serviceInitCount == 4U);
-    TEST_ASSERT(g_fakeRuntime.queueCreateCount == 4U);
-    TEST_ASSERT(g_fakeRuntime.appInitCount == 4U);
-    TEST_ASSERT(g_fakeRuntime.threadCreateCount == 4U);
+    TEST_ASSERT(g_fakeRuntime.queueCreateCount == 5U);
+    TEST_ASSERT(g_fakeRuntime.appInitCount == 5U);
+    TEST_ASSERT(g_fakeRuntime.threadCreateCount == 5U);
     TEST_ASSERT(g_fakeRuntime.lastHardwareSequence < g_fakeRuntime.firstServiceSequence);
     TEST_ASSERT(g_fakeRuntime.lastServiceSequence < g_fakeRuntime.firstQueueSequence);
     TEST_ASSERT(g_fakeRuntime.lastQueueSequence < g_fakeRuntime.firstAppSequence);
     TEST_ASSERT(g_fakeRuntime.lastAppSequence < g_fakeRuntime.firstThreadSequence);
 
-    for (index = 0U; index < 4U; index++) {
+    for (index = 0U; index < 5U; index++) {
         TEST_ASSERT(g_fakeRuntime.queueDepths[index] == expectedDepths[index]);
         TEST_ASSERT(g_fakeRuntime.queueItemSizes[index] == expectedItemSizes[index]);
         TEST_ASSERT(strcmp(g_fakeRuntime.threadNames[index], expectedNames[index]) == 0);
@@ -170,7 +226,6 @@ static int test_final_composition_order_and_resources(void)
 
     TEST_ASSERT(g_fakeRuntime.communicationConfig.controlHandler != NULL);
     TEST_ASSERT(g_fakeRuntime.communicationConfig.outboundQueue != NULL);
-    TEST_ASSERT(g_fakeRuntime.communicationConfig.controlQueue == g_fakeRuntime.controlQueue);
     TEST_ASSERT(g_fakeRuntime.communicationConfig.controlHandler(
                     g_fakeRuntime.communicationConfig.controlContext,
                     APP_CTRL_START) == PLATFORM_ERR_OK);
@@ -224,6 +279,57 @@ platform_error_t platform_bsp_gpio_construct_soft_i2c_sda(platform_gpio_t *gpio)
     (void)gpio;
     g_fakeRuntime.constructCount++;
     ++g_fakeRuntime.sequence;
+    return PLATFORM_ERR_OK;
+}
+
+platform_error_t platform_bsp_spi_construct_display_bus(platform_spi_bus_t *bus)
+{
+    (void)bus;
+    g_fakeRuntime.constructCount++;
+    ++g_fakeRuntime.sequence;
+    return PLATFORM_ERR_OK;
+}
+
+platform_error_t platform_bsp_st7789_construct_display(platform_st7789_t *display)
+{
+    (void)display;
+    g_fakeRuntime.constructCount++;
+    ++g_fakeRuntime.sequence;
+    return PLATFORM_ERR_OK;
+}
+
+platform_error_t platform_spi_bus_lifecycle_init(platform_spi_bus_t *bus)
+{
+    (void)bus;
+    g_fakeRuntime.spiLifecycleInitCount++;
+    fake_record_hardware();
+    return PLATFORM_ERR_OK;
+}
+
+platform_error_t platform_spi_bus_lifecycle_start(platform_spi_bus_t *bus)
+{
+    (void)bus;
+    g_fakeRuntime.spiLifecycleStartCount++;
+    if (g_fakeRuntime.failSpiStart == PLATFORM_TRUE) {
+        return PLATFORM_ERR_NO_RESOURCE;
+    }
+    fake_record_hardware();
+    return PLATFORM_ERR_OK;
+}
+
+platform_error_t platform_spi_bus_lifecycle_stop(platform_spi_bus_t *bus)
+{
+    (void)bus;
+    g_fakeRuntime.spiLifecycleStopCount++;
+    g_fakeRuntime.spiStopSequence = ++g_fakeRuntime.rollbackSequence;
+    return PLATFORM_ERR_OK;
+}
+
+platform_error_t platform_spi_bus_lifecycle_deinit(platform_spi_bus_t *bus)
+{
+    (void)bus;
+    g_fakeRuntime.spiLifecycleDeinitCount++;
+    g_fakeRuntime.spiDeinitSequence = ++g_fakeRuntime.rollbackSequence;
     return PLATFORM_ERR_OK;
 }
 
@@ -323,9 +429,12 @@ platform_error_t platform_queue_create(
     g_fakeRuntime.lastQueueSequence = sequence;
     g_fakeRuntime.queueDepths[index] = itemCount;
     g_fakeRuntime.queueItemSizes[index] = itemSize;
+    g_fakeRuntime.createdQueues[index] = queue;
     queue->native = queue;
     if (index == 0U) {
         g_fakeRuntime.controlQueue = queue;
+    } else if (index == 4U) {
+        g_fakeRuntime.displayQueue = queue;
     }
     return PLATFORM_ERR_OK;
 }
@@ -344,6 +453,7 @@ platform_error_t app_control_init(app_control_t *control, const app_control_conf
 {
     (void)control;
     TEST_ASSERT(config->controlQueue == g_fakeRuntime.controlQueue);
+    TEST_ASSERT(config->displayQueue == g_fakeRuntime.displayQueue);
     fake_record_app();
     return PLATFORM_ERR_OK;
 }
@@ -354,6 +464,19 @@ platform_error_t app_acquisition_init(
 {
     (void)acquisition;
     TEST_ASSERT(config->service != NULL);
+    TEST_ASSERT(config->displayQueue == g_fakeRuntime.displayQueue);
+    fake_record_app();
+    return PLATFORM_ERR_OK;
+}
+
+platform_error_t app_display_init(
+    app_display_t *display,
+    const app_display_config_t *config)
+{
+    (void)display;
+    TEST_ASSERT(config->display != NULL);
+    TEST_ASSERT(config->spiBus != NULL);
+    TEST_ASSERT(config->queue == g_fakeRuntime.displayQueue);
     fake_record_app();
     return PLATFORM_ERR_OK;
 }
@@ -386,6 +509,7 @@ platform_error_t platform_thread_create(
     g_fakeRuntime.threadNames[index] = config->name;
     g_fakeRuntime.threadStacks[index] = config->stackSizeBytes;
     g_fakeRuntime.threadPriorities[index] = config->priority;
+    g_fakeRuntime.createdThreads[index] = thread;
     thread->native = thread;
     return PLATFORM_ERR_OK;
 }
@@ -404,6 +528,14 @@ platform_error_t platform_queue_send(
 
 platform_error_t platform_thread_terminate(platform_thread_t *thread)
 {
+    uint32_t index;
+
+    for (index = 0U; index < g_fakeRuntime.threadCreateCount; index++) {
+        if (g_fakeRuntime.createdThreads[index] == thread) {
+            g_fakeRuntime.terminatedThreadIndices[g_fakeRuntime.threadTerminateCount] = index;
+            break;
+        }
+    }
     thread->native = NULL;
     g_fakeRuntime.threadTerminateCount++;
     return PLATFORM_ERR_OK;
@@ -411,6 +543,14 @@ platform_error_t platform_thread_terminate(platform_thread_t *thread)
 
 platform_error_t platform_queue_delete(platform_queue_t *queue)
 {
+    uint32_t index;
+
+    for (index = 0U; index < g_fakeRuntime.queueCreateCount; index++) {
+        if (g_fakeRuntime.createdQueues[index] == queue) {
+            g_fakeRuntime.deletedQueueIndices[g_fakeRuntime.queueDeleteCount] = index;
+            break;
+        }
+    }
     queue->native = NULL;
     g_fakeRuntime.queueDeleteCount++;
     return PLATFORM_ERR_OK;
@@ -476,6 +616,7 @@ platform_error_t platform_i2c_deinit(platform_i2c_t *i2c)
 {
     i2c->initialized = PLATFORM_FALSE;
     g_fakeRuntime.hardwareDeinitCount++;
+    g_fakeRuntime.lastHardwareDeinitSequence = ++g_fakeRuntime.rollbackSequence;
     return PLATFORM_ERR_OK;
 }
 
@@ -506,6 +647,11 @@ void app_indicator_task_entry(void *argument)
     (void)argument;
 }
 
+void app_display_task_entry(void *argument)
+{
+    (void)argument;
+}
+
 /** @brief 吸收测试期间的日志输出。 */
 static void fake_log_output(
     uint8_t level,
@@ -531,7 +677,12 @@ platform_log_output_fn_t platform_log_get_output_fn(void)
 
 int main(void)
 {
-    int result = test_thread_failure_rolls_back_and_allows_retry();
+    int result = test_spi_start_failure_rolls_back_and_allows_retry();
+
+    if (result != 0) {
+        return result;
+    }
+    result = test_thread_failure_rolls_back_and_allows_retry();
 
     if (result != 0) {
         return result;

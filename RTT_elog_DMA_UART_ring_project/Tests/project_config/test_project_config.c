@@ -97,6 +97,14 @@ _Static_assert(PROJECT_DISPLAY_MADCTL == 0x00U,
                "unexpected display MADCTL");
 _Static_assert(PROJECT_DISPLAY_SPI_MAX_CLOCK_HZ == 12500000U,
                "unexpected display SPI clock");
+_Static_assert(PROJECT_DISPLAY_TASK_STACK_SIZE_BYTES == 1536U,
+               "unexpected display task stack size");
+_Static_assert(PROJECT_DISPLAY_TASK_PRIORITY == PLATFORM_THREAD_PRIORITY_NORMAL,
+               "unexpected display task priority");
+_Static_assert(PROJECT_DISPLAY_QUEUE_DEPTH == 4U,
+               "unexpected display queue depth");
+_Static_assert(PROJECT_DISPLAY_BOOT_DURATION_MS == 1000U,
+               "unexpected display boot duration");
 
 int main(void)
 {

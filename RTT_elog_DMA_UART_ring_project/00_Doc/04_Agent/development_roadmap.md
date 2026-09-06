@@ -66,16 +66,18 @@ Touch deferred
 
 ---
 
-# 3. 当前阶段：RTOS Display Integration Implementation
+# 3. 当前阶段：RTOS Display Integration Target Verification
 
 状态：
 
 ```text
-DESIGN FROZEN
-IMPLEMENTATION NOT STARTED
+IMPLEMENTATION COMPLETE
+HOST FULL REGRESSION PASS 40/40
+KEIL FULL REBUILD PASS / 0 ERRORS
+TARGET VERIFICATION PENDING MANUAL BOARD TEST
 ```
 
-目标：
+已完成：
 
 ```text
 add Display Task
@@ -88,6 +90,16 @@ keep UART command/response/debug capabilities
 migrate ONCE success semantic to acquisition-only
 remove Communication from sensor data plane
 verify failure isolation
+```
+
+尚待目标板确认：
+
+```text
+Boot/Main visual behavior
+START/STOP/ONCE end-to-end behavior
+UART command regression and no ENV/IMU report
+LCD failure isolation
+Task high-water marks and Queue peak occupancy
 ```
 
 最终产品 Task：
@@ -140,7 +152,7 @@ LCD render
 
 ---
 
-# 5. 当前实施步骤
+# 5. 当前验证步骤
 
 详见：
 
@@ -148,21 +160,27 @@ LCD render
 00_Doc/04_Agent/implementation_plan.md
 ```
 
-高层顺序：
+已完成：
 
 ```text
-1. SPI Platform integration gap
-2. APP shared IPC/type migration
-3. Communication cleanup
-4. Control ONCE/state-display migration
-5. Acquisition display/output migration
-6. app_display implementation
-7. app_system composition-root integration
-8. Config + build integration
-9. Host tests
-10. Keil rebuild
-11. Target verification
-12. Documentation closeout
+SPI Platform integration gap
+APP shared IPC/type migration
+Communication cleanup
+Control ONCE/state-display migration
+Acquisition display/output migration
+app_display implementation
+app_system composition-root integration
+Config + build integration
+Host tests 40/40
+Keil rebuild 0 errors
+Documentation closeout
+```
+
+待执行：
+
+```text
+Target verification
+Resource observation
 ```
 
 ---

@@ -148,6 +148,66 @@ platform_error_t platform_spi_bus_init(
     return PLATFORM_ERR_OK;
 }
 
+platform_error_t platform_spi_bus_lifecycle_init(platform_spi_bus_t *bus)
+{
+    platform_error_t result = platform_spi_validate_bus(bus);
+
+    if (result != PLATFORM_ERR_OK) {
+        return result;
+    }
+    if ((bus->device.lifecycle == NULL) ||
+        (bus->device.lifecycle->init == NULL)) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    return bus->device.lifecycle->init(bus);
+}
+
+platform_error_t platform_spi_bus_lifecycle_start(platform_spi_bus_t *bus)
+{
+    platform_error_t result = platform_spi_validate_bus(bus);
+
+    if (result != PLATFORM_ERR_OK) {
+        return result;
+    }
+    if ((bus->device.lifecycle == NULL) ||
+        (bus->device.lifecycle->start == NULL)) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    return bus->device.lifecycle->start(bus);
+}
+
+platform_error_t platform_spi_bus_lifecycle_stop(platform_spi_bus_t *bus)
+{
+    platform_error_t result = platform_spi_validate_bus(bus);
+
+    if (result != PLATFORM_ERR_OK) {
+        return result;
+    }
+    if ((bus->device.lifecycle == NULL) ||
+        (bus->device.lifecycle->stop == NULL)) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    return bus->device.lifecycle->stop(bus);
+}
+
+platform_error_t platform_spi_bus_lifecycle_deinit(platform_spi_bus_t *bus)
+{
+    platform_error_t result = platform_spi_validate_bus(bus);
+
+    if (result != PLATFORM_ERR_OK) {
+        return result;
+    }
+    if ((bus->device.lifecycle == NULL) ||
+        (bus->device.lifecycle->deinit == NULL)) {
+        return PLATFORM_ERR_INVALID_STATE;
+    }
+
+    return bus->device.lifecycle->deinit(bus);
+}
+
 platform_error_t platform_spi_device_init(
     platform_spi_device_t *device,
     const char *name,

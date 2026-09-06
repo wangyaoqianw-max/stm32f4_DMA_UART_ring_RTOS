@@ -36,13 +36,14 @@ static void app_acquisition_copy_data(
     destination->motion = source->motion;
 }
 
-/** @brief 以非阻塞方式投递 Queue，并统一累计投递失败统计。 */
+/** @brief 按调用方指定等待策略投递 Queue，并统一累计投递失败统计。 */
 static platform_error_t app_acquisition_send_queue(
     app_acquisition_t *acquisition,
     platform_queue_t *queue,
-    const void *message)
+    const void *message,
+    uint32_t timeoutMs)
 {
-    platform_error_t result = platform_queue_send(queue, message, PLATFORM_OS_NO_WAIT);
+    platform_error_t result = platform_queue_send(queue, message, timeoutMs);
 
     if (result != PLATFORM_ERR_OK) {
         acquisition->statistics.queueSubmitFailureCount++;
@@ -50,34 +51,38 @@ static platform_error_t app_acquisition_send_queue(
     return result;
 }
 
-/** @brief 向 Control FSM 回传 ONCE 失败或发送完成结果。 */
-static platform_error_t app_acquisition_send_once_failure(
+/** @brief 可靠地向 Control FSM 回传统一 ONCE 完成结果。 */
+static platform_error_t app_acquisition_send_once_complete(
     app_acquisition_t *acquisition,
-    app_control_message_type_t type,
-    platform_error_t error)
+    platform_error_t result)
 {
     app_control_message_t message = {
-        .type = type,
-        .payload.result = error
+        .type = APP_CONTROL_MESSAGE_ONCE_COMPLETE,
+        .payload.result = result
     };
 
     return app_acquisition_send_queue(
-        acquisition, acquisition->config.controlQueue, &message);
+        acquisition,
+        acquisition->config.controlQueue,
+        &message,
+        PLATFORM_OS_WAIT_FOREVER);
 }
 
-/** @brief 将完整采集结果按指定类型发布到通信 Queue。 */
-static platform_error_t app_acquisition_publish(
+/** @brief best-effort 将完整采集结果发布到 Display Queue。 */
+static platform_error_t app_acquisition_publish_display(
     app_acquisition_t *acquisition,
-    app_communication_outbound_type_t type,
     const service_acquisition_data_t *data)
 {
-    app_communication_outbound_message_t message = {
-        .type = type
+    app_display_message_t message = {
+        .type = APP_DISPLAY_MESSAGE_MEASUREMENT
     };
 
-    app_acquisition_copy_data(&message.payload.acquisition, data);
+    app_acquisition_copy_data(&message.payload.measurement, data);
     return app_acquisition_send_queue(
-        acquisition, acquisition->config.communicationQueue, &message);
+        acquisition,
+        acquisition->config.displayQueue,
+        &message,
+        PLATFORM_OS_NO_WAIT);
 }
 
 /** @brief 采样完成后排空待处理命令并优先识别 STOP。 */
@@ -136,8 +141,7 @@ static platform_error_t app_acquisition_execute_periodic(
         return PLATFORM_ERR_OK;
     }
 
-    result = app_acquisition_publish(
-        acquisition, APP_COMM_OUTBOUND_PERIODIC_REPORT, &data);
+    result = app_acquisition_publish_display(acquisition, &data);
     if (result == PLATFORM_ERR_OK) {
         acquisition->statistics.periodicPublishCount++;
     }
@@ -148,30 +152,22 @@ static platform_error_t app_acquisition_execute_periodic(
 static platform_error_t app_acquisition_execute_once(app_acquisition_t *acquisition)
 {
     service_acquisition_data_t data = {0};
+    platform_error_t sampleResult;
     platform_error_t result;
 
     acquisition->statistics.onceSampleCount++;
-    result = service_acquisition_sample(acquisition->config.service, &data);
-    if (result != PLATFORM_ERR_OK) {
+    sampleResult = service_acquisition_sample(acquisition->config.service, &data);
+    if (sampleResult != PLATFORM_ERR_OK) {
         acquisition->statistics.sampleFailureCount++;
-        (void)app_acquisition_send_once_failure(
-            acquisition,
-            APP_CONTROL_MESSAGE_ONCE_ACQUISITION_FAILED,
-            result);
-        return PLATFORM_ERR_OK;
+        return app_acquisition_send_once_complete(acquisition, sampleResult);
     }
 
-    result = app_acquisition_publish(acquisition, APP_COMM_OUTBOUND_ONCE_REPORT, &data);
-    if (result != PLATFORM_ERR_OK) {
-        (void)app_acquisition_send_once_failure(
-            acquisition,
-            APP_CONTROL_MESSAGE_ONCE_TX_RESULT,
-            result);
-        return PLATFORM_ERR_OK;
+    result = app_acquisition_publish_display(acquisition, &data);
+    if (result == PLATFORM_ERR_OK) {
+        acquisition->statistics.oncePublishCount++;
     }
-    acquisition->statistics.oncePublishCount++;
 
-    return PLATFORM_ERR_OK;
+    return app_acquisition_send_once_complete(acquisition, PLATFORM_ERR_OK);
 }
 
 /** @brief 处理一条 Acquisition 命令并维护周期运行状态。 */
@@ -241,7 +237,7 @@ platform_error_t app_acquisition_init(
 {
     if ((acquisition == NULL) || (config == NULL) ||
         (config->service == NULL) || (config->commandQueue == NULL) ||
-        (config->communicationQueue == NULL) || (config->controlQueue == NULL)) {
+        (config->displayQueue == NULL) || (config->controlQueue == NULL)) {
         return PLATFORM_ERR_NULL_POINTER;
     }
     if (acquisition->context.initialized == PLATFORM_TRUE) {
@@ -249,7 +245,7 @@ platform_error_t app_acquisition_init(
     }
     if ((config->service->initialized != PLATFORM_TRUE) ||
         (config->commandQueue->native == NULL) ||
-        (config->communicationQueue->native == NULL) ||
+        (config->displayQueue->native == NULL) ||
         (config->controlQueue->native == NULL)) {
         return PLATFORM_ERR_NOT_INITIALIZED;
     }

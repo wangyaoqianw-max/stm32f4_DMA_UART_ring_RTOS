@@ -130,6 +130,24 @@ static int test_construct_and_lifecycle_follow_platform_state_model(void)
     return 0;
 }
 
+static int test_initialized_bus_can_deinit_for_start_failure_rollback(void)
+{
+    platform_spi_bus_t bus = PLATFORM_SPI_BUS_INITIALIZER;
+
+    reset_fake_hal();
+    TEST_ASSERT(PLATFORM_ERR_OK ==
+                impl_platform_spi1_construct(&bus,
+                                             "spi1",
+                                             PLATFORM_DEVICE_CAP_NONE));
+    TEST_ASSERT(PLATFORM_ERR_OK == bus.device.lifecycle->init(&bus));
+    TEST_ASSERT(PLATFORM_OBJECT_INITIALIZED == bus.device.object.state);
+    TEST_ASSERT(PLATFORM_ERR_OK == bus.device.lifecycle->deinit(&bus));
+    TEST_ASSERT(PLATFORM_OBJECT_CREATED == bus.device.object.state);
+    TEST_ASSERT(PLATFORM_DEVICE_POWER_OFF == bus.device.power_state);
+
+    return 0;
+}
+
 static int test_apply_config_accepts_actual_mode_order_bits_and_clock(void)
 {
     platform_spi_bus_t bus = PLATFORM_SPI_BUS_INITIALIZER;
@@ -308,6 +326,10 @@ int main(void)
 {
     int result = test_construct_and_lifecycle_follow_platform_state_model();
 
+    if (result != 0) {
+        return result;
+    }
+    result = test_initialized_bus_can_deinit_for_start_failure_rollback();
     if (result != 0) {
         return result;
     }

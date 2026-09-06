@@ -34,8 +34,7 @@ typedef struct
 typedef enum
 {
     APP_CONTROL_MESSAGE_CONTROL_REQUEST = 0,
-    APP_CONTROL_MESSAGE_ONCE_ACQUISITION_FAILED,
-    APP_CONTROL_MESSAGE_ONCE_TX_RESULT,
+    APP_CONTROL_MESSAGE_ONCE_COMPLETE,
     APP_CONTROL_MESSAGE_MAX
 } app_control_message_type_t;
 
@@ -77,6 +76,7 @@ typedef enum
 {
     APP_CONTROL_RESPONSE_OK_START = 0,
     APP_CONTROL_RESPONSE_OK_STOP,
+    APP_CONTROL_RESPONSE_OK_ONCE,
     APP_CONTROL_RESPONSE_ALREADY_RUNNING,
     APP_CONTROL_RESPONSE_ALREADY_STOPPED,
     APP_CONTROL_RESPONSE_BUSY,
@@ -86,29 +86,28 @@ typedef enum
     APP_CONTROL_RESPONSE_MAX
 } app_control_response_t;
 
-/** @brief Communication Outbound Queue 消息类别。 */
+/** @brief Display Queue 消息类别。 */
 typedef enum
 {
-    APP_COMM_OUTBOUND_CONTROL_RESPONSE = 0,
-    APP_COMM_OUTBOUND_PERIODIC_REPORT,
-    APP_COMM_OUTBOUND_ONCE_REPORT,
-    APP_COMM_OUTBOUND_MAX
-} app_communication_outbound_type_t;
+    APP_DISPLAY_MESSAGE_SYSTEM_STATE = 0,
+    APP_DISPLAY_MESSAGE_MEASUREMENT,
+    APP_DISPLAY_MESSAGE_MAX
+} app_display_message_type_t;
 
-/** @brief Communication Outbound Queue 的定长值消息。 */
+/** @brief Display Queue 的定长值拷贝消息。 */
 typedef struct
 {
     /** 决定 payload 有效成员的消息类别。 */
-    app_communication_outbound_type_t type;
-    /** 待格式化的控制响应或完整传感器数据。 */
+    app_display_message_type_t type;
+    /** 与 type 对应的状态快照或完整测量数据。 */
     union
     {
-        /** type 为 CONTROL_RESPONSE 时有效。 */
-        app_control_response_t controlResponse;
-        /** type 为 PERIODIC_REPORT 或 ONCE_REPORT 时有效。 */
-        app_acquisition_data_t acquisition;
+        /** type 为 SYSTEM_STATE 时有效。 */
+        app_control_state_t systemState;
+        /** type 为 MEASUREMENT 时有效。 */
+        app_acquisition_data_t measurement;
     } payload;
-} app_communication_outbound_message_t;
+} app_display_message_t;
 
 /** @brief Indicator Task 消费的 LED 业务语义。 */
 typedef enum

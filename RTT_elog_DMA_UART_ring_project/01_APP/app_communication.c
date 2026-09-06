@@ -17,14 +17,11 @@
 #include "service_log.h"
 #include "platform_time.h"
 
-#include <stdio.h>
 #include <string.h>
 //******************************** Includes *********************************//
 
 //******************************** Defines **********************************//
 #define LOG_TAG                                "app_comm"
-#define APP_COMM_ENV_REPORT_BUFFER_SIZE        (64U)
-#define APP_COMM_IMU_REPORT_BUFFER_SIZE        (128U)
 //******************************** Defines **********************************//
 
 //******************************** Types ***********************************//
@@ -45,6 +42,7 @@ static const uint8_t g_unknownCommandResponse[] = "ERR UNKNOWN_COMMAND\r\n";
 static const uint8_t g_commandTooLongResponse[] = "ERR COMMAND_TOO_LONG\r\n";
 static const uint8_t g_okStartResponse[] = "OK START\r\n";
 static const uint8_t g_okStopResponse[] = "OK STOP\r\n";
+static const uint8_t g_okOnceResponse[] = "OK ONCE\r\n";
 static const uint8_t g_alreadyRunningResponse[] = "ERR ALREADY_RUNNING\r\n";
 static const uint8_t g_alreadyStoppedResponse[] = "ERR ALREADY_STOPPED\r\n";
 static const uint8_t g_busyResponse[] = "ERR BUSY\r\n";
@@ -166,6 +164,11 @@ static platform_error_t app_communication_get_control_response(
             *dataLength = sizeof(g_okStopResponse) - 1U;
             return PLATFORM_ERR_OK;
 
+        case APP_CONTROL_RESPONSE_OK_ONCE:
+            *data = g_okOnceResponse;
+            *dataLength = sizeof(g_okOnceResponse) - 1U;
+            return PLATFORM_ERR_OK;
+
         case APP_CONTROL_RESPONSE_ALREADY_RUNNING:
             *data = g_alreadyRunningResponse;
             *dataLength = sizeof(g_alreadyRunningResponse) - 1U;
@@ -223,131 +226,6 @@ static platform_error_t app_communication_send_control_response(
         communication->statistics.controlResponseFailureCount++;
     }
     return result;
-}
-
-/** @brief 将完整传感器快照格式化为 ENV 与 IMU 两行文本。 */
-static platform_error_t app_communication_format_report(
-    const app_acquisition_data_t *data,
-    uint8_t *environmentBuffer,
-    platform_size_t environmentBufferSize,
-    platform_size_t *environmentLength,
-    uint8_t *motionBuffer,
-    platform_size_t motionBufferSize,
-    platform_size_t *motionLength)
-{
-    int writtenLength = snprintf(
-        (char *)environmentBuffer,
-        environmentBufferSize,
-        "ENV,T=%.2f,H=%.2f\r\n",
-        (double)data->environment.temperatureC,
-        (double)data->environment.humidityPercent);
-
-    if ((writtenLength < 0) || ((platform_size_t)writtenLength >= environmentBufferSize)) {
-        return PLATFORM_ERR_OVERFLOW;
-    }
-    *environmentLength = (platform_size_t)writtenLength;
-
-    writtenLength = snprintf(
-        (char *)motionBuffer,
-        motionBufferSize,
-        "IMU,AX=%.3f,AY=%.3f,AZ=%.3f,GX=%.2f,GY=%.2f,GZ=%.2f\r\n",
-        (double)data->motion.accelXG,
-        (double)data->motion.accelYG,
-        (double)data->motion.accelZG,
-        (double)data->motion.gyroXDps,
-        (double)data->motion.gyroYDps,
-        (double)data->motion.gyroZDps);
-    if ((writtenLength < 0) || ((platform_size_t)writtenLength >= motionBufferSize)) {
-        return PLATFORM_ERR_OVERFLOW;
-    }
-    *motionLength = (platform_size_t)writtenLength;
-
-    return PLATFORM_ERR_OK;
-}
-
-/** @brief 顺序发送完整 ENV 与 IMU 报告并记录结果。 */
-static platform_error_t app_communication_send_report(
-    app_communication_t *communication,
-    const app_acquisition_data_t *data)
-{
-    uint8_t environmentBuffer[APP_COMM_ENV_REPORT_BUFFER_SIZE] = {0};
-    uint8_t motionBuffer[APP_COMM_IMU_REPORT_BUFFER_SIZE] = {0};
-    platform_size_t environmentLength = 0U;
-    platform_size_t motionLength = 0U;
-    platform_error_t result = app_communication_format_report(
-        data,
-        environmentBuffer,
-        sizeof(environmentBuffer),
-        &environmentLength,
-        motionBuffer,
-        sizeof(motionBuffer),
-        &motionLength);
-
-    if (result == PLATFORM_ERR_OK) {
-        result = service_uart_write(communication->config.service,
-                                    environmentBuffer,
-                                    environmentLength,
-                                    PROJECT_COMM_UART_DEFAULT_TIMEOUT_MS);
-    }
-    if (result == PLATFORM_ERR_OK) {
-        result = service_uart_write(communication->config.service,
-                                    motionBuffer,
-                                    motionLength,
-                                    PROJECT_COMM_UART_DEFAULT_TIMEOUT_MS);
-    }
-    if (result == PLATFORM_ERR_OK) {
-        communication->statistics.reportCount++;
-    } else {
-        communication->statistics.reportFailureCount++;
-    }
-    return result;
-}
-
-/** @brief 将 ONCE 报告的最终发送结果回传给 Control FSM。 */
-static void app_communication_submit_once_result(
-    app_communication_t *communication,
-    platform_error_t txResult)
-{
-    app_control_message_t message = {
-        .type = APP_CONTROL_MESSAGE_ONCE_TX_RESULT,
-        .payload.result = txResult
-    };
-
-    if (platform_queue_send(
-            communication->config.controlQueue,
-            &message,
-            PLATFORM_OS_NO_WAIT) != PLATFORM_ERR_OK) {
-        communication->statistics.onceCompletionSubmitFailureCount++;
-    }
-}
-
-/** @brief 分派一条业务出站消息到控制响应或数据报告路径。 */
-static platform_error_t app_communication_handle_outbound(
-    app_communication_t *communication,
-    const app_communication_outbound_message_t *message)
-{
-    platform_error_t result;
-
-    switch (message->type) {
-        case APP_COMM_OUTBOUND_CONTROL_RESPONSE:
-            (void)app_communication_send_control_response(
-                communication, message->payload.controlResponse);
-            return PLATFORM_ERR_OK;
-
-        case APP_COMM_OUTBOUND_PERIODIC_REPORT:
-            (void)app_communication_send_report(
-                communication, &message->payload.acquisition);
-            return PLATFORM_ERR_OK;
-
-        case APP_COMM_OUTBOUND_ONCE_REPORT:
-            result = app_communication_send_report(
-                communication, &message->payload.acquisition);
-            app_communication_submit_once_result(communication, result);
-            return PLATFORM_ERR_OK;
-
-        default:
-            return PLATFORM_ERR_INVALID_PARAM;
-    }
 }
 
 /** @brief 处理一行完整命令并触发本地响应或控制事件。 */
@@ -693,10 +571,7 @@ platform_error_t app_communication_process(app_communication_t *communication, u
 
 platform_error_t app_communication_drain_outbound(app_communication_t *communication)
 {
-    app_communication_outbound_message_t message = {
-        .type = APP_COMM_OUTBOUND_CONTROL_RESPONSE,
-        .payload.controlResponse = APP_CONTROL_RESPONSE_OK_START
-    };
+    app_control_response_t response = APP_CONTROL_RESPONSE_OK_START;
     platform_error_t result;
 
     if (communication == NULL) {
@@ -705,15 +580,14 @@ platform_error_t app_communication_drain_outbound(app_communication_t *communica
     if (communication->context.state != APP_COMMUNICATION_STATE_RUNNING) {
         return PLATFORM_ERR_INVALID_STATE;
     }
-    if ((communication->config.outboundQueue == NULL) ||
-        (communication->config.controlQueue == NULL)) {
+    if (communication->config.outboundQueue == NULL) {
         return PLATFORM_ERR_NOT_INITIALIZED;
     }
 
     for (;;) {
         result = platform_queue_receive(
             communication->config.outboundQueue,
-            &message,
+            &response,
             PLATFORM_OS_NO_WAIT);
         if ((result == PLATFORM_ERR_EMPTY) || (result == PLATFORM_ERR_TIMEOUT)) {
             return PLATFORM_ERR_OK;
@@ -723,10 +597,7 @@ platform_error_t app_communication_drain_outbound(app_communication_t *communica
         }
 
         communication->statistics.outboundMessageCount++;
-        result = app_communication_handle_outbound(communication, &message);
-        if (result != PLATFORM_ERR_OK) {
-            return result;
-        }
+        (void)app_communication_send_control_response(communication, response);
     }
 }
 

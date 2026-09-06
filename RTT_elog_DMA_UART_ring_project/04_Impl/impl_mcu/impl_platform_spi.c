@@ -449,7 +449,8 @@ static platform_error_t stm32_spi_lifecycle_deinit(void *self)
         return result;
     }
 
-    if (bus->device.object.state != PLATFORM_OBJECT_STOPPED) {
+    if ((bus->device.object.state != PLATFORM_OBJECT_INITIALIZED) &&
+        (bus->device.object.state != PLATFORM_OBJECT_STOPPED)) {
         return PLATFORM_ERR_INVALID_STATE;
     }
 

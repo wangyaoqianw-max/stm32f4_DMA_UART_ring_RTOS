@@ -17,15 +17,19 @@
 #include "app_acquisition.h"
 #include "app_communication.h"
 #include "app_control.h"
+#include "app_display.h"
 #include "app_indicator.h"
 #include "button/platform_bsp_button.h"
 #include "dht20/platform_dht20.h"
 #include "led/platform_bsp_led.h"
 #include "mpu6050/platform_mpu6050.h"
 #include "platform_bsp_gpio.h"
+#include "platform_bsp_spi.h"
+#include "platform_bsp_st7789.h"
 #include "platform_bsp_uart.h"
 #include "platform_i2c.h"
 #include "platform_queue.h"
+#include "platform_spi.h"
 #include "platform_thread.h"
 #include "project_config.h"
 #include "service_acquisition.h"
@@ -50,6 +54,8 @@ static platform_gpio_t g_softI2cSda = PLATFORM_GPIO_INITIALIZER;
 static platform_i2c_t g_sharedI2c = PLATFORM_I2C_INITIALIZER;
 static platform_dht20_t g_dht20 = PLATFORM_DHT20_INITIALIZER;
 static platform_mpu6050_t g_mpu6050 = PLATFORM_MPU6050_INITIALIZER;
+static platform_spi_bus_t g_displaySpiBus = PLATFORM_SPI_BUS_INITIALIZER;
+static platform_st7789_t g_display = PLATFORM_ST7789_INITIALIZER;
 
 static service_uart_t g_uartService = SERVICE_UART_INITIALIZER;
 static service_button_t g_buttonService = SERVICE_BUTTON_INITIALIZER;
@@ -60,16 +66,19 @@ static platform_queue_t g_controlQueue = PLATFORM_OS_OBJECT_INITIALIZER;
 static platform_queue_t g_acquisitionQueue = PLATFORM_OS_OBJECT_INITIALIZER;
 static platform_queue_t g_communicationOutboundQueue = PLATFORM_OS_OBJECT_INITIALIZER;
 static platform_queue_t g_indicatorQueue = PLATFORM_OS_OBJECT_INITIALIZER;
+static platform_queue_t g_displayQueue = PLATFORM_OS_OBJECT_INITIALIZER;
 
 static app_communication_t g_appCommunication = APP_COMMUNICATION_INITIALIZER;
 static app_control_t g_appControl = APP_CONTROL_INITIALIZER;
 static app_acquisition_t g_appAcquisition = APP_ACQUISITION_INITIALIZER;
 static app_indicator_t g_appIndicator = APP_INDICATOR_INITIALIZER;
+static app_display_t g_appDisplay = APP_DISPLAY_INITIALIZER;
 
 static platform_thread_t g_communicationThread = PLATFORM_OS_OBJECT_INITIALIZER;
 static platform_thread_t g_controlThread = PLATFORM_OS_OBJECT_INITIALIZER;
 static platform_thread_t g_acquisitionThread = PLATFORM_OS_OBJECT_INITIALIZER;
 static platform_thread_t g_indicatorThread = PLATFORM_OS_OBJECT_INITIALIZER;
+static platform_thread_t g_displayThread = PLATFORM_OS_OBJECT_INITIALIZER;
 
 static uint8_t g_dmaRxStorage[PROJECT_COMM_DMA_RX_BUFFER_SIZE] = {0};
 static uint8_t g_ringStorage[PROJECT_COMM_RING_BUFFER_STORAGE_SIZE] = {0};
@@ -117,6 +126,8 @@ static void app_system_reset_storage(void)
     (void)memset(&g_sharedI2c, 0, sizeof(g_sharedI2c));
     (void)memset(&g_dht20, 0, sizeof(g_dht20));
     (void)memset(&g_mpu6050, 0, sizeof(g_mpu6050));
+    (void)memset(&g_displaySpiBus, 0, sizeof(g_displaySpiBus));
+    (void)memset(&g_display, 0, sizeof(g_display));
     (void)memset(&g_uartService, 0, sizeof(g_uartService));
     (void)memset(&g_buttonService, 0, sizeof(g_buttonService));
     (void)memset(&g_indicatorService, 0, sizeof(g_indicatorService));
@@ -125,14 +136,17 @@ static void app_system_reset_storage(void)
     (void)memset(&g_acquisitionQueue, 0, sizeof(g_acquisitionQueue));
     (void)memset(&g_communicationOutboundQueue, 0, sizeof(g_communicationOutboundQueue));
     (void)memset(&g_indicatorQueue, 0, sizeof(g_indicatorQueue));
+    (void)memset(&g_displayQueue, 0, sizeof(g_displayQueue));
     (void)memset(&g_appCommunication, 0, sizeof(g_appCommunication));
     (void)memset(&g_appControl, 0, sizeof(g_appControl));
     (void)memset(&g_appAcquisition, 0, sizeof(g_appAcquisition));
     (void)memset(&g_appIndicator, 0, sizeof(g_appIndicator));
+    (void)memset(&g_appDisplay, 0, sizeof(g_appDisplay));
     (void)memset(&g_communicationThread, 0, sizeof(g_communicationThread));
     (void)memset(&g_controlThread, 0, sizeof(g_controlThread));
     (void)memset(&g_acquisitionThread, 0, sizeof(g_acquisitionThread));
     (void)memset(&g_indicatorThread, 0, sizeof(g_indicatorThread));
+    (void)memset(&g_displayThread, 0, sizeof(g_displayThread));
 }
 
 /** @brief 按创建顺序逆序释放已建立资源并恢复可重试状态。 */
@@ -140,8 +154,13 @@ static void app_system_rollback(
     platform_bool_t uartServiceInitialized,
     platform_bool_t buttonServiceInitialized,
     platform_bool_t indicatorServiceInitialized,
-    platform_bool_t acquisitionServiceInitialized)
+    platform_bool_t acquisitionServiceInitialized,
+    platform_bool_t displaySpiInitialized,
+    platform_bool_t displaySpiStarted)
 {
+    if (g_displayThread.native != NULL) {
+        (void)platform_thread_terminate(&g_displayThread);
+    }
     if (g_indicatorThread.native != NULL) {
         (void)platform_thread_terminate(&g_indicatorThread);
     }
@@ -155,6 +174,9 @@ static void app_system_rollback(
         (void)platform_thread_terminate(&g_communicationThread);
     }
 
+    if (g_displayQueue.native != NULL) {
+        (void)platform_queue_delete(&g_displayQueue);
+    }
     if (g_indicatorQueue.native != NULL) {
         (void)platform_queue_delete(&g_indicatorQueue);
     }
@@ -196,6 +218,12 @@ static void app_system_rollback(
     if (g_sharedI2c.initialized == PLATFORM_TRUE) {
         (void)platform_i2c_deinit(&g_sharedI2c);
     }
+    if (displaySpiStarted == PLATFORM_TRUE) {
+        (void)platform_spi_bus_lifecycle_stop(&g_displaySpiBus);
+    }
+    if (displaySpiInitialized == PLATFORM_TRUE) {
+        (void)platform_spi_bus_lifecycle_deinit(&g_displaySpiBus);
+    }
 
     app_system_reset_storage();
     g_isInitialized = PLATFORM_FALSE;
@@ -222,8 +250,7 @@ platform_error_t app_system_init(void)
         .service = &g_uartService,
         .controlHandler = app_system_submit_uart_control,
         .controlContext = &g_controlQueue,
-        .outboundQueue = &g_communicationOutboundQueue,
-        .controlQueue = &g_controlQueue
+        .outboundQueue = &g_communicationOutboundQueue
     };
     app_control_config_t controlConfig = {
         .button = &g_userButton,
@@ -231,17 +258,23 @@ platform_error_t app_system_init(void)
         .controlQueue = &g_controlQueue,
         .acquisitionQueue = &g_acquisitionQueue,
         .communicationQueue = &g_communicationOutboundQueue,
+        .displayQueue = &g_displayQueue,
         .indicatorQueue = &g_indicatorQueue
     };
     app_acquisition_config_t acquisitionConfig = {
         .service = &g_acquisitionService,
         .commandQueue = &g_acquisitionQueue,
-        .communicationQueue = &g_communicationOutboundQueue,
+        .displayQueue = &g_displayQueue,
         .controlQueue = &g_controlQueue
     };
     app_indicator_config_t indicatorConfig = {
         .service = &g_indicatorService,
         .queue = &g_indicatorQueue
+    };
+    app_display_config_t displayConfig = {
+        .display = &g_display,
+        .spiBus = &g_displaySpiBus,
+        .queue = &g_displayQueue
     };
     platform_thread_config_t communicationThreadConfig = {
         .name = "communication",
@@ -271,10 +304,19 @@ platform_error_t app_system_init(void)
         .stackSizeBytes = PROJECT_INDICATOR_TASK_STACK_SIZE_BYTES,
         .priority = PROJECT_INDICATOR_TASK_PRIORITY
     };
+    platform_thread_config_t displayThreadConfig = {
+        .name = "display",
+        .entry = app_display_task_entry,
+        .argument = &g_appDisplay,
+        .stackSizeBytes = PROJECT_DISPLAY_TASK_STACK_SIZE_BYTES,
+        .priority = PROJECT_DISPLAY_TASK_PRIORITY
+    };
     platform_bool_t uartServiceInitialized = PLATFORM_FALSE;
     platform_bool_t buttonServiceInitialized = PLATFORM_FALSE;
     platform_bool_t indicatorServiceInitialized = PLATFORM_FALSE;
     platform_bool_t acquisitionServiceInitialized = PLATFORM_FALSE;
+    platform_bool_t displaySpiInitialized = PLATFORM_FALSE;
+    platform_bool_t displaySpiStarted = PLATFORM_FALSE;
     platform_error_t result;
 
     if (g_isInitialized == PLATFORM_TRUE) {
@@ -302,6 +344,24 @@ platform_error_t app_system_init(void)
     if (result != PLATFORM_ERR_OK) {
         goto cleanup;
     }
+    result = platform_bsp_spi_construct_display_bus(&g_displaySpiBus);
+    if (result != PLATFORM_ERR_OK) {
+        goto cleanup;
+    }
+    result = platform_bsp_st7789_construct_display(&g_display);
+    if (result != PLATFORM_ERR_OK) {
+        goto cleanup;
+    }
+    result = platform_spi_bus_lifecycle_init(&g_displaySpiBus);
+    if (result != PLATFORM_ERR_OK) {
+        goto cleanup;
+    }
+    displaySpiInitialized = PLATFORM_TRUE;
+    result = platform_spi_bus_lifecycle_start(&g_displaySpiBus);
+    if (result != PLATFORM_ERR_OK) {
+        goto cleanup;
+    }
+    displaySpiStarted = PLATFORM_TRUE;
 
     result = platform_i2c_init(
         &g_sharedI2c, "shared_soft_i2c", &g_softI2cScl, &g_softI2cSda);
@@ -365,7 +425,7 @@ platform_error_t app_system_init(void)
     result = platform_queue_create(
         &g_communicationOutboundQueue,
         PROJECT_COMM_OUTBOUND_QUEUE_DEPTH,
-        sizeof(app_communication_outbound_message_t));
+        sizeof(app_control_response_t));
     if (result != PLATFORM_ERR_OK) {
         goto cleanup;
     }
@@ -373,6 +433,13 @@ platform_error_t app_system_init(void)
         &g_indicatorQueue,
         PROJECT_INDICATOR_QUEUE_DEPTH,
         sizeof(app_indicator_command_t));
+    if (result != PLATFORM_ERR_OK) {
+        goto cleanup;
+    }
+    result = platform_queue_create(
+        &g_displayQueue,
+        PROJECT_DISPLAY_QUEUE_DEPTH,
+        sizeof(app_display_message_t));
     if (result != PLATFORM_ERR_OK) {
         goto cleanup;
     }
@@ -393,6 +460,10 @@ platform_error_t app_system_init(void)
     if (result != PLATFORM_ERR_OK) {
         goto cleanup;
     }
+    result = app_display_init(&g_appDisplay, &displayConfig);
+    if (result != PLATFORM_ERR_OK) {
+        goto cleanup;
+    }
 
     result = platform_thread_create(&g_communicationThread, &communicationThreadConfig);
     if (result != PLATFORM_ERR_OK) {
@@ -410,6 +481,10 @@ platform_error_t app_system_init(void)
     if (result != PLATFORM_ERR_OK) {
         goto cleanup;
     }
+    result = platform_thread_create(&g_displayThread, &displayThreadConfig);
+    if (result != PLATFORM_ERR_OK) {
+        goto cleanup;
+    }
 
     g_isInitialized = PLATFORM_TRUE;
     SERVICE_LOG_I("system composition initialized");
@@ -420,7 +495,9 @@ cleanup:
         uartServiceInitialized,
         buttonServiceInitialized,
         indicatorServiceInitialized,
-        acquisitionServiceInitialized);
+        acquisitionServiceInitialized,
+        displaySpiInitialized,
+        displaySpiStarted);
     return result;
 }
 //******************************** Functions *********************************//

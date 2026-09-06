@@ -62,15 +62,22 @@ static platform_error_t app_control_send_response(
     app_ctrl_source_t source,
     app_control_response_t response)
 {
-    app_communication_outbound_message_t message = {
-        .type = APP_COMM_OUTBOUND_CONTROL_RESPONSE,
-        .payload.controlResponse = response
-    };
-
     if (source != APP_CTRL_SOURCE_UART) {
         return PLATFORM_ERR_OK;
     }
-    return app_control_send_queue(control, control->config.communicationQueue, &message);
+    return app_control_send_queue(
+        control, control->config.communicationQueue, &response);
+}
+
+/** @brief best-effort 发布 Control 状态快照，不改变业务操作结果。 */
+static void app_control_publish_state(app_control_t *control)
+{
+    app_display_message_t message = {
+        .type = APP_DISPLAY_MESSAGE_SYSTEM_STATE,
+        .payload.systemState = control->context.state
+    };
+
+    (void)app_control_send_queue(control, control->config.displayQueue, &message);
 }
 
 /** @brief 合并连续操作结果，同时保留遇到的首个错误。 */
@@ -116,6 +123,7 @@ static platform_error_t app_control_handle_start(
 
     control->context.state = APP_CONTROL_STATE_RUNNING;
     result = app_control_send_indicator(control, APP_INDICATOR_RUNNING);
+    app_control_publish_state(control);
     result = app_control_keep_first_error(
         result,
         app_control_send_response(control, source, APP_CONTROL_RESPONSE_OK_START));
@@ -146,6 +154,7 @@ static platform_error_t app_control_handle_stop(
 
     control->context.state = APP_CONTROL_STATE_STOPPED;
     result = app_control_send_indicator(control, APP_INDICATOR_STOPPED);
+    app_control_publish_state(control);
     result = app_control_keep_first_error(
         result,
         app_control_send_response(control, source, APP_CONTROL_RESPONSE_OK_STOP));
@@ -191,11 +200,13 @@ static platform_error_t app_control_handle_status(
     return app_control_send_response(control, source, response);
 }
 
-/** @brief 结束失败的 ONCE 事务并按来源反馈结果。 */
-static platform_error_t app_control_handle_acquisition_failure(
-    app_control_t *control)
+/** @brief 消费统一 ONCE 采集完成结果并释放 operation context。 */
+static platform_error_t app_control_handle_once_complete(
+    app_control_t *control,
+    platform_error_t acquisitionResult)
 {
     app_ctrl_source_t source;
+    platform_error_t result;
 
     if (control->context.onceActive != PLATFORM_TRUE) {
         return PLATFORM_ERR_INVALID_STATE;
@@ -203,24 +214,15 @@ static platform_error_t app_control_handle_acquisition_failure(
 
     source = control->context.onceSource;
     control->context.onceActive = PLATFORM_FALSE;
-    return app_control_send_response(
-        control, source, APP_CONTROL_RESPONSE_ACQUISITION_FAILED);
-}
-
-/** @brief 消费 ONCE 发送结果并在成功时触发指示。 */
-static platform_error_t app_control_handle_tx_result(
-    app_control_t *control,
-    platform_error_t txResult)
-{
-    if (control->context.onceActive != PLATFORM_TRUE) {
-        return PLATFORM_ERR_INVALID_STATE;
+    if (acquisitionResult != PLATFORM_ERR_OK) {
+        return app_control_send_response(
+            control, source, APP_CONTROL_RESPONSE_ACQUISITION_FAILED);
     }
 
-    control->context.onceActive = PLATFORM_FALSE;
-    if (txResult != PLATFORM_ERR_OK) {
-        return PLATFORM_ERR_OK;
-    }
-    return app_control_send_indicator(control, APP_INDICATOR_ONCE_SUCCESS);
+    result = app_control_send_indicator(control, APP_INDICATOR_ONCE_SUCCESS);
+    return app_control_keep_first_error(
+        result,
+        app_control_send_response(control, source, APP_CONTROL_RESPONSE_OK_ONCE));
 }
 
 /** @brief 使用有符号差值判断可回绕的毫秒 deadline。 */
@@ -241,7 +243,8 @@ platform_error_t app_control_init(
     if ((control == NULL) || (config == NULL) ||
         (config->button == NULL) || (config->buttonService == NULL) ||
         (config->controlQueue == NULL) || (config->acquisitionQueue == NULL) ||
-        (config->communicationQueue == NULL) || (config->indicatorQueue == NULL)) {
+        (config->communicationQueue == NULL) || (config->displayQueue == NULL) ||
+        (config->indicatorQueue == NULL)) {
         return PLATFORM_ERR_NULL_POINTER;
     }
     if (control->context.initialized == PLATFORM_TRUE) {
@@ -252,6 +255,7 @@ platform_error_t app_control_init(
         (config->controlQueue->native == NULL) ||
         (config->acquisitionQueue->native == NULL) ||
         (config->communicationQueue->native == NULL) ||
+        (config->displayQueue->native == NULL) ||
         (config->indicatorQueue->native == NULL)) {
         return PLATFORM_ERR_NOT_INITIALIZED;
     }
@@ -268,6 +272,7 @@ platform_error_t app_control_init(
     control->context.nextButtonSampleDeadlineMs =
         nowMs + PROJECT_BUTTON_SAMPLE_PERIOD_MS;
     control->context.initialized = PLATFORM_TRUE;
+    control->context.initialStatePublished = PLATFORM_FALSE;
 
     return PLATFORM_ERR_OK;
 }
@@ -329,11 +334,9 @@ platform_error_t app_control_process_message(
                 message->payload.request.event,
                 message->payload.request.source);
 
-        case APP_CONTROL_MESSAGE_ONCE_ACQUISITION_FAILED:
-            return app_control_handle_acquisition_failure(control);
-
-        case APP_CONTROL_MESSAGE_ONCE_TX_RESULT:
-            return app_control_handle_tx_result(control, message->payload.result);
+        case APP_CONTROL_MESSAGE_ONCE_COMPLETE:
+            return app_control_handle_once_complete(
+                control, message->payload.result);
 
         default:
             return PLATFORM_ERR_INVALID_PARAM;
@@ -406,6 +409,11 @@ platform_error_t app_control_run_once(app_control_t *control)
     }
     if (control->context.initialized != PLATFORM_TRUE) {
         return PLATFORM_ERR_NOT_INITIALIZED;
+    }
+
+    if (control->context.initialStatePublished != PLATFORM_TRUE) {
+        app_control_publish_state(control);
+        control->context.initialStatePublished = PLATFORM_TRUE;
     }
 
     result = platform_time_get_ms(&nowMs);
