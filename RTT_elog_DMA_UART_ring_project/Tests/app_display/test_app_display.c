@@ -34,6 +34,10 @@ typedef struct
     platform_queue_t queue;
     app_display_message_t messages[TEST_MESSAGE_CAPACITY];
     char drawnText[TEST_DRAW_CAPACITY][TEST_TEXT_CAPACITY];
+    uint16_t drawnX[TEST_DRAW_CAPACITY];
+    uint16_t drawnY[TEST_DRAW_CAPACITY];
+    uint16_t fillRectX[TEST_DRAW_CAPACITY];
+    uint16_t fillRectWidth[TEST_DRAW_CAPACITY];
     platform_error_t initResult;
     platform_error_t drawResult;
     uint32_t messageReadIndex;
@@ -95,6 +99,23 @@ static platform_bool_t fake_drew_text(const char *text)
     return PLATFORM_FALSE;
 }
 
+static platform_bool_t fake_drew_text_at(
+    const char *text,
+    uint16_t x,
+    uint16_t y)
+{
+    uint32_t index;
+
+    for (index = 0U; index < g_fakeRuntime.drawCount; index++) {
+        if ((g_fakeRuntime.drawnX[index] == x) &&
+            (g_fakeRuntime.drawnY[index] == y) &&
+            (strcmp(g_fakeRuntime.drawnText[index], text) == 0)) {
+            return PLATFORM_TRUE;
+        }
+    }
+    return PLATFORM_FALSE;
+}
+
 static int test_init_only_binds_dependencies(void)
 {
     platform_st7789_t display = PLATFORM_ST7789_INITIALIZER;
@@ -132,6 +153,36 @@ static int test_start_draws_boot_then_main_with_initial_placeholders(void)
     TEST_ASSERT(fake_drew_text("STARTING...") == PLATFORM_TRUE);
     TEST_ASSERT(fake_drew_text("--") == PLATFORM_TRUE);
     TEST_ASSERT(appDisplay.context.available == PLATFORM_TRUE);
+
+    return 0;
+}
+
+static int test_main_ui_uses_rounded_corner_safe_horizontal_layout(void)
+{
+    platform_st7789_t display = PLATFORM_ST7789_INITIALIZER;
+    platform_spi_bus_t spiBus = PLATFORM_SPI_BUS_INITIALIZER;
+    app_display_t appDisplay;
+    uint32_t index;
+
+    fake_runtime_reset();
+    appDisplay = create_display(&display, &spiBus);
+
+    TEST_ASSERT(app_display_start(&appDisplay) == PLATFORM_ERR_OK);
+    TEST_ASSERT(fake_drew_text_at("SENSOR MONITOR", 64U, 0U) == PLATFORM_TRUE);
+    TEST_ASSERT(fake_drew_text_at("STATE :", 56U, 32U) == PLATFORM_TRUE);
+    TEST_ASSERT(fake_drew_text_at("ENVIRONMENT", 76U, 64U) == PLATFORM_TRUE);
+    TEST_ASSERT(fake_drew_text_at("TEMP  :", 56U, 80U) == PLATFORM_TRUE);
+    TEST_ASSERT(fake_drew_text_at("HUM   :", 56U, 96U) == PLATFORM_TRUE);
+    TEST_ASSERT(fake_drew_text_at("ACCEL (g)", 84U, 128U) == PLATFORM_TRUE);
+    TEST_ASSERT(fake_drew_text_at("X     :", 56U, 144U) == PLATFORM_TRUE);
+    TEST_ASSERT(fake_drew_text_at("GYRO (dps)", 80U, 208U) == PLATFORM_TRUE);
+    TEST_ASSERT(fake_drew_text_at("Z     :", 56U, 256U) == PLATFORM_TRUE);
+    TEST_ASSERT(fake_drew_text_at("--", 120U, 32U) == PLATFORM_TRUE);
+    TEST_ASSERT(g_fakeRuntime.fillRectCount == 9U);
+    for (index = 0U; index < g_fakeRuntime.fillRectCount; index++) {
+        TEST_ASSERT(g_fakeRuntime.fillRectX[index] == 120U);
+        TEST_ASSERT(g_fakeRuntime.fillRectWidth[index] == 80U);
+    }
 
     return 0;
 }
@@ -324,13 +375,15 @@ platform_error_t platform_st7789_fill_rect(
     uint16_t height,
     uint16_t color)
 {
+    uint32_t index = g_fakeRuntime.fillRectCount++;
+
     (void)display;
-    (void)x;
     (void)y;
-    (void)width;
     (void)height;
     (void)color;
-    g_fakeRuntime.fillRectCount++;
+    TEST_ASSERT(index < TEST_DRAW_CAPACITY);
+    g_fakeRuntime.fillRectX[index] = x;
+    g_fakeRuntime.fillRectWidth[index] = width;
     return g_fakeRuntime.drawResult;
 }
 
@@ -346,12 +399,12 @@ platform_error_t platform_graphics_draw_string(
     uint32_t index = g_fakeRuntime.drawCount++;
 
     (void)display;
-    (void)x;
-    (void)y;
     (void)font;
     (void)foreground;
     (void)background;
     TEST_ASSERT(index < TEST_DRAW_CAPACITY);
+    g_fakeRuntime.drawnX[index] = x;
+    g_fakeRuntime.drawnY[index] = y;
     (void)strncpy(g_fakeRuntime.drawnText[index], text, TEST_TEXT_CAPACITY - 1U);
     return g_fakeRuntime.drawResult;
 }
@@ -409,6 +462,10 @@ int main(void)
         return result;
     }
     result = test_start_draws_boot_then_main_with_initial_placeholders();
+    if (result != 0) {
+        return result;
+    }
+    result = test_main_ui_uses_rounded_corner_safe_horizontal_layout();
     if (result != 0) {
         return result;
     }

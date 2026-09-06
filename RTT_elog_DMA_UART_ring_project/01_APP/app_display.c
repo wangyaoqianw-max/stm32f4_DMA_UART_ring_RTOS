@@ -25,8 +25,13 @@
 //******************************** Defines **********************************//
 #define LOG_TAG                         "app_display"
 #define APP_DISPLAY_LINE_HEIGHT         (16U)
-#define APP_DISPLAY_VALUE_X             (64U)
-#define APP_DISPLAY_VALUE_WIDTH         (112U)
+#define APP_DISPLAY_TITLE_X             (64U)
+#define APP_DISPLAY_ENVIRONMENT_TITLE_X (76U)
+#define APP_DISPLAY_ACCEL_TITLE_X       (84U)
+#define APP_DISPLAY_GYRO_TITLE_X        (80U)
+#define APP_DISPLAY_LABEL_X             (56U)
+#define APP_DISPLAY_VALUE_X             (120U)
+#define APP_DISPLAY_VALUE_WIDTH         (80U)
 #define APP_DISPLAY_VALUE_TEXT_SIZE     (16U)
 #define APP_DISPLAY_STATE_Y             (32U)
 #define APP_DISPLAY_TEMP_Y              (80U)
@@ -96,22 +101,23 @@ static platform_error_t app_display_draw_main_layout(app_display_t *appDisplay)
 {
     static const struct
     {
+        uint16_t x;
         uint16_t y;
         const char *text;
     } lines[] = {
-        {0U, "SENSOR MONITOR"},
-        {APP_DISPLAY_STATE_Y, "STATE :"},
-        {64U, "ENVIRONMENT"},
-        {APP_DISPLAY_TEMP_Y, "TEMP  :"},
-        {APP_DISPLAY_HUMIDITY_Y, "HUM   :"},
-        {128U, "ACCEL (g)"},
-        {APP_DISPLAY_ACCEL_X_Y, "X     :"},
-        {APP_DISPLAY_ACCEL_Y_Y, "Y     :"},
-        {APP_DISPLAY_ACCEL_Z_Y, "Z     :"},
-        {208U, "GYRO (dps)"},
-        {APP_DISPLAY_GYRO_X_Y, "X     :"},
-        {APP_DISPLAY_GYRO_Y_Y, "Y     :"},
-        {APP_DISPLAY_GYRO_Z_Y, "Z     :"}
+        {APP_DISPLAY_TITLE_X, 0U, "SENSOR MONITOR"},
+        {APP_DISPLAY_LABEL_X, APP_DISPLAY_STATE_Y, "STATE :"},
+        {APP_DISPLAY_ENVIRONMENT_TITLE_X, 64U, "ENVIRONMENT"},
+        {APP_DISPLAY_LABEL_X, APP_DISPLAY_TEMP_Y, "TEMP  :"},
+        {APP_DISPLAY_LABEL_X, APP_DISPLAY_HUMIDITY_Y, "HUM   :"},
+        {APP_DISPLAY_ACCEL_TITLE_X, 128U, "ACCEL (g)"},
+        {APP_DISPLAY_LABEL_X, APP_DISPLAY_ACCEL_X_Y, "X     :"},
+        {APP_DISPLAY_LABEL_X, APP_DISPLAY_ACCEL_Y_Y, "Y     :"},
+        {APP_DISPLAY_LABEL_X, APP_DISPLAY_ACCEL_Z_Y, "Z     :"},
+        {APP_DISPLAY_GYRO_TITLE_X, 208U, "GYRO (dps)"},
+        {APP_DISPLAY_LABEL_X, APP_DISPLAY_GYRO_X_Y, "X     :"},
+        {APP_DISPLAY_LABEL_X, APP_DISPLAY_GYRO_Y_Y, "Y     :"},
+        {APP_DISPLAY_LABEL_X, APP_DISPLAY_GYRO_Z_Y, "Z     :"}
     };
     platform_error_t result = platform_st7789_fill(
         appDisplay->config.display, PLATFORM_ST7789_COLOR_BLACK);
@@ -122,7 +128,7 @@ static platform_error_t app_display_draw_main_layout(app_display_t *appDisplay)
          (result == PLATFORM_ERR_OK);
          index++) {
         result = app_display_draw_text(
-            appDisplay, 0U, lines[index].y, lines[index].text);
+            appDisplay, lines[index].x, lines[index].y, lines[index].text);
     }
     return result;
 }
