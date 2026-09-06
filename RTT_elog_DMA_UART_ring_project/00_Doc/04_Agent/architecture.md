@@ -5,11 +5,13 @@
 实现状态：
 
 ```text
-RTOS Display Integration  IMPLEMENTED
+RTOS Display Integration  COMPLETE
 Host full regression      PASS 40/40
 Keil full rebuild         PASS / 0 errors
-Target verification       PENDING MANUAL BOARD TEST
+Target functional test    PASS
 ```
+
+说明：人工目标板功能验收已确认正常；独立 LCD 故障注入与 Task/Queue 资源高水位观测未作为本功能阶段关闭的阻塞条件，转为后续按需验证/优化项。
 
 ---
 
@@ -480,7 +482,7 @@ RUNNING
 ONCE_SUCCESS
 ```
 
-旧类型删除方向：
+旧类型已删除：
 
 ```text
 ONCE_ACQUISITION_FAILED
@@ -558,7 +560,7 @@ Display Queue                4
 Indicator Queue              4
 ```
 
-资源数值是 bring-up baseline；完成目标板验证后依据 stack high-water mark / Queue peak 再优化。
+资源数值是当前已验证 bring-up baseline。Task stack high-water mark / Queue peak 可在后续资源优化阶段按需记录，不阻塞当前功能基线使用。
 
 ---
 
