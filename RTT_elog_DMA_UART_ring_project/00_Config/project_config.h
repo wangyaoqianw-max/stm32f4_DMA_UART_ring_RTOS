@@ -104,6 +104,17 @@
 #define PROJECT_INDICATOR_BLINK_COUNT                 (3U)
 #define PROJECT_INDICATOR_BLINK_ON_MS                 (100U)
 #define PROJECT_INDICATOR_BLINK_OFF_MS                (100U)
+
+/*
+ * 当前产品 ST7789 面板的逻辑几何、显存映射与已验证 SPI 时钟上限。
+ * 坐标由 ST7789 Platform Driver 统一增加 OFFSET；Phase 1 不支持运行时旋转。
+ */
+#define PROJECT_DISPLAY_WIDTH                         (240U)
+#define PROJECT_DISPLAY_HEIGHT                        (280U)
+#define PROJECT_DISPLAY_X_OFFSET                      (0U)
+#define PROJECT_DISPLAY_Y_OFFSET                      (20U)
+#define PROJECT_DISPLAY_MADCTL                        (0x00U)
+#define PROJECT_DISPLAY_SPI_MAX_CLOCK_HZ              (12500000U)
 //******************************** Defines *********************************//
 
 #endif

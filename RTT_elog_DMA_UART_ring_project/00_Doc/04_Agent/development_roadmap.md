@@ -151,7 +151,7 @@ Minimal ST7789 Bring-up                   TARGET VERIFIED
 Temporary Bring-up Code                   REVERTED
 SPI Platform + STM32 Impl Phase 1         COMPLETE / HOST + KEIL VERIFIED
 ST7789 + Minimal Graphics Phase 1 Design  FROZEN
-ST7789 + Minimal Graphics Implementation  NOT STARTED
+ST7789 + Minimal Graphics Implementation  COMPLETE / HOST + KEIL VERIFIED
 Display Task / IPC                        NOT DESIGNED
 UART Product Output Migration             NOT DESIGNED
 ONCE Semantic Migration                   NOT DESIGNED
@@ -414,44 +414,43 @@ Minimal Bring-up 已证明物理链路可用；后续系统级集成自然验证
 
 ---
 
-# 12. Current Next Phase — Implementation Plan
+# 12. ST7789 + Minimal Graphics Phase 1 Implementation
 
-现在不要继续重新讨论已冻结的 ST7789 基础架构，也不要直接施工。
+状态：COMPLETE / HOST + KEIL VERIFIED。
 
-下一步：
-
-```text
-Create ST7789 + Minimal Graphics Phase 1 Implementation Plan
-```
-
-计划必须基于：
+已完成：
 
 ```text
-00_Doc/02_架构设计/ST7789_Graphics_Phase1设计.md
+ST7789 Platform concrete driver / BSP construct
+CS / DC / RST / BL owned descriptor lifecycle
+logical 240 x 280 / physical X+0, Y+20 mapping
+RGB565 high-byte-first / fixed 256-byte scratch chunks
+printable ASCII 0x20..0x7E / opaque 8x16 Graphics
+focused Host tests PASS
+full Host regression PASS / 38 groups
+Keil rebuild PASS / 0 errors / 13 pre-existing warnings
+Coding Standard Review PASS
 ```
 
-计划应拆解：
+产品级显示静态参数集中在：
 
 ```text
-ST7789 object/BSP
-GPIO/SPI Device lifecycle
-private reset/command/init helpers
-region/RGB565 path
-fill/fill_rect/draw_pixel
-font extraction
-minimal graphics draw_char/draw_string
-Host tests
-Keil verification
-document/handoff update
+00_Config/project_config.h
 ```
 
-不要加入 RTOS Display Task / IPC / UART migration / ONCE migration。
+本阶段没有执行 standalone Target Verification：
+
+```text
+DEFERRED / MERGED INTO RTOS DISPLAY INTEGRATION
+```
+
+不要在本阶段补入 RTOS Display Task / IPC / UART migration / ONCE migration。
 
 ---
 
-# 13. Later — RTOS Display Integration
+# 13. Current Next — RTOS Display Integration Design
 
-ST7789 + Graphics implementation 完成后，再讨论：
+下一阶段只进入设计，不直接实施。需要讨论：
 
 ```text
 bootstrap/defaultTask role
@@ -520,8 +519,9 @@ Display Hardware / CubeMX              COMPLETE
 Minimal ST7789 Bring-up                TARGET VERIFIED
 SPI Platform + STM32 Impl Phase 1      COMPLETE / HOST + KEIL VERIFIED
 ST7789 + Minimal Graphics Design       FROZEN
+ST7789 + Minimal Graphics Phase 1      COMPLETE / HOST + KEIL VERIFIED
 Current Active Implementation Plan     NONE
-Next                                   CREATE ST7789 + GRAPHICS IMPLEMENTATION PLAN
+Next                                   RTOS DISPLAY INTEGRATION DESIGN
 ```
 
-不要重新做 LCD 最小 Bring-up，也不要从旧 SPI Phase 1 Implementation Plan 继续施工。
+不要重新做 LCD 最小 Bring-up、SPI Phase 1 或 ST7789 / Graphics Phase 1。

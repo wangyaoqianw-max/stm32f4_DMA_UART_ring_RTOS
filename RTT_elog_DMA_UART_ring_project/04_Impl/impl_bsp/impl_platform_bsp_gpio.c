@@ -40,6 +40,26 @@ static impl_platform_gpio_context_t g_softI2cSdaContext = {
     I2C_SDA_GPIO_Port,
     I2C_SDA_Pin
 };
+
+static impl_platform_gpio_context_t g_lcdCsContext = {
+    LCD_CS_GPIO_Port,
+    LCD_CS_Pin
+};
+
+static impl_platform_gpio_context_t g_lcdDcContext = {
+    LCD_DC_GPIO_Port,
+    LCD_DC_Pin
+};
+
+static impl_platform_gpio_context_t g_lcdResetContext = {
+    LCD_RST_GPIO_Port,
+    LCD_RST_Pin
+};
+
+static impl_platform_gpio_context_t g_lcdBacklightContext = {
+    LCD_BL_GPIO_Port,
+    LCD_BL_Pin
+};
 //******************************** Constants ********************************//
 
 //******************************** Functions *********************************//
@@ -89,5 +109,53 @@ platform_error_t platform_bsp_gpio_construct_soft_i2c_sda(
     return impl_platform_gpio_construct(gpio,
                                         "soft_i2c_sda_gpio",
                                         &g_softI2cSdaContext);
+}
+
+platform_error_t platform_bsp_gpio_construct_lcd_cs(
+    platform_gpio_t *gpio)
+{
+    if (gpio == NULL) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    return impl_platform_gpio_construct(gpio,
+                                        "lcd_cs_gpio",
+                                        &g_lcdCsContext);
+}
+
+platform_error_t platform_bsp_gpio_construct_lcd_dc(
+    platform_gpio_t *gpio)
+{
+    if (gpio == NULL) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    return impl_platform_gpio_construct(gpio,
+                                        "lcd_dc_gpio",
+                                        &g_lcdDcContext);
+}
+
+platform_error_t platform_bsp_gpio_construct_lcd_reset(
+    platform_gpio_t *gpio)
+{
+    if (gpio == NULL) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    return impl_platform_gpio_construct(gpio,
+                                        "lcd_reset_gpio",
+                                        &g_lcdResetContext);
+}
+
+platform_error_t platform_bsp_gpio_construct_lcd_backlight(
+    platform_gpio_t *gpio)
+{
+    if (gpio == NULL) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+
+    return impl_platform_gpio_construct(gpio,
+                                        "lcd_backlight_gpio",
+                                        &g_lcdBacklightContext);
 }
 //******************************** Functions *********************************//

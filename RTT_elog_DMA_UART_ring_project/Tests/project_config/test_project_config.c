@@ -85,6 +85,18 @@ _Static_assert(PROJECT_INDICATOR_BLINK_ON_MS == 100U,
                "unexpected indicator blink on duration");
 _Static_assert(PROJECT_INDICATOR_BLINK_OFF_MS == 100U,
                "unexpected indicator blink off duration");
+_Static_assert(PROJECT_DISPLAY_WIDTH == 240U,
+               "unexpected display width");
+_Static_assert(PROJECT_DISPLAY_HEIGHT == 280U,
+               "unexpected display height");
+_Static_assert(PROJECT_DISPLAY_X_OFFSET == 0U,
+               "unexpected display x offset");
+_Static_assert(PROJECT_DISPLAY_Y_OFFSET == 20U,
+               "unexpected display y offset");
+_Static_assert(PROJECT_DISPLAY_MADCTL == 0x00U,
+               "unexpected display MADCTL");
+_Static_assert(PROJECT_DISPLAY_SPI_MAX_CLOCK_HZ == 12500000U,
+               "unexpected display SPI clock");
 
 int main(void)
 {

@@ -79,19 +79,19 @@ static int test_constructor_forwards_binding(
     platform_gpio_t gpio = PLATFORM_GPIO_INITIALIZER;
 
     fake_constructor_reset();
-    TEST_ASSERT(PLATFORM_ERR_OK == constructor(&gpio));
-    TEST_ASSERT(1U == g_fakeConstructor.callCount);
+    TEST_ASSERT(constructor(&gpio) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeConstructor.callCount == 1U);
     TEST_ASSERT(&gpio == g_fakeConstructor.gpio);
-    TEST_ASSERT(0 == strcmp(expectedName, g_fakeConstructor.name));
+    TEST_ASSERT(strcmp(expectedName, g_fakeConstructor.name) == 0);
     TEST_ASSERT(g_fakeConstructor.context != NULL);
     TEST_ASSERT(expectedPort == g_fakeConstructor.port);
     TEST_ASSERT(expectedPin == g_fakeConstructor.pin);
-    TEST_ASSERT(0U == g_platformConfigureCallCount);
-    TEST_ASSERT(0U == g_platformWriteCallCount);
-    TEST_ASSERT(0U == g_platformReadCallCount);
-    TEST_ASSERT(0U == g_halInitCallCount);
-    TEST_ASSERT(0U == g_halWriteCallCount);
-    TEST_ASSERT(0U == g_halReadCallCount);
+    TEST_ASSERT(g_platformConfigureCallCount == 0U);
+    TEST_ASSERT(g_platformWriteCallCount == 0U);
+    TEST_ASSERT(g_platformReadCallCount == 0U);
+    TEST_ASSERT(g_halInitCallCount == 0U);
+    TEST_ASSERT(g_halWriteCallCount == 0U);
+    TEST_ASSERT(g_halReadCallCount == 0U);
 
     return 0;
 }
@@ -102,14 +102,18 @@ static int test_construct_rejects_null_gpio(void)
         platform_bsp_gpio_construct_status_led,
         platform_bsp_gpio_construct_user_key,
         platform_bsp_gpio_construct_soft_i2c_scl,
-        platform_bsp_gpio_construct_soft_i2c_sda
+        platform_bsp_gpio_construct_soft_i2c_sda,
+        platform_bsp_gpio_construct_lcd_cs,
+        platform_bsp_gpio_construct_lcd_dc,
+        platform_bsp_gpio_construct_lcd_reset,
+        platform_bsp_gpio_construct_lcd_backlight
     };
     uint32_t index;
 
-    for (index = 0U; index < 4U; index++) {
+    for (index = 0U; index < 8U; index++) {
         fake_constructor_reset();
-        TEST_ASSERT(PLATFORM_ERR_INVALID_PARAM == constructors[index](NULL));
-        TEST_ASSERT(0U == g_fakeConstructor.callCount);
+        TEST_ASSERT(constructors[index](NULL) == PLATFORM_ERR_INVALID_PARAM);
+        TEST_ASSERT(g_fakeConstructor.callCount == 0U);
     }
 
     return 0;
@@ -151,15 +155,51 @@ static int test_construct_forwards_soft_i2c_sda_binding(void)
         "soft_i2c_sda_gpio");
 }
 
+static int test_construct_forwards_lcd_cs_binding(void)
+{
+    return test_constructor_forwards_binding(
+        platform_bsp_gpio_construct_lcd_cs,
+        LCD_CS_GPIO_Port,
+        LCD_CS_Pin,
+        "lcd_cs_gpio");
+}
+
+static int test_construct_forwards_lcd_dc_binding(void)
+{
+    return test_constructor_forwards_binding(
+        platform_bsp_gpio_construct_lcd_dc,
+        LCD_DC_GPIO_Port,
+        LCD_DC_Pin,
+        "lcd_dc_gpio");
+}
+
+static int test_construct_forwards_lcd_reset_binding(void)
+{
+    return test_constructor_forwards_binding(
+        platform_bsp_gpio_construct_lcd_reset,
+        LCD_RST_GPIO_Port,
+        LCD_RST_Pin,
+        "lcd_reset_gpio");
+}
+
+static int test_construct_forwards_lcd_backlight_binding(void)
+{
+    return test_constructor_forwards_binding(
+        platform_bsp_gpio_construct_lcd_backlight,
+        LCD_BL_GPIO_Port,
+        LCD_BL_Pin,
+        "lcd_backlight_gpio");
+}
+
 static int test_construct_propagates_constructor_error(void)
 {
     platform_gpio_t gpio = PLATFORM_GPIO_INITIALIZER;
 
     fake_constructor_reset();
     g_fakeConstructor.result = PLATFORM_ERR_IO;
-    TEST_ASSERT(PLATFORM_ERR_IO ==
-                platform_bsp_gpio_construct_status_led(&gpio));
-    TEST_ASSERT(1U == g_fakeConstructor.callCount);
+    TEST_ASSERT(platform_bsp_gpio_construct_status_led(&gpio) ==
+                PLATFORM_ERR_IO);
+    TEST_ASSERT(g_fakeConstructor.callCount == 1U);
 
     return 0;
 }
@@ -244,27 +284,47 @@ int main(void)
 {
     int result = test_construct_rejects_null_gpio();
 
-    if (0 != result) {
+    if (result != 0) {
         return result;
     }
 
     result = test_construct_forwards_status_led_binding();
-    if (0 != result) {
+    if (result != 0) {
         return result;
     }
 
     result = test_construct_forwards_user_key_binding();
-    if (0 != result) {
+    if (result != 0) {
         return result;
     }
 
     result = test_construct_forwards_soft_i2c_scl_binding();
-    if (0 != result) {
+    if (result != 0) {
         return result;
     }
 
     result = test_construct_forwards_soft_i2c_sda_binding();
-    if (0 != result) {
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_construct_forwards_lcd_cs_binding();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_construct_forwards_lcd_dc_binding();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_construct_forwards_lcd_reset_binding();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_construct_forwards_lcd_backlight_binding();
+    if (result != 0) {
         return result;
     }
 

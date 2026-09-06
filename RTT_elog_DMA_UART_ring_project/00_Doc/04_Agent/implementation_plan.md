@@ -1,406 +1,492 @@
-# SPI Platform + STM32 Impl Phase 1 Implementation Plan
+# ST7789 + Minimal Graphics Phase 1 Implementation Plan
 
-> 文档类型：Completed Implementation Record  
-> 状态：COMPLETED / HOST + KEIL VERIFIED  
-> 日期：2026-09-05  
+> **Execution record:** 按 `superpowers:executing-plans` 逐项执行。ST7789 主线由主代理统一决策；Graphics 作为独立文件集并行实现，最终由主代理审查、修正并集成。
+>
+> 文档类型：Completed Implementation Record
+> 状态：COMPLETE / HOST + KEIL VERIFIED
+> 日期：2026-09-06
 > 适用工程：`stm32f4_DMA_UART_ring_RTOS`
 
-**Goal:** 在已经 Target-Verified 的 SPI1 + ST7789T3 硬件基础上，建立可复用的 SPI Bus / SPI Device Platform 抽象与 STM32 HAL Impl 适配，为正式 ST7789 Driver 提供稳定依赖。
+**Goal:** 在现有 Platform SPI/GPIO/Time 基础上，实现正式 ST7789T3 Platform concrete driver、板级构造与最小 ASCII 8x16 Graphics/Text，并通过 focused Host、full Host regression 与 Keil rebuild。
 
-**Primary Design:** `00_Doc/02_架构设计/SPI_Platform_Impl_Phase1设计.md`
+**Architecture:** ST7789 对象拥有 SPI Device descriptor 和 CS/DC/RST/BL GPIO descriptor；SPI Bus 是 shared non-owning dependency。Graphics 直接依赖具体 `platform_st7789_t`，本阶段不增加 Display Service、generic display abstraction、Task、Queue 或业务显示逻辑。
 
-**Current Status:** 本计划已经执行完成，本文件不再作为当前 Codex 执行入口。下一阶段应先讨论并冻结正式 ST7789 Driver 设计，再生成新的实施计划。
+**Tech Stack:** C11 Host tests（GCC `-Wall -Wextra -Werror`）、Platform SPI/GPIO/Time、STM32F411 + CMSIS-RTOS2、Keil MDK ARM Compiler 5 工程。
 
----
+**Spec:** `00_Doc/02_架构设计/ST7789_Graphics_Phase1设计.md`
 
-# 0. Completion Summary
+## Global Constraints
 
-```text
-Implementation  : COMPLETE
-Host focused    : PASS / 2 test groups
-Host regression : PASS / 36 test groups
-Keil rebuild    : PASS / 0 errors
-Warnings        : 13 existing warnings, no new relevant warning
-Target test     : NOT REQUIRED BY PLAN
-```
+- 分层固定为 `APP -> Service -> Platform -> Impl -> Vendor/HAL/RTOS/Hardware`；Platform public source/header 不得 include HAL、`main.h`、`spi.h`、`hspi1` 或 Vendor LCD header。
+- ST7789 是 Platform concrete device driver；Graphics/Text 是轻量 Platform 绘图能力；不增加 Display Service 或 generic display/surface/backend ops。
+- BSP construct 只做静态绑定和配置，不配置 GPIO、不延时、不发送 SPI、不打开背光。
+- `platform_st7789_init()` 仅允许 Task Context；所有延时只调用 `platform_time_delay_ms()`，不修改 Time 实现。
+- Init 使用 explicit hardware reset + table-driven sequence；`0x11` transaction 结束后延时 120 ms，`0x29` 为最后一条 init command，init 不发送 `0x2C`。
+- 每次 region write 在一个 transaction 内完成 `CASET -> RASET -> RAMWR -> pixel chunks`；成功 begin 后必定 best-effort end，root operation error 优先于 cleanup error。
+- 逻辑尺寸 `240 x 280`，内部 offset `X=0/Y=20`；严格边界，不 clipping。
+- 公共像素为 `uint16_t RGB565`，SPI wire high byte first；禁止将 little-endian `uint16_t *` cast 为字节流。
+- ST7789 对象使用固定 `256-byte` TX scratch buffer（128 pixels/chunk）；无 framebuffer、无 runtime malloc/free。
+- Graphics 仅支持 printable ASCII `0x20..0x7E`、8x16、opaque foreground/background；每 glyph 展开为 128 个 RGB565 像素，并只调用一次 `platform_st7789_write_rgb565()`。
+- Vendor `05_Vendors/lcd/lcdfont.h` 仅用于提取 `ascii_1608`；正式模块不 include Vendor header。
+- 本阶段不写临时目标板测试代码；Formal ST7789 Target Verification 记录为 `DEFERRED / MERGED INTO RTOS DISPLAY INTEGRATION`。
+- 本次按用户明确授权在干净的 `main` 直接施工，不创建 worktree；不自动创建 Git commit。
 
-本阶段按计划没有重新进行 LCD 板测。
+## Repository Facts Applied to This Plan
 
-原因：
-
-```text
-SPI1 pins / Mode 3 / 12.5 MHz
-software CS
-HAL_SPI_Transmit()
-ST7789 minimal bring-up
-```
-
-已经在前置最小 Bring-up 阶段目标板验证通过。本阶段只建立正式 Platform -> Impl 软件抽象。
-
----
-
-# 1. Implemented Production Files
-
-新增：
-
-```text
-03_Platform/platform_mcu/spi/platform_spi_types.h
-03_Platform/platform_mcu/spi/platform_spi.h
-03_Platform/platform_mcu/spi/platform_spi.c
-
-04_Impl/impl_mcu/impl_platform_spi.h
-04_Impl/impl_mcu/impl_platform_spi.c
-```
-
-修改：
-
-```text
-03_Platform/platform_common/platform_device.h
-MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx
-```
-
-测试：
-
-```text
-Tests/platform_spi/test_platform_spi.c
-Tests/impl_platform_spi/spi.h
-Tests/impl_platform_spi/test_impl_platform_spi.c
-```
+- LCD GPIO 的 STM32 物理资源绑定沿用现有 `04_Impl/impl_bsp/impl_platform_bsp_gpio.c`；ST7789 Platform/BSP 文件不接触 `main.h`。
+- 面板逻辑尺寸、offset、MADCTL 与已验证 SPI 最大时钟集中在 `00_Config/project_config.h`；GPIO 物理映射仍归 BSP/Impl，协议命令和复位时序仍为 Driver private constants。
+- 当前 SPI Bus/Device API 已完成，单次 STM32 Impl write 上限 `0xFFFF` bytes；ST7789 的 256-byte chunks 自然低于该上限。
+- 屏幕规格未提供一个独立确认的最大 SCK；BSP `maxClockHz` 使用已经目标板验证的 `12500000U`，不声称或猜测更高器件上限。
+- Vendor `ascii_1608` 每个字节对应一行，横向 bit 顺序为 bit0 -> bit7（LSB first）；该位序只属于字体解释，不改变 SPI MSB-first 配置。
+- 现有 `app_system.c` 和四任务模型不在本阶段修改；正式显示初始化入口留给下一阶段 RTOS Display Integration Design。
 
 ---
 
-# 2. Frozen Resulting Architecture
+### Task 1: ST7789 Public Object、BSP Static Construct 与 LCD GPIO Binding
 
-```text
-future ST7789 Driver
-        ↓
-platform_spi_device_t
-        ↓
-platform_spi_transaction_begin()
-platform_spi_write()
-platform_spi_transaction_end()
-        ↓
-platform_spi_bus_t / ops
-        ↓
-STM32 SPI Impl
-        ↓
-HAL_SPI_Transmit()
-        ↓
-hspi1
-```
+**Files:**
+- Create: `03_Platform/platform_bsp/st7789/platform_st7789.h`
+- Create: `03_Platform/platform_bsp/st7789/platform_bsp_st7789.h`
+- Create: `03_Platform/platform_bsp/st7789/platform_bsp_st7789.c`
+- Modify: `03_Platform/platform_bsp/platform_bsp_gpio.h`
+- Modify: `04_Impl/impl_bsp/impl_platform_bsp_gpio.c`
+- Modify: `Tests/platform_bsp_gpio/main.h`
+- Modify: `Tests/platform_bsp_gpio/test_platform_bsp_gpio.c`
+- Create: `Tests/platform_st7789/test_platform_st7789.c`
 
-稳定分层继续保持：
+**Interfaces:**
+- Produces `platform_st7789_t`, `PLATFORM_ST7789_INITIALIZER`, geometry/color constants and all frozen public API declarations.
+- Produces `platform_bsp_st7789_construct_display(platform_st7789_t *display)`.
+- Produces four BSP GPIO constructors for LCD CS/DC/RST/BL, backed by PA4/PA6/PB10/PA1 in Impl BSP.
 
-```text
-APP -> Service -> Platform -> Impl -> Vendor / HAL / Hardware
-```
+- [x] **Step 1: Write failing BSP GPIO and ST7789 static-construct tests**
 
-禁止：
+  Add literal assertions that LCD constructors bind the four exact fake Port/Pin pairs and that ST7789 construct yields:
 
-```text
-APP -> Impl
-Service -> Impl
-Platform public header exposing HAL type
-formal ST7789 driver directly accessing hspi1 / HAL SPI
-```
+  ```text
+  width=240, height=280, xOffset=0, yOffset=20, madctl=0x00
+  mode=MODE_3, bitOrder=MSB_FIRST, dataBits=8, maxClockHz=12500000
+  csActive=LOW, resetActive=LOW, backlightOn=HIGH
+  initialized=FALSE
+  zero GPIO configure/write/deinit, zero SPI transaction, zero delay
+  ```
 
----
+- [x] **Step 2: Verify RED**
 
-# 3. SPI Bus / Device Model
+  ```powershell
+  gcc -std=c11 -Wall -Wextra -Werror -I Tests/platform_bsp_gpio -I 04_Impl/impl_mcu -I 04_Impl/impl_board -I 03_Platform/platform_bsp -I 03_Platform/platform_mcu/gpio -I 03_Platform/platform_common Tests/platform_bsp_gpio/test_platform_bsp_gpio.c 04_Impl/impl_bsp/impl_platform_bsp_gpio.c -o ..\.superpowers\sdd\st7789_phase1\test_platform_bsp_gpio.exe
+  ```
 
-已经实现：
+  Expected: compile fails because the four LCD BSP constructors are not declared/defined.
 
-```text
-platform_spi_bus_t
- = MCU SPI Controller / Bus
- = formal Platform lifecycle device
- = ops + implContext + activeDevice
+- [x] **Step 3: Implement minimal public object, GPIO bindings and BSP construct**
 
-platform_spi_device_t
- = lightweight SPI slave descriptor
- = bus reference
- = optional CS GPIO
- = configurable CS active level
- = SPI device configuration
- = lightweight initialized state
-```
+  The public API is frozen as:
 
-所有关系为 static non-owning references。
+  ```c
+  platform_error_t platform_st7789_init(platform_st7789_t *display,
+                                        platform_spi_bus_t *spiBus);
+  platform_error_t platform_st7789_deinit(platform_st7789_t *display);
+  platform_error_t platform_st7789_backlight_on(platform_st7789_t *display);
+  platform_error_t platform_st7789_backlight_off(platform_st7789_t *display);
+  platform_error_t platform_st7789_draw_pixel(platform_st7789_t *display,
+                                              uint16_t x, uint16_t y,
+                                              uint16_t color);
+  platform_error_t platform_st7789_fill(platform_st7789_t *display,
+                                        uint16_t color);
+  platform_error_t platform_st7789_fill_rect(platform_st7789_t *display,
+                                             uint16_t x, uint16_t y,
+                                             uint16_t width, uint16_t height,
+                                             uint16_t color);
+  platform_error_t platform_st7789_write_rgb565(platform_st7789_t *display,
+                                                uint16_t x, uint16_t y,
+                                                uint16_t width, uint16_t height,
+                                                const uint16_t *pixels,
+                                                platform_size_t pixelCount);
+  ```
 
-没有：
+  `platform_st7789_t` stores `platform_spi_device_t`, four `platform_gpio_t`, SPI/panel config, `uint8_t scratchBuffer[256]`, and `initialized`.
 
-```text
-runtime malloc/free
-device registry
-SPI slave linked list
-```
+- [x] **Step 4: Run Task 1 GREEN tests**
 
----
+  Compile/run `platform_bsp_gpio` and the new `platform_st7789` test binary. Expected: exit code 0; constructor has no hardware side effects.
 
-# 4. Transaction Contract
+- [x] **Step 5: Inspect diff checkpoint**
 
-公共事务模型：
-
-```text
-platform_spi_transaction_begin(device)
-platform_spi_write(device, data, length)
-platform_spi_transaction_end(device)
-```
-
-冻结规则：
-
-```text
-begin success -> caller owns transaction
-write requires activeDevice == device
-write does not auto-end on success or failure
-caller must end after successful begin
-second begin while bus active -> BUSY
-wrong-device write/end -> INVALID_STATE
-```
-
-CS：
-
-```text
-belongs to SPI Device
-may be NULL
-supports active LOW or HIGH
-```
-
-LCD 专属：
-
-```text
-DC
-RST
-BL
-```
-
-没有下沉到 generic SPI。
+  ```powershell
+  git diff --check
+  git status --short
+  ```
 
 ---
 
-# 5. SPI Device Configuration
+### Task 2: GPIO + SPI Device Lifecycle、Backlight 与 Hardware Reset
 
-已实现配置合同：
+**Files:**
+- Create: `03_Platform/platform_bsp/st7789/platform_st7789.c`
+- Modify: `Tests/platform_st7789/test_platform_st7789.c`
 
-```text
-mode
-bitOrder
-dataBits
-maxClockHz
-```
+**Consumes:** Task 1 public object and existing Platform SPI/GPIO/Time APIs.
+**Produces:** init/deinit/backlight lifecycle, reset helper and rollback foundation.
 
-Phase 1 实际能力：
+- [x] **Step 1: Add failing lifecycle tests**
 
-```text
-blocking synchronous TX only
-8-bit data only
-fixed CubeMX runtime configuration validation
-```
+  Cover NULL/unconstructed/duplicate init; safe GPIO output config (`CS/DC/RST=HIGH`, `BL=LOW`); SPI Device init; backlight remains OFF; backlight on/off level mapping; reset event sequence `RST LOW -> delay 100 -> RST HIGH -> delay 100 -> delay 100`; deinit never stops/deinits SPI Bus.
 
-`maxClockHz` 表示设备允许的最大 SCK。
+- [x] **Step 2: Verify RED**
 
-STM32 Impl 从 HAL Handle 与 RCC/PCLK 实际配置推导当前时钟，不长期硬编码 12.5 MHz。
+  Compile the focused ST7789 test with `platform_st7789.c`, `platform_bsp_st7789.c`, Platform SPI/GPIO and Platform common sources. Expected: link/test failure because lifecycle functions are not implemented.
 
----
+- [x] **Step 3: Implement minimal lifecycle and reset helpers**
 
-# 6. STM32 Impl Result
+  Configure GPIO in CS/DC/RST/BL order, initialize SPI Device after all GPIOs, and rollback configured resources in reverse order on any failure. Store the first error; cleanup errors never replace it. Deinit attempts BL OFF, SPI Device deinit, then BL/RST/DC/CS GPIO deinit, without touching the Bus lifecycle.
 
-STM32 SPI1 绑定：
+- [x] **Step 4: Run focused GREEN test**
 
-```text
-impl_platform_spi1_construct()
- -> private stm32_spi_impl_context_t
- -> SPI_HandleTypeDef *halSpi = &hspi1
-```
-
-HAL 类型只存在于 Impl 内。
-
-`applyConfig()` 当前严格检查：
-
-```text
-SPI mode
-bit order
-8-bit data size
-actual SCK <= maxClockHz
-```
-
-当前不进行 runtime reconfiguration。
-
-Blocking write：
-
-```text
-HAL_SPI_Transmit()
-finite timeout = 1000 ms
-```
-
-错误映射：
-
-```text
-HAL_OK      -> PLATFORM_ERR_OK
-HAL_BUSY    -> PLATFORM_ERR_BUSY
-HAL_TIMEOUT -> PLATFORM_ERR_TIMEOUT
-HAL_ERROR   -> PLATFORM_ERR_IO
-```
+  Expected: lifecycle/reset tests exit 0 and the Bus state remains `PLATFORM_OBJECT_STARTED` after ST7789 deinit.
 
 ---
 
-# 7. Lifecycle Result
+### Task 3: Command/Data Helpers 与 Table-driven Controller Init
 
-SPI Bus 复用现有 Platform lifecycle：
+**Files:**
+- Modify: `03_Platform/platform_bsp/st7789/platform_st7789.c`
+- Modify: `Tests/platform_st7789/test_platform_st7789.c`
 
-```text
-CREATED
- -> INITIALIZED
- -> STARTED
- -> STOPPED
- -> CREATED after deinit
-```
+**Produces:** private `write_command_in_transaction()`, `write_command()` and table-driven verified Vendor sequence.
 
-当前硬件配置 owner 仍然是：
+- [x] **Step 1: Add failing init-protocol tests**
 
-```text
-CubeMX MX_SPI1_Init()
-```
+  Assert command order and literal parameters for:
 
-SPI Impl lifecycle 不建立第二套 HAL_SPI_Init 配置源。
+  ```text
+  11
+  B2 0C 0C 00 33 33
+  35 00
+  36 00
+  3A 05
+  B7 35
+  BB 2D
+  C0 2C
+  C2 01
+  C3 15
+  C4 20
+  C6 0F
+  D0 A4 A1
+  D6 A1
+  E0 70 05 0A 0B 0A 27 2F 44 47 37 14 14 29 2F
+  E1 70 07 0C 08 08 04 2F 33 46 18 15 15 2B 2D
+  21
+  29
+  ```
 
-Bus 有 active transaction 时：
+  Also assert: `0x11` transaction is ended before `platform_time_delay_ms(120U)`; `0x29` is final; init command stream contains no `0x2C`; no delay occurs while Bus has an active transaction.
 
-```text
-stop/deinit -> BUSY
-```
+- [x] **Step 2: Verify RED**
 
----
+  Expected: init returns failure or command/delay assertions fail because the controller sequence is absent.
 
-# 8. Actual CubeMX Configuration Note
+- [x] **Step 3: Implement table-driven init and command helpers**
 
-设计讨论阶段曾按：
+  Use immutable parameter arrays and an init-entry table. The MADCTL entry obtains its one data byte from `display->madctl`. Each table entry uses its own begin/end transaction; delay is called only after end. `0x29` has no following RAMWR entry.
 
-```text
-TX Only Simplex
-```
+- [x] **Step 4: Add and pass error/cleanup tests**
 
-描述 SPI1。
-
-实施时检查实际仓库发现：
-
-```text
-.ioc / Core/Src/spi.c = SPI_DIRECTION_2LINES
-```
-
-人工确认后按实际生成配置继续：
-
-```text
-不修改 CubeMX SPI1 配置
-Platform Phase 1 仍只公开 TX API
-不新增 read / full-duplex transfer
-```
-
-该差异已经记录到 `handoff.md`。
+  Inject SPI write, DC GPIO and delay failures. Assert successful begin always reaches end; operation error wins over end failure; init rollback leaves `initialized=FALSE`, `spiDevice.initialized=FALSE`, Bus unowned, backlight OFF, and all successfully configured GPIOs deinitialized best-effort.
 
 ---
 
-# 9. Verification Record
+### Task 4: Region Window、Logical Offset 与 Strict Bounds
 
-Focused Host tests 覆盖：
+**Files:**
+- Modify: `03_Platform/platform_bsp/st7789/platform_st7789.c`
+- Modify: `Tests/platform_st7789/test_platform_st7789.c`
 
-```text
-Device config validation
-Bus lifecycle validation
-transaction ownership
-CS active/inactive
-NULL CS
-compatible/incompatible applyConfig
-blocking write forwarding
-HAL status mapping
-```
+**Produces:** private validated `prepare_region_write()` path shared by both public pixel writers.
 
-结果：
+- [x] **Step 1: Add failing region tests**
 
-```text
-Focused SPI Host tests : PASS / 2 groups
-Full Host regression   : PASS / 36 groups
-Keil Production rebuild: PASS / 0 errors
-```
+  For logical `(x=1,y=2,width=3,height=4)`, assert one transaction emits:
 
-Architecture / coding review：
+  ```text
+  2A 00 01 00 03
+  2B 00 16 00 19
+  2C
+  ```
 
-```text
-Platform SPI HAL-free
-APP / Service do not depend on Impl SPI
-no LCD-specific control semantics in generic SPI
-no DMA / IRQ / mutex / runtime SPI reconfiguration
-no runtime malloc/free
-git diff --check PASS
-```
+  where physical Y is logical Y + 20. Assert CASET/RASET/RAMWR are not split into separate transactions.
+
+- [x] **Step 2: Add failing strict-bound tests**
+
+  Reject zero width/height, `x>=240`, `y>=280`, `width > 240-x`, `height > 280-y`, wrong `pixelCount`, NULL pixels and uninitialized display with deterministic existing `platform_error_t`; invalid calls produce no transaction.
+
+- [x] **Step 3: Implement overflow-safe region validation and private window helper**
+
+  Use subtraction-form checks (`requested <= limit - start`) and compute inclusive ends only after validation. Keep the helper private.
+
+- [x] **Step 4: Run focused GREEN tests**
+
+  Expected: region/bounds cases exit 0; every successful region operation leaves `bus->activeDevice == NULL`.
 
 ---
 
-# 10. Explicitly Deferred
+### Task 5: RGB565 Conversion、Chunk Transfer、draw_pixel/fill/fill_rect/write_rgb565
 
-未实现：
+**Files:**
+- Modify: `03_Platform/platform_bsp/st7789/platform_st7789.c`
+- Modify: `Tests/platform_st7789/test_platform_st7789.c`
 
-```text
-formal ST7789 Driver
-LCD init / fill / set-window
-font / text rendering
-Display Task
-Display Queue / snapshot IPC
-UART product-output migration
-ONCE semantic migration
+**Produces:** all four frozen drawing APIs using the 256-byte object scratch buffer.
 
-SPI read
-full-duplex transfer
-SPI DMA
-SPI interrupt transfer
-SPI bus mutex
-runtime CPOL/CPHA/clock/data-size switching
-complex transaction descriptor
-backlight PWM
-Touch / CTP
-```
+- [x] **Step 1: Add failing RGB565 and chunk tests**
 
-这些内容不得因为本 SPI 基础层已完成就自动继续施工。
+  Assert `0xF800, 0x07E0, 0x001F` transmit as `F8 00 07 E0 00 1F`. For 130 input pixels, assert two pixel writes of 256 and 4 bytes inside the same region transaction. Force second chunk failure and assert transaction cleanup/root-error preservation.
 
----
+- [x] **Step 2: Implement `write_rgb565()`**
 
-# 11. Completion Gate
+  Convert at most 128 pixels per iteration into `display->scratchBuffer`; never cast the caller pixel pointer to bytes; keep one transaction over all chunks.
 
-本计划完成条件已经满足：
+- [x] **Step 3: Add failing fill/fill_rect/draw_pixel tests**
 
-```text
-Platform SPI Bus / Device established
-explicit transaction API established
-STM32 SPI1 HAL binding isolated in Impl
-fixed-config validation established
-blocking TX established
-Host focused tests PASS
-Host regression PASS
-Keil rebuild PASS
-no target board test required
-```
+  Assert repeated-color bytes, `draw_pixel` behavior at `(0,0)`, `(239,0)`, `(0,279)`, `(239,279)`, and full-screen fill totals exactly `240*280*2 = 134400` pixel bytes with maximum write length 256. Assert `draw_pixel` is behaviorally equivalent to a 1x1 fill_rect and `fill` to a 240x280 fill_rect.
 
-因此：
+- [x] **Step 4: Implement minimal wrappers and repeated-color chunking**
 
-```text
-SPI Platform + STM32 Impl Phase 1 = COMPLETE
-```
+  `draw_pixel()` returns `platform_st7789_fill_rect(display,x,y,1U,1U,color)`. `fill()` returns `platform_st7789_fill_rect(display,0U,0U,display->width,display->height,color)`. `fill_rect()` pre-fills the scratch buffer in high-byte-first form and reuses it until the logical pixel count is exhausted.
+
+- [x] **Step 5: Run complete focused ST7789 test**
+
+  Expected: all BSP/lifecycle/init/rollback/transaction/region/endian/chunk/fill/four-corner tests exit 0 with `-Werror`.
 
 ---
 
-# 12. Next Entry
+### Task 6: Independent ASCII 8x16 Font Resource
 
-当前没有 Active Implementation Plan。
+**Files:**
+- Create: `03_Platform/platform_graphics/font/platform_font.h`
+- Create: `03_Platform/platform_graphics/font/platform_font_ascii_8x16.h`
+- Create: `03_Platform/platform_graphics/font/platform_font_ascii_8x16.c`
+- Create: `Tests/platform_graphics/test_platform_graphics.c`
 
-下一阶段流程：
+**Produces:** `platform_font_t` and `g_platformFontAscii8x16` for printable ASCII only.
+
+- [x] **Step 1: Extract exactly Vendor `ascii_1608` entries 0..94**
+
+  Store the 95 glyphs as private immutable data in the new `.c`. The public descriptor is exactly:
+
+  ```c
+  const platform_font_t g_platformFontAscii8x16 = {
+      8U, 16U, 0x20U, 0x7EU, &fontData[0][0], 16U
+  };
+  ```
+
+  Do not include or compile `lcdfont.h` from the new module.
+
+- [x] **Step 2: Add compile/descriptor checks**
+
+  Compile the font with the Graphics Host test and assert width/height/range/bytes-per-glyph plus hand-checked glyph rows: space row 0=`0x00`, `A` row 3=`0x08`, `A` row 13=`0xE7`, `~` row 0=`0x0C`.
+
+- [x] **Step 3: Verify GREEN and dependency boundary**
+
+  ```powershell
+  rg -n "lcdfont|05_Vendors|HAL_|hspi1" 03_Platform/platform_graphics 03_Platform/platform_bsp/st7789
+  ```
+
+  Expected: no matches.
+
+---
+
+### Task 7: Minimal Graphics draw_char / draw_string
+
+**Files:**
+- Create: `03_Platform/platform_graphics/platform_graphics.h`
+- Create: `03_Platform/platform_graphics/platform_graphics.c`
+- Modify: `Tests/platform_graphics/test_platform_graphics.c`
+
+**Interfaces:**
+- Consumes `platform_st7789_write_rgb565()` and `platform_font_t`.
+- Produces:
+
+  ```c
+  platform_error_t platform_graphics_draw_char(
+      platform_st7789_t *display, uint16_t x, uint16_t y,
+      char_t character, const platform_font_t *font,
+      uint16_t foreground, uint16_t background);
+  platform_error_t platform_graphics_draw_string(
+      platform_st7789_t *display, uint16_t x, uint16_t y,
+      const char_t *text, const platform_font_t *font,
+      uint16_t foreground, uint16_t background);
+  ```
+
+- [x] **Step 1: Add failing glyph expansion test**
+
+  Mock only `platform_st7789_write_rgb565()`. For `A` row byte `0x08`, assert eight row-major pixels are `BG,BG,BG,FG,BG,BG,BG,BG` (LSB-first). Assert one character makes exactly one `8x16`, `pixelCount=128` region write.
+
+- [x] **Step 2: Implement `draw_char()`**
+
+  Validate display/font/character and exact Phase 1 font geometry; expand into a local `uint16_t glyphPixels[128]`; call `platform_st7789_write_rgb565()` once. Do not call `draw_pixel()`.
+
+- [x] **Step 3: Add failing printable/string tests**
+
+  Reject characters below `0x20` and above `0x7E`; assert `"AB"` writes at `x` and `x+8`; reject a complete string when width or height exceeds display bounds before drawing its first glyph; propagate the first glyph write error; accept the empty string as a no-op with zero writes.
+
+- [x] **Step 4: Implement `draw_string()` and pass focused Graphics tests**
+
+  Pre-scan the complete NUL-terminated string for printable range and overflow-safe total bounds, then render left-to-right. Expected focused Graphics test: compile/run exit 0 with `-Werror`.
+
+---
+
+### Task 8: Keil Production Integration
+
+**Files:**
+- Modify: `MDK-ARM/RTT_elog_DMA_UART_ring_project.uvprojx`
+
+- [x] **Step 1: Add include paths**
+
+  Add exactly:
+
+  ```text
+  ../03_Platform/platform_bsp/st7789
+  ../03_Platform/platform_graphics
+  ../03_Platform/platform_graphics/font
+  ```
+
+- [x] **Step 2: Add production sources to focused groups**
+
+  ```text
+  platform/platform_bsp/st7789:
+    platform_st7789.c
+    platform_bsp_st7789.c
+
+  platform/platform_graphics:
+    platform_graphics.c
+    platform_font_ascii_8x16.c
+  ```
+
+  `impl_platform_bsp_gpio.c` is already registered and is modified in place; do not register any Host test or Vendor LCD source.
+
+- [x] **Step 3: Run Keil full rebuild**
+
+  ```powershell
+  & 'E:\APP\ProgramFile\MDK\Core\UV4\UV4.exe' -r 'E:\my_project_2026\Git_test\stm32f4_DMA_UART_ring_RTOS\RTT_elog_DMA_UART_ring_project\MDK-ARM\RTT_elog_DMA_UART_ring_project.uvprojx' -o 'E:\my_project_2026\Git_test\stm32f4_DMA_UART_ring_RTOS\.superpowers\sdd\st7789_phase1\keil-rebuild.log'
+  ```
+
+  Expected: `0 Error(s)`; record total warnings and prove no warning is attributed to the new/modified relevant production files.
+
+---
+
+### Task 9: Focused、Full Host Regression、Diff 与 Architecture Boundary Verification
+
+**Files:**
+- Create ignored verification helper: `.superpowers/sdd/st7789_phase1/run_host_regression.ps1`
+
+- [x] **Step 1: Run focused tests**
+
+  ```text
+  platform_bsp_gpio
+  platform_st7789
+  platform_graphics
+  platform_spi
+  impl_platform_spi
+  ```
+
+  Each group must compile under GCC C11 with `-Wall -Wextra -Werror`, then run with exit code 0.
+
+- [x] **Step 2: Run all existing Host groups plus the two new groups**
+
+  The ignored helper contains the exact include/source map for every directory under `Tests` that owns a `test_*.c` Host entry. It stops on the first compile/run failure and prints a final passed-group count. Expected baseline is previous 36 groups + `platform_st7789` + `platform_graphics` = 38 groups, adjusted only if current repository enumeration proves a different exact count; record the enumerated count and names.
+
+- [x] **Step 3: Run repository checks**
+
+  ```powershell
+  git diff --check
+  rg -n 'HAL_|hspi1|main\.h|#include\s*[<"]spi\.h[>"]|lcdfont|lcd_init' RTT_elog_DMA_UART_ring_project/03_Platform/platform_bsp/st7789 RTT_elog_DMA_UART_ring_project/03_Platform/platform_graphics
+  rg -n "malloc|calloc|realloc|free" RTT_elog_DMA_UART_ring_project/03_Platform/platform_bsp/st7789 RTT_elog_DMA_UART_ring_project/03_Platform/platform_graphics
+  git status --short
+  ```
+
+  Expected: diff check passes; forbidden dependency/allocation searches return no matches; only planned production/test/doc/project files are modified or added.
+
+---
+
+### Task 10: Completion Record、Handoff、Architecture 与 Roadmap
+
+**Files:**
+- Modify: `00_Doc/04_Agent/implementation_plan.md`
+- Modify: `00_Doc/04_Agent/handoff.md`
+- Modify: `00_Doc/04_Agent/architecture.md` only for stable implemented details not already frozen
+- Modify: `00_Doc/04_Agent/development_roadmap.md`
+
+- [x] **Step 1: Convert this plan into an actual completion record**
+
+  Mark every executed checkbox, change document type/status to completed, and add exact evidence: focused group results, full regression count, Keil errors/warnings, `git diff --check`, architecture boundary result, scratch strategy and deviations.
+
+- [x] **Step 2: Update long-term entry documents**
+
+  Record `ST7789 + Minimal Graphics Phase 1 = COMPLETE / HOST + KEIL VERIFIED`, Target Verification deferral reason, actual public API, 256-byte chunking and any repository-fact adjustment. Do not claim target verification.
+
+- [x] **Step 3: Freeze the stop point**
+
+  Every long-term document must point to:
+
+  ```text
+  NEXT = RTOS Display Integration Design
+  ```
+
+  Do not create or execute an RTOS Display Integration implementation plan in this phase.
+
+- [x] **Step 4: Final verification after documentation edits**
+
+  Re-run `git diff --check`, inspect `git diff --stat`, and re-read the final Host/Keil log summaries before reporting completion.
+
+---
+
+## Completion Evidence
 
 ```text
-review current SPI implementation
- -> discuss formal ST7789 Driver architecture/API
- -> freeze design
- -> create new implementation plan
- -> Codex implementation
- -> target verification of formal ST7789 path
+Coding Standard baseline
+  00_Doc/02_架构设计/嵌入式项目C代码设计规范.md / READ
+  Coding Standard Review / PASS
+
+Focused Host
+  platform_bsp_gpio / PASS
+  platform_st7789 / PASS
+  platform_graphics / PASS
+  platform_spi / PASS
+  impl_platform_spi / PASS
+
+Full Host regression
+  PASS / 38 of 38 discovered test_*.c entries
+  GCC C11 / -Wall -Wextra -Werror
+  Existing platform_log-only unused-parameter warning remains locally suppressed
+
+Keil rebuild
+  Arm Compiler 5.06 update 7
+  0 errors / 13 pre-existing warnings
+  0 warnings in new or modified relevant production files
+
+Architecture and resource checks
+  git diff --check / PASS
+  C/H file headers, tabs, 120-column and Yoda scan / PASS
+  no HAL, hspi1, CubeMX spi.h, main.h or Vendor LCD dependency in ST7789/Graphics
+  no runtime allocation or framebuffer
+  shared SPI Bus remains non-owning and is not stopped by ST7789 deinit
+  invalid/unstarted SPI Bus is rejected before GPIO or reset side effects
+
+Static configuration
+  width / height / offsets / MADCTL / verified maxClockHz are centralized in
+  00_Config/project_config.h
+  protocol commands and reset delays remain private Driver constants
+
+Target Verification
+  DEFERRED / MERGED INTO RTOS DISPLAY INTEGRATION
+
+Next
+  RTOS Display Integration Design
 ```
 
-不要直接从本文件继续施工 ST7789。
+Repository-fact corrections made during execution:
+
+- Vendor `ascii_1608` 的 `~` row 0 实际为 `0x0C`，不是初始计划误写的 `0x16`；最终字体 1520 bytes 与 Vendor 95×16 数据逐字节一致。
+- 架构扫描已将禁止项收窄为精确 CubeMX `#include "spi.h"`，不会误报合法 `platform_spi.h`。
+- `platform_st7789_init()` 增加 Bus object/class/STARTED 前置验证，任何无效 Bus 调用均不产生 GPIO、SPI 或 reset 副作用。

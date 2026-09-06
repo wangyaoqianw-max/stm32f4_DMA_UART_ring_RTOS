@@ -5,8 +5,8 @@
 > 本文件是 AI Agent / Codex 与人工开发者恢复工程上下文时的长期入口。  
 > Phase 1~9 Core Application 已完成并通过 Host / Keil / Target 综合验证。  
 > Display Extension 已完成硬件资源确认、CubeMX SPI1 + LCD GPIO、ST7789T3 最小 Bring-up、SPI Platform + STM32 Impl Phase 1。  
-> ST7789 + Minimal Graphics Phase 1 设计已冻结。  
-> 当前没有 Active Implementation Plan。下一步应基于正式设计生成新的 Implementation Plan。
+> ST7789 + Minimal Graphics Phase 1 已实现并通过 Host + Keil 验证。
+> 当前没有 Active Implementation Plan。下一步只进入 RTOS Display Integration Design。
 
 ---
 
@@ -22,7 +22,7 @@ Minimal ST7789 Bring-up                   TARGET VERIFIED
 Temporary Bring-up Code                   REVERTED
 SPI Platform + STM32 Impl Phase 1         COMPLETE / HOST + KEIL VERIFIED
 ST7789 + Minimal Graphics Phase 1 Design  FROZEN
-ST7789 + Minimal Graphics Implementation  NOT STARTED
+ST7789 + Minimal Graphics Implementation  COMPLETE / HOST + KEIL VERIFIED
 Display Task / IPC                        NOT DESIGNED
 UART Product Output Migration             NOT DESIGNED
 ONCE Semantic Migration                   NOT DESIGNED
@@ -40,7 +40,7 @@ Current Active Implementation Plan        NONE
 下一正式动作：
 
 ```text
-Create ST7789 + Minimal Graphics Phase 1 Implementation Plan
+RTOS Display Integration Design
 ```
 
 ---
@@ -570,18 +570,24 @@ Formal ST7789 standalone Target Verification
 = DEFERRED / MERGED INTO RTOS DISPLAY INTEGRATION
 ```
 
-本阶段完成条件：
+本阶段完成证据：
 
 ```text
 ST7789 Platform Driver implemented
 BSP construct implemented
 Minimal ASCII Graphics implemented
-focused Host tests PASS
-full Host regression PASS
-Keil rebuild PASS / 0 errors
-no new relevant warnings
-no standalone target test required
+focused Host tests PASS / platform_bsp_gpio + platform_st7789 + platform_graphics
+full Host regression PASS / 38 groups
+Keil rebuild PASS / 0 errors / 13 pre-existing warnings
+new or modified relevant production files / 0 warnings
+Coding Standard Review / PASS
+standalone Target Verification / DEFERRED, MERGED INTO RTOS DISPLAY INTEGRATION
 ```
+
+实现保持冻结 API：ST7789 仅公开 init/deinit、背光开关、draw_pixel、fill、
+fill_rect 与 write_rgb565；Graphics 仅公开 draw_char 与 draw_string。面板逻辑尺寸、
+offset、MADCTL 和 SPI 最大时钟集中在 `00_Config/project_config.h`，固定 256-byte
+scratch buffer 仍为 Driver 实现资源。SPI Bus 为 non-owning，deinit 不停止共享 Bus。
 
 ---
 
@@ -652,18 +658,10 @@ Touch / CTP
 下一步：
 
 ```text
-基于：
-00_Doc/02_架构设计/ST7789_Graphics_Phase1设计.md
-
-生成：
-ST7789 + Minimal Graphics Phase 1 Implementation Plan
-```
-
-Implementation Plan 执行并通过 Host + Keil 后，再进入：
-
-```text
 RTOS Display Integration Design
 ```
+
+下一阶段只做设计，冻结启动上下文、Display Task/IPC 和数据流后，再生成独立实施计划。
 
 不要重新执行：
 

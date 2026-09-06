@@ -1,7 +1,7 @@
 # Embedded Firmware Architecture Contract
 
 > 文档类型：Architecture Contract  
-> 状态：CORE BASELINE + DISPLAY DRIVER DESIGN FROZEN  
+> 状态：CORE BASELINE + ST7789 / GRAPHICS PHASE 1 IMPLEMENTED
 > 版本：V3.2  
 > 更新时间：2026-09-06  
 > 适用工程：`stm32f4_DMA_UART_ring_RTOS`
@@ -690,9 +690,9 @@ Display Hardware + CubeMX                COMPLETE
 Minimal ST7789 Bring-up                  TARGET VERIFIED
 SPI Platform + STM32 Impl Phase 1        COMPLETE / HOST + KEIL VERIFIED
 ST7789 + Minimal Graphics Design         FROZEN
-ST7789 + Minimal Graphics Implementation NOT STARTED
+ST7789 + Minimal Graphics Implementation COMPLETE / HOST + KEIL VERIFIED
 Current Active Implementation Plan       NONE
-Next                                     CREATE IMPLEMENTATION PLAN
+Next                                     RTOS DISPLAY INTEGRATION DESIGN
 ```
 
 正式设计：
@@ -701,6 +701,7 @@ Next                                     CREATE IMPLEMENTATION PLAN
 00_Doc/02_架构设计/ST7789_Graphics_Phase1设计.md
 ```
 
-Implementation 完成后再进入 RTOS Display Integration Design。
+面板产品级静态参数集中在 `00_Config/project_config.h`；Driver 协议常量和
+Impl 物理引脚映射仍保持在各自层内。下一阶段进入 RTOS Display Integration Design。
 
 低功耗、Touch、SPI DMA、W25Q64、Bluetooth 等继续作为后续独立增量阶段。
