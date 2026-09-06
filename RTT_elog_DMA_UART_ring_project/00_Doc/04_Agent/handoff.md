@@ -1,12 +1,12 @@
 # 工程长期记忆与交接说明
 
-更新时间：2026-09-05
+更新时间：2026-09-06
 
 > 本文件是 AI Agent / Codex 与人工开发者恢复工程上下文时的长期入口。  
 > Phase 1~9 Core Application 已完成并通过 Host / Keil / Target 综合验证。  
-> Display Extension 已完成硬件资源确认、CubeMX SPI1 + LCD GPIO、ST7789T3 最小 Bring-up，以及 SPI Platform + STM32 Impl Phase 1。  
-> 当前没有 Active Implementation Plan。  
-> 下一阶段从“正式 ST7789 Driver 架构/API 设计讨论”开始；不要重新做最小点亮验证，也不要直接继续旧 SPI Phase 1 施工计划。
+> Display Extension 已完成硬件资源确认、CubeMX SPI1 + LCD GPIO、ST7789T3 最小 Bring-up、SPI Platform + STM32 Impl Phase 1。  
+> ST7789 + Minimal Graphics Phase 1 设计已冻结。  
+> 当前没有 Active Implementation Plan。下一步应基于正式设计生成新的 Implementation Plan。
 
 ---
 
@@ -21,7 +21,8 @@ CubeMX SPI1 + LCD GPIO                    COMPLETE
 Minimal ST7789 Bring-up                   TARGET VERIFIED
 Temporary Bring-up Code                   REVERTED
 SPI Platform + STM32 Impl Phase 1         COMPLETE / HOST + KEIL VERIFIED
-Formal ST7789 Driver                      NEXT DESIGN PHASE
+ST7789 + Minimal Graphics Phase 1 Design  FROZEN
+ST7789 + Minimal Graphics Implementation  NOT STARTED
 Display Task / IPC                        NOT DESIGNED
 UART Product Output Migration             NOT DESIGNED
 ONCE Semantic Migration                   NOT DESIGNED
@@ -30,53 +31,21 @@ Touch / CTP                               DEFERRED
 Current Active Implementation Plan        NONE
 ```
 
-SPI Phase 1 验证：
+正式设计文档：
 
 ```text
-Focused Host tests : PASS / 2 groups
-Host regression    : PASS / 36 groups
-Keil rebuild       : PASS / 0 errors
-Warnings           : 13 existing warnings, no new relevant warning
-Target test        : NOT REQUIRED BY PLAN
+00_Doc/02_架构设计/ST7789_Graphics_Phase1设计.md
+```
+
+下一正式动作：
+
+```text
+Create ST7789 + Minimal Graphics Phase 1 Implementation Plan
 ```
 
 ---
 
-# 1. 工程定位
-
-工程根目录：
-
-```text
-RTT_elog_DMA_UART_ring_project/
-```
-
-目标环境：
-
-```text
-MCU        : STM32F411CEU6 / Cortex-M4F
-Flash      : 512 KiB
-SRAM       : 128 KiB
-UART       : USART1 / 115200 8N1
-RTOS       : CMSIS-RTOS2 + FreeRTOS
-Debug Log  : EasyLogger + SEGGER RTT
-Sensors    : DHT20 + MPU6050
-I2C        : Software I2C over PB6/PB7
-Input      : PA0 User Key
-Indicator  : PC13 Status LED
-Display    : P169H002-CTP / ST7789T3 / 240x280
-```
-
-项目当前定位：
-
-```text
-稳定 Core Application
- +
-Display Extension incremental architecture exercise
-```
-
----
-
-# 2. 稳定分层合同
+# 1. 工程稳定分层
 
 ```text
 APP
@@ -111,23 +80,16 @@ Service -> Impl
 ```text
 APP      : 业务状态、任务调度、业务编排
 Service  : 可复用业务能力，不绑定具体 MCU
-Platform : 设备 / OS 能力抽象
+Platform : 设备 / OS / 基础绘图能力
 Impl     : STM32 / FreeRTOS 等具体适配
 Vendor   : HAL / CMSIS / FreeRTOS / third-party
 ```
 
-CubeMX generated files 只承担：
-
-```text
-hardware initialization
-scheduler bootstrap
-IRQ / HAL callback
-thin glue
-```
+CubeMX generated files 只承担硬件初始化、scheduler bootstrap、IRQ/HAL callback 与 thin glue。
 
 ---
 
-# 3. Phase 1~9 Core Application Baseline
+# 2. Core Application Baseline
 
 ```text
 Phase 1  GPIO STM32 Impl                         COMPLETED
@@ -139,17 +101,9 @@ Phase 6  DHT20 Environment Module                COMPLETED / HOST + KEIL + TARGE
 Phase 7  MPU6050 Motion Module                   COMPLETED / HOST + KEIL + TARGET VERIFIED
 Phase 8  UART Application Communication          COMPLETED / HOST + KEIL + TARGET VERIFIED
 Phase 9  Final RTOS Application Integration      COMPLETED / HOST + KEIL + TARGET VERIFIED
-
-Final Integrated Board Test                      PASS
 ```
 
-不存在独立 Phase 10。
-
-Phase 1~9 除缺陷修复外原则上保持稳定。
-
----
-
-# 4. 稳定四任务模型
+稳定四任务：
 
 ```text
 Communication Task   2048 B   ABOVE_NORMAL
@@ -158,35 +112,7 @@ Acquisition Task     1536 B   NORMAL
 Indicator Task        768 B   BELOW_NORMAL
 ```
 
-职责：
-
-```text
-Communication Task
-- UART RX parser
-- UART Service ownerThread
-- sole USART1 product TX requester
-
-Control Task
-- Button polling
-- sole APP Control FSM
-- business orchestration
-
-Acquisition Task
-- sampling scheduling
-- sole DHT20 / MPU6050 runtime accessor
-- sole shared Software I2C runtime accessor
-
-Indicator Task
-- LED semantic execution
-```
-
 CubeMX `defaultTask` 不是第五个产品 Task。
-
-当前 SPI / LCD Platform 基础设施不增加新 Task。
-
----
-
-# 5. APP Control / Acquisition 稳定事实
 
 APP 唯一业务状态：
 
@@ -195,19 +121,21 @@ STOPPED
 RUNNING
 ```
 
-只有 Control Task / APP FSM 修改该状态。
-
-输入：
+Button：
 
 ```text
-Button SINGLE -> START
-Button LONG   -> STOP
-Button DOUBLE -> ONCE
-
-UART START / STOP / ONCE / STATUS / HELP
+SINGLE -> START
+LONG   -> STOP
+DOUBLE -> ONCE
 ```
 
-Unified Acquisition Service：
+UART：
+
+```text
+START / STOP / ONCE / STATUS / HELP
+```
+
+Unified Acquisition：
 
 ```text
 DHT20 read
@@ -215,22 +143,19 @@ DHT20 read
  -> complete atomic result
 ```
 
-成功：
+当前 ONCE success 仍是：
 
 ```text
-DHT20 OK && MPU6050 OK
+DHT20 success
+AND MPU6050 success
+AND complete UART report TX success
 ```
 
-周期：
-
-```text
-START -> immediate first sample
-then every 2 s by absolute deadline
-```
+Display 接入后必须重新设计 ONCE completion semantic；不要直接把 `communicationQueue` 换成 `displayQueue`。
 
 ---
 
-# 6. UART DMA + RingBuffer 稳定架构
+# 3. UART DMA + RingBuffer Baseline
 
 RX：
 
@@ -255,53 +180,13 @@ Communication Task
  -> HAL_UART_Transmit_DMA()
 ```
 
-原则：
-
-```text
-RingBuffer single producer / single consumer
-no ordinary RX mutex
-no second RX path
-Communication Task = sole product TX requester
-USART1 = product control/data
-RTT = diagnostics
-```
+Communication Task 是 sole USART1 product TX requester。
 
 Display Extension 未来可能停止周期 sensor UART TX，但尚未冻结。
 
 ---
 
-# 7. 当前 ONCE 语义
-
-Phase 9 当前成功条件：
-
-```text
-DHT20 success
-AND MPU6050 success
-AND complete UART report TX success
-```
-
-链：
-
-```text
-Control SAMPLE_ONCE
- -> Acquisition
- -> Unified Acquisition Service
- -> Communication ONCE_REPORT
- -> UART TX success
- -> ONCE_TX_RESULT OK
- -> Control
- -> Indicator ONCE_SUCCESS
-```
-
-Display 接入后 ONCE completion semantic 必须重新设计。
-
-不要简单把 `communicationQueue` 换成 `displayQueue`。
-
----
-
-# 8. Display Hardware Contract
-
-屏幕：
+# 4. Display Hardware Contract
 
 ```text
 Module      : P169H002-CTP
@@ -323,55 +208,32 @@ PA7  -> SPI1_MOSI
 PB10 -> LCD_RST
 ```
 
-LCD GPIO 默认：
+默认 GPIO：
 
 ```text
-LCD_CS   PA4   HIGH
-LCD_DC   PA6   HIGH
-LCD_RST  PB10  HIGH
-LCD_BL   PA1   LOW
+CS HIGH
+DC HIGH
+RST HIGH
+BL LOW
 ```
 
----
-
-# 9. Minimal ST7789 Bring-up Result
-
-2026-09-05 已完成目标板验证：
+最小 Bring-up 已验证：
 
 ```text
-ST7789T3 initialization       PASS
-SPI1 Mode 3 @ 12.5 MHz       PASS
-240 x 280 display area       PASS
-X_OFFSET = 0                 PASS
-Y_OFFSET = 20                PASS
-RGB565 high-byte first       PASS
+SPI1 Mode 3 @ 12.5 MHz
+240 x 280
+X_OFFSET = 0
+Y_OFFSET = 20
+RGB565 high-byte first
+BL HIGH = ON
 BLACK / WHITE / RED / GREEN / BLUE PASS
-flower screen / unstable     NOT OBSERVED
 ```
 
-背光：
-
-```text
-LCD_BACKLIGHT_ON_LEVEL  = HIGH
-LCD_BACKLIGHT_OFF_LEVEL = LOW
-```
-
-临时 Bring-up 测试代码已经回退。
-
-当前仓库只保留：
-
-```text
-CubeMX SPI1 configuration
-LCD GPIO configuration
-spi.c / spi.h
-HAL SPI support
-```
-
-正式 ST7789 Driver 不得直接复制临时实验代码作为架构实现。
+临时 Bring-up 代码已经回退。
 
 ---
 
-# 10. SPI Platform + STM32 Impl Phase 1 完成记录
+# 5. SPI Platform + STM32 Impl Phase 1
 
 正式设计：
 
@@ -379,34 +241,7 @@ HAL SPI support
 00_Doc/02_架构设计/SPI_Platform_Impl_Phase1设计.md
 ```
 
-已完成施工记录：
-
-```text
-00_Doc/04_Agent/implementation_plan.md
-```
-
-新增：
-
-```text
-03_Platform/platform_mcu/spi/platform_spi_types.h
-03_Platform/platform_mcu/spi/platform_spi.h
-03_Platform/platform_mcu/spi/platform_spi.c
-
-04_Impl/impl_mcu/impl_platform_spi.h
-04_Impl/impl_mcu/impl_platform_spi.c
-```
-
-测试：
-
-```text
-Tests/platform_spi/test_platform_spi.c
-Tests/impl_platform_spi/spi.h
-Tests/impl_platform_spi/test_impl_platform_spi.c
-```
-
----
-
-# 11. SPI Bus / Device 稳定模型
+稳定模型：
 
 ```text
 platform_spi_bus_t
@@ -423,29 +258,7 @@ platform_spi_device_t
  = initialized state
 ```
 
-CS 属于 generic SPI Device。
-
-LCD 专属：
-
-```text
-DC
-RST
-BL
-```
-
-不进入 generic SPI。
-
-允许：
-
-```text
-cs == NULL
-```
-
----
-
-# 12. SPI Transaction 稳定合同
-
-公共 API：
+公共 transaction API：
 
 ```text
 platform_spi_transaction_begin(device)
@@ -464,161 +277,362 @@ second begin while active -> BUSY
 wrong-device write/end -> INVALID_STATE
 ```
 
-不采用每次 `write()` 自动切 CS 的设计。
-
----
-
-# 13. SPI Device Config 稳定合同
-
-```text
-mode
-bitOrder
-dataBits
-maxClockHz
-```
-
-当前 Phase 1 能力：
+当前能力：
 
 ```text
 blocking synchronous TX only
 8-bit only
 optional software CS
 fixed CubeMX config validation
+no runtime dynamic reconfiguration
 ```
 
-`maxClockHz` 表示设备最大允许 SCK。
-
----
-
-# 14. STM32 SPI Impl 稳定合同
-
-调用链：
-
-```text
-impl_platform_spi1_construct()
- -> private STM32 context
- -> &hspi1
-```
-
-Platform public header 不暴露 HAL 类型。
-
-`applyConfig()` 从实际 HAL/RCC 配置检查：
-
-```text
-Mode
-FirstBit
-DataSize
-actual SCK
-```
-
-当前不做 runtime dynamic reconfiguration。
-
-Blocking write：
+STM32 Impl：
 
 ```text
 HAL_SPI_Transmit()
 finite timeout = 1000 ms
-```
-
-HAL 状态映射：
-
-```text
-HAL_OK      -> PLATFORM_ERR_OK
-HAL_BUSY    -> PLATFORM_ERR_BUSY
-HAL_TIMEOUT -> PLATFORM_ERR_TIMEOUT
-HAL_ERROR   -> PLATFORM_ERR_IO
+single HAL transfer max = 0xFFFF bytes
 ```
 
 ---
 
-# 15. CubeMX SPI1 Actual Configuration Note
+# 6. ST7789 + Minimal Graphics Phase 1 冻结设计
 
-设计讨论早期曾按：
-
-```text
-TX Only Simplex
-```
-
-描述。
-
-实现阶段检查实际仓库：
+正式设计：
 
 ```text
-.ioc / Core/Src/spi.c = SPI_DIRECTION_2LINES
+00_Doc/02_架构设计/ST7789_Graphics_Phase1设计.md
 ```
 
-人工确认：
+正式链：
 
 ```text
-不修改 CubeMX 当前配置
-Platform Phase 1 仍只提供 TX API
-不增加 read / full-duplex transfer
+APP / future Bootstrap / Display Task
+        ↓
+Minimal Graphics / Text
+        ↓
+Platform ST7789 Driver
+        ↓
+Platform SPI + GPIO + Time
+        ↓
+STM32 / FreeRTOS Impl
 ```
 
-以后讨论 SPI read/full-duplex 时再单独扩展。
+当前不增加 Display Service，不抽象 generic display backend/surface。
+
+原因：这是第一次正式接入 SPI TFT；先把真实设备边界做稳，后续接触更多屏幕后再从真实差异中提炼复用层。
+
+建议文件：
+
+```text
+03_Platform/platform_bsp/st7789/
+    platform_st7789.h/.c
+    platform_bsp_st7789.h/.c
+
+03_Platform/platform_graphics/
+    platform_graphics.h/.c
+    font/platform_font.h
+    font/platform_font_ascii_8x16.h/.c
+```
 
 ---
 
-# 16. SPI Phase 1 Verification
+# 7. ST7789 Resource / Lifecycle Contract
+
+资源模型：
 
 ```text
-Focused Host tests : PASS / 2 groups
-Host regression    : PASS / 36 groups
-Keil rebuild       : PASS / 0 errors
-Target test        : NOT REQUIRED BY PLAN
+platform_st7789_t owns:
+    SPI Device descriptor
+    CS GPIO descriptor
+    DC GPIO descriptor
+    RST GPIO descriptor
+    BL GPIO descriptor
+
+SPI Bus:
+    shared non-owning dependency
 ```
 
-Coding / Architecture Review：
+信号边界：
 
 ```text
-Platform HAL-free
-APP / Service no Impl dependency
-no LCD-specific semantics in generic SPI
-no DMA / IRQ / mutex / runtime config expansion
+CS  -> Platform SPI transaction
+DC  -> ST7789
+RST -> ST7789
+BL  -> ST7789
+```
+
+BSP constructor：
+
+```text
+static board/panel binding only
+no GPIO configure
+no delay
+no command
+```
+
+`platform_st7789_init()`：
+
+```text
+Task Context only
+configure GPIO
+init SPI Device
+hardware reset
+register init sequence
+controller READY
+initialized TRUE
+backlight remains OFF
+```
+
+`init()` 不自动 clear/fill full screen。
+
+失败：
+
+```text
+preserve first/root error
+best-effort rollback
+return clean uninitialized state
+```
+
+ST7789 deinit 不 stop/deinit SPI Bus。
+
+---
+
+# 8. ST7789 Init / Region / Pixel Contract
+
+初始化：
+
+```text
+explicit hardware reset
++
+table-driven command sequence
+```
+
+关键：
+
+```text
+0x11 Sleep Out
+ -> transaction end
+ -> delay 120 ms
+
+0x29 Display On
+ -> init sequence end
+```
+
+Vendor 参考代码最后的 `0x2C RAMWR` 不进入正式 init。
+
+区域写：
+
+```text
+one region operation = one SPI transaction
+
+CASET
+RASET
+RAMWR
+pixel chunks
+```
+
+公共坐标：
+
+```text
+x / y / width / height
+```
+
+严格边界，不自动 clipping。
+
+逻辑区域：
+
+```text
+X 0..239
+Y 0..279
+```
+
+内部 offset：
+
+```text
+X + 0
+Y + 20
+```
+
+公共像素：
+
+```text
+uint16_t RGB565
+```
+
+SPI wire：
+
+```text
+high byte first
+```
+
+禁止全屏 framebuffer：
+
+```text
+240 * 280 * 2 = 134400 B > 128 KiB SRAM
+```
+
+使用：
+
+```text
+small fixed scratch buffer
+chunked SPI write
 no runtime malloc/free
-git diff --check PASS
 ```
 
 ---
 
-# 17. Display Memory Constraint
+# 9. ST7789 / Graphics Public Scope
 
-STM32F411CEU6：
-
-```text
-SRAM = 128 KiB
-```
-
-全屏 RGB565 framebuffer：
+ST7789 Phase 1：
 
 ```text
-240 * 280 * 2 = 134400 B
+init / deinit
+backlight_on / backlight_off
+draw_pixel
+fill
+fill_rect
+write_rgb565
 ```
 
-因此正式显示实现禁止默认使用全屏 framebuffer。
-
-优先：
+复用：
 
 ```text
-direct region update
-small line/block buffer
-partial refresh
+draw_pixel -> fill_rect(1x1)
+fill       -> fill_rect(full screen)
 ```
 
-SPI DMA 暂不提前加入。
+Minimal Graphics/Text：
+
+```text
+ASCII 8x16 only
+printable ASCII 0x20..0x7E
+opaque foreground/background
+draw_char
+draw_string
+```
+
+Vendor `lcdfont.h` 只作为字模来源，不直接 include 到正式模块。
+
+当前不做：
+
+```text
+Chinese / UTF-8
+transparent text
+alignment / wrap
+show_uint / show_float / printf wrapper
+GUI / widget
+```
+
+业务数据格式化属于 APP / future Display logic。
 
 ---
 
-# 18. 当前未冻结内容
+# 10. Error / Verification Contract
+
+统一复用 `platform_error_t`，不增加 ST7789-specific error hierarchy。
+
+典型：
+
+```text
+NULL_POINTER
+INVALID_PARAM
+NOT_INITIALIZED
+ALREADY_INITIALIZED
+BUSY
+TIMEOUT
+IO
+NOT_SUPPORTED
+```
+
+规则：
+
+```text
+begin success
+ -> 后续即使失败，也必须 best-effort transaction_end
+
+operation error > cleanup error
+```
+
+当前 ST7789 path 是 write-oriented，因此 Host success 不能证明物理 panel 一定正确显示。
+
+长期验证必须有：
+
+```text
+Host Test + Target Verification
+```
+
+但本阶段：
+
+```text
+Formal ST7789 standalone Target Verification
+= DEFERRED / MERGED INTO RTOS DISPLAY INTEGRATION
+```
+
+本阶段完成条件：
+
+```text
+ST7789 Platform Driver implemented
+BSP construct implemented
+Minimal ASCII Graphics implemented
+focused Host tests PASS
+full Host regression PASS
+Keil rebuild PASS / 0 errors
+no new relevant warnings
+no standalone target test required
+```
+
+---
+
+# 11. Display Startup Direction — Later Phase
+
+`platform_st7789_init()` 固定为 Task Context，因为 `platform_time_delay_ms()` 当前基于 `osDelay()`。
+
+未来目标允许类似手机/手表的启动显示：
+
+```text
+scheduler start
+ ↓
+bootstrap/startup context
+ ↓
+ST7789 init
+ ↓
+draw boot screen
+ ↓
+backlight on
+ ↓
+system startup / diagnostics
+ ↓
+normal UI
+```
+
+以下尚未设计：
+
+```text
+defaultTask 是否作为一次性 Bootstrap Thread
+startup gate
+启动画面 exact content/layout
+Display Task
+Display IPC
+主界面
+```
+
+全部延期到 RTOS Display Integration。
+
+---
+
+# 12. 当前未冻结内容
 
 不要提前实现或假定：
 
 ```text
-formal ST7789 Driver API
-Display abstraction
+Display Service
+Display abstraction / generic backend
 Display Task
-Display Queue / snapshot
-font organization
+Display Queue / snapshot / latest-value strategy
+boot screen exact layout/content
+main screen exact layout/content
 partial refresh policy
 UART periodic sensor TX removal
 STATUS / HELP / ACK final routing
@@ -629,43 +643,39 @@ backlight PWM
 Touch / CTP
 ```
 
-这些必须后续逐项讨论。
-
 ---
 
-# 19. 下一正式入口
+# 13. 下一正式入口
 
 当前没有 Active Implementation Plan。
 
-下一阶段：
+下一步：
 
 ```text
-Formal ST7789 Driver Design
+基于：
+00_Doc/02_架构设计/ST7789_Graphics_Phase1设计.md
+
+生成：
+ST7789 + Minimal Graphics Phase 1 Implementation Plan
 ```
 
-建议讨论顺序：
+Implementation Plan 执行并通过 Host + Keil 后，再进入：
 
 ```text
-1. ST7789 Driver 文件与层级落点
-2. Driver object / dependency model
-3. reset / init / backlight
-4. command / data transaction helper
-5. set_window
-6. fill / fill_rect
-7. text / number minimal scope
-8. vendor reference code reuse boundary
-9. error / timeout contract
-10. Host test strategy
-11. formal ST7789 target verification
+RTOS Display Integration Design
 ```
 
-设计冻结后再生成新的 Implementation Plan。
+不要重新执行：
 
-不要重新执行旧 SPI Phase 1 Plan。
+```text
+Minimal ST7789 Bring-up
+SPI Platform Phase 1
+已冻结的 ST7789 / Graphics 基础设计讨论
+```
 
 ---
 
-# 20. 推荐恢复资料
+# 14. 推荐恢复资料
 
 优先读取：
 
@@ -675,17 +685,17 @@ Formal ST7789 Driver Design
 00_Doc/04_Agent/development_roadmap.md
 00_Doc/04_Agent/requirements.md
 00_Doc/02_架构设计/SPI_Platform_Impl_Phase1设计.md
-00_Doc/04_Agent/implementation_plan.md   # completed record only
+00_Doc/02_架构设计/ST7789_Graphics_Phase1设计.md
+00_Doc/04_Agent/implementation_plan.md   # completed SPI record only
 
 03_Platform/platform_mcu/spi/
 04_Impl/impl_mcu/impl_platform_spi.*
+05_Vendors/lcd/
 Core/Src/spi.c
 Core/Inc/spi.h
-05_Vendors/lcd/
-00_Doc/02_架构设计/P169H200屏幕参考文件/
 ```
 
-需要 Core APP 上下文时再读取：
+需要后续 RTOS Display Integration 上下文时读取：
 
 ```text
 00_Doc/02_架构设计/Final_RTOS_Application_Integration_Phase9设计.md
@@ -693,17 +703,7 @@ Core/Inc/spi.h
 01_APP/app_control.*
 01_APP/app_acquisition.*
 01_APP/app_communication.*
-01_APP/app_ipc_types.h
-```
-
----
-
-# 21. 当前停止点
-
-```text
-Core Application                      COMPLETE
-Display Hardware + Minimal Bring-up   COMPLETE
-SPI Platform + STM32 Impl Phase 1     COMPLETE
-Current Active Plan                   NONE
-Next                                  FORMAL ST7789 DRIVER DESIGN DISCUSSION
+Core/Src/freertos.c
+03_Platform/platform_os/platform_time.h
+04_Impl/impl_os/freertos/impl_freertos_time.c
 ```
