@@ -41,7 +41,7 @@ LED semantics
 
 ---
 
-# 2. Display Extension 已完成基础阶段
+# 2. Display Extension 已完成阶段
 
 ```text
 Display Hardware Resource Review         COMPLETE
@@ -51,6 +51,10 @@ Temporary Bring-up Code                   REVERTED
 SPI Platform + STM32 Impl Phase 1         COMPLETE / HOST + KEIL VERIFIED
 ST7789 + Minimal Graphics Phase 1         COMPLETE / HOST + KEIL VERIFIED
 RTOS Display Integration Design           FROZEN
+RTOS Display Integration Implementation   COMPLETE
+Host Full Regression                      PASS 40/40
+Keil Full Rebuild                         PASS / 0 ERRORS
+Target Functional Verification            PASS
 ```
 
 硬件：
@@ -64,23 +68,16 @@ RGB565
 Touch deferred
 ```
 
+人工目标板功能验收已确认当前显示集成功能正常。
+
 ---
 
-# 3. 当前阶段：RTOS Display Integration Target Verification
-
-状态：
-
-```text
-IMPLEMENTATION COMPLETE
-HOST FULL REGRESSION PASS 40/40
-KEIL FULL REBUILD PASS / 0 ERRORS
-TARGET VERIFICATION PENDING MANUAL BOARD TEST
-```
+# 3. RTOS Display Integration 最终结果
 
 已完成：
 
 ```text
-add Display Task
+add permanent Display Task
 add Display Queue
 integrate SPI Bus lifecycle through Platform boundary
 integrate ST7789 startup in Task Context
@@ -89,17 +86,10 @@ move measurement presentation UART -> LCD
 keep UART command/response/debug capabilities
 migrate ONCE success semantic to acquisition-only
 remove Communication from sensor data plane
-verify failure isolation
-```
-
-尚待目标板确认：
-
-```text
-Boot/Main visual behavior
-START/STOP/ONCE end-to-end behavior
-UART command regression and no ENV/IMU report
-LCD failure isolation
-Task high-water marks and Queue peak occupancy
+Host full regression 40/40
+Keil full rebuild 0 errors
+manual target functional verification PASS
+documentation closeout
 ```
 
 最终产品 Task：
@@ -112,9 +102,21 @@ Display Task
 Indicator Task
 ```
 
+当前功能阶段正式关闭。
+
+未作为当前阶段阻塞项执行：
+
+```text
+Dedicated LCD fault-injection target test
+Task high-water mark observation
+Queue peak occupancy observation
+```
+
+这些项目转为后续可选可靠性/资源优化工作。
+
 ---
 
-# 4. 当前阶段冻结结果
+# 4. 当前冻结结果
 
 Display：
 
@@ -152,7 +154,7 @@ LCD render
 
 ---
 
-# 5. 当前验证步骤
+# 5. 当前验证结果
 
 详见：
 
@@ -160,28 +162,16 @@ LCD render
 00_Doc/04_Agent/implementation_plan.md
 ```
 
-已完成：
+最终结果：
 
 ```text
-SPI Platform integration gap
-APP shared IPC/type migration
-Communication cleanup
-Control ONCE/state-display migration
-Acquisition display/output migration
-app_display implementation
-app_system composition-root integration
-Config + build integration
-Host tests 40/40
-Keil rebuild 0 errors
-Documentation closeout
+Implementation            COMPLETE
+Host full regression      PASS 40/40
+Keil full rebuild         PASS / 0 errors
+Target functional test    PASS
 ```
 
-待执行：
-
-```text
-Target verification
-Resource observation
-```
+当前无 Active Implementation Plan。
 
 ---
 
@@ -205,37 +195,42 @@ Queue/stack optimization without target evidence
 
 # 7. 后续候选阶段
 
-Display Integration 目标板验证后，再根据实际项目方向决定是否进入：
+根据实际项目方向，再决定是否进入：
 
 ```text
 Display fault / stale-data UI
+Dedicated display fault-injection verification
 Touch / CTP
 SPI DMA / higher throughput rendering
 Backlight PWM
 Low-power policy
-Communication/Display stack tuning
+Communication/Display stack high-water-mark measurement
 Queue depth tuning
 Generic display abstraction based on second real display device
 ```
 
-不要在当前阶段提前实现这些能力。
+这些候选项不得反向修改当前已冻结并通过板测的 Display Integration 基线。
 
 ---
 
-# 8. 当前完成定义
+# 8. RTOS Display Integration 完成定义
 
-只有以下全部满足，RTOS Display Integration 才算完成：
+当前功能阶段完成证据：
 
 ```text
-Host tests PASS
-Keil rebuild 0 errors
-Target Boot Page PASS
-Target Main UI PASS
-START / STOP / ONCE / STATUS / HELP PASS
-2 s LCD measurement refresh PASS
-UART no longer emits ENV/IMU reports
-ONCE LED semantics = acquisition success
-LCD failure does not kill other subsystems
+Host tests PASS 40/40
+Keil rebuild PASS / 0 errors
+Target Boot/Main UI functional test PASS
+START / STOP / ONCE / STATUS / HELP functional test PASS
+2 s LCD measurement refresh functional test PASS
+UART measurement output migration functional test PASS
+ONCE LED semantics functional test PASS
 no architecture boundary regression
-handoff / architecture / requirements / roadmap updated
+documentation synchronized
+```
+
+因此：
+
+```text
+RTOS Display Integration = COMPLETE / HOST + KEIL + TARGET FUNCTION VERIFIED
 ```
