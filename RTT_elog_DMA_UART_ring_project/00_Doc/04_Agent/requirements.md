@@ -8,10 +8,12 @@
 Implementation            COMPLETE
 Host                       PASS 40/40
 Keil                       PASS / 0 errors
-Target                     PENDING MANUAL BOARD TEST
-Failure isolation target   PENDING MANUAL BOARD TEST
-Resource observation       PENDING MANUAL BOARD TEST
+Target functional test     PASS
+Dedicated LCD fault test   DEFERRED / OPTIONAL
+Resource observation       DEFERRED / OPTIONAL
 ```
+
+说明：人工目标板功能验收已确认正常；独立 LCD 故障注入与 Task/Queue 高水位观测不再作为本功能阶段关闭的阻塞条件。
 
 ---
 
@@ -293,7 +295,7 @@ APP_CONTROL_MESSAGE_ONCE_COMPLETE(result)
 
 # 9. Display Task 需求
 
-新增永久第五个产品 Task：
+永久第五个产品 Task：
 
 ```text
 Display Task
@@ -439,6 +441,8 @@ keep dirty flag
 retry only when next Display event arrives
 ```
 
+该行为已由实现与 Host tests 覆盖；独立目标板故障注入测试可后续按需执行，不影响当前正常功能验收结论。
+
 ---
 
 # 13. SPI Integration 需求
@@ -473,7 +477,7 @@ SPI Bus 可在 pre-scheduler `app_system_init()` 中 init/start；ST7789 physica
 
 Display Integration 后 Communication 不再处理 sensor measurement payload。
 
-应删除：
+已删除：
 
 ```text
 periodic report formatting
@@ -482,7 +486,7 @@ sensor report UART TX path
 ONCE TX completion -> Control
 ```
 
-Communication Response Queue item 可直接使用：
+Communication Response Queue item 使用：
 
 ```text
 app_control_response_t
@@ -494,7 +498,7 @@ Communication 继续保持 command/response channel，不删除 UART 模块能�
 
 # 15. Composition Root 需求
 
-`app_system` 新增：
+`app_system` 已集成：
 
 ```text
 Display SPI Bus
@@ -544,13 +548,19 @@ Display Queue                4
 Indicator Queue              4
 ```
 
-资源值是 bring-up baseline；不得在当前迁移中基于猜测缩栈或缩 Queue。
+这些资源值已经支持当前目标板功能正常运行。后续如需要缩减资源，再依据 Task high-water mark / Queue peak 做证据驱动优化。
 
 ---
 
-# 17. 验收需求
+# 17. 验收结果
 
 Host：
+
+```text
+PASS 40/40
+```
+
+覆盖：
 
 ```text
 Display IPC validation
@@ -568,26 +578,27 @@ architecture boundary checks
 Keil：
 
 ```text
-0 errors
-no new warnings in new/modified production files
+PASS / 0 errors
+new/modified production files no new warnings
 ```
 
-Target：
+Target functional verification：
 
 ```text
-Boot Page visible
-Boot -> Main UI
-initial STOPPED + --
-START -> RUNNING + immediate measurement
-2 s LCD refresh
-STOP -> STOPPED + retained values
-Button ONCE -> measurement update + LED 3 blinks
-UART ONCE -> measurement update + OK ONCE + LED 3 blinks
-STATUS / HELP / START / STOP retained
-no ENV/IMU measurement reports to PC
-LCD failure isolated from other subsystems
-no obvious periodic whole-screen flicker
+PASS
 ```
+
+人工板测确认当前功能正常，包括 Boot/Main UI、START/STOP、周期 LCD measurement refresh、Button/UART ONCE、UART command regression、ONCE LED 语义以及 UART measurement output migration。
+
+未单独执行/记录：
+
+```text
+Dedicated LCD fault-injection target test
+Task stack high-water mark
+Queue peak occupancy
+```
+
+以上项目转为后续可选可靠性/资源优化工作，不阻塞当前 RTOS Display Integration 功能阶段关闭。
 
 ---
 

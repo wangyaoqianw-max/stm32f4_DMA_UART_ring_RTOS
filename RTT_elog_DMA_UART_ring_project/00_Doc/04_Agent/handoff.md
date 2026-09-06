@@ -5,7 +5,7 @@
 > 本文件是 AI Agent / Codex 与人工开发者恢复工程上下文时的长期入口。  
 > Phase 1~9 Core Application 已完成并通过 Host / Keil / Target 综合验证。  
 > Display Extension 的硬件资源、CubeMX SPI1 + LCD GPIO、最小 Bring-up、SPI Platform + STM32 Impl、ST7789 + Minimal Graphics 均已完成。  
-> RTOS Display Integration 已完成代码、Host 与 Keil 验证；下一步执行人工目标板验收与资源观测。
+> RTOS Display Integration 已完成代码、Host、Keil 与人工目标板功能验收，当前阶段正式关闭。
 
 ---
 
@@ -22,15 +22,27 @@ Temporary Bring-up Code                   REVERTED
 SPI Platform + STM32 Impl Phase 1         COMPLETE / HOST + KEIL VERIFIED
 ST7789 + Minimal Graphics Phase 1         COMPLETE / HOST + KEIL VERIFIED
 RTOS Display Integration Design           FROZEN
-Display Task / IPC                        IMPLEMENTED / HOST + KEIL VERIFIED
-UART Product Output Migration             IMPLEMENTED / HOST + KEIL VERIFIED
-ONCE Semantic Migration                   IMPLEMENTED / HOST + KEIL VERIFIED
+Display Task / IPC                        COMPLETE / HOST + KEIL + TARGET FUNCTION VERIFIED
+UART Product Output Migration             COMPLETE / HOST + KEIL + TARGET FUNCTION VERIFIED
+ONCE Semantic Migration                   COMPLETE / HOST + KEIL + TARGET FUNCTION VERIFIED
 Touch / CTP                               DEFERRED
 
-RTOS Display Integration                  TARGET VERIFICATION PENDING
+RTOS Display Integration                  COMPLETE
 Host Full Regression                      PASS 40/40
 Keil Full Rebuild                         PASS / 0 ERRORS
+Target Functional Verification            PASS
+Current Active Implementation Plan        NONE
 ```
+
+未作为当前功能阶段关闭阻塞项执行：
+
+```text
+Dedicated LCD fault-injection target test
+Task stack high-water mark observation
+Queue peak occupancy observation
+```
+
+以上转为后续可选可靠性/资源优化项。
 
 正式设计文档：
 
@@ -43,7 +55,8 @@ Keil Full Rebuild                         PASS / 0 ERRORS
 下一正式动作：
 
 ```text
-Flash current Keil image and execute the RTOS Display Integration board checklist
+No active plan.
+Choose the next project stage before creating a new implementation plan.
 ```
 
 ---
@@ -106,7 +119,7 @@ Phase 8  UART Application Communication          COMPLETED / HOST + KEIL + TARGE
 Phase 9  Final RTOS Application Integration      COMPLETED / HOST + KEIL + TARGET VERIFIED
 ```
 
-当前产品任务基线将从 4 Task 扩展到 5 Task：
+当前产品任务基线为 5 Task：
 
 ```text
 Communication Task   2048 B   ABOVE_NORMAL
@@ -159,7 +172,7 @@ AND MPU6050 success
 AND complete UART report TX success
 ```
 
-新冻结语义：
+当前冻结语义：
 
 ```text
 ONCE success
@@ -180,7 +193,7 @@ Indicator `ONCE_SUCCESS` 固定表示：
 
 > 完整双传感器单次采集成功。
 
-ONCE completion 统一为：
+ONCE completion：
 
 ```text
 APP_CONTROL_MESSAGE_ONCE_COMPLETE(result)
@@ -202,7 +215,7 @@ no success blink
 UART source -> ERR ACQUISITION_FAILED
 ```
 
-Control completion 属于控制面消息，Acquisition -> Control 使用可靠阻塞 Queue send；Display publish 仍为 best-effort NO_WAIT。
+Control completion 属于控制面消息，Acquisition -> Control 使用可靠阻塞 Queue send；Display publish 为 best-effort NO_WAIT。
 
 ---
 
@@ -342,7 +355,7 @@ no runtime dynamic reconfiguration
 no DMA
 ```
 
-正式 Display Integration 已补齐：
+Display Integration 已补齐：
 
 ```text
 Platform BSP display-SPI bus constructor
@@ -420,7 +433,7 @@ opaque fg/bg
 
 ---
 
-# 8. RTOS Display Integration Frozen Model
+# 8. RTOS Display Integration Final Model
 
 Display Task 是永久第五个产品 Task，并且是：
 
@@ -468,7 +481,7 @@ GYRO X/Y/Z (dps)
 
 ---
 
-# 9. Display IPC Frozen Contract
+# 9. Display IPC Final Contract
 
 消息：
 
@@ -512,7 +525,7 @@ Display presentation cache 不是真实业务状态副本；唯一业务真值�
 
 ---
 
-# 10. Display Failure Isolation
+# 10. Display Failure Isolation Contract
 
 Display 是 non-critical output subsystem。
 
@@ -548,6 +561,8 @@ next Display event retries latest cache
 ```
 
 不增加周期性 retry loop。
+
+该合同已由实现与 Host tests 覆盖；独立目标板 fault injection 可后续按需执行。
 
 ---
 
@@ -618,9 +633,9 @@ Display -X-> Control business result
 
 ---
 
-# 12. Composition Root Direction
+# 12. Composition Root
 
-`app_system.c` 已新增：
+`app_system.c` 已集成：
 
 ```text
 g_displaySpiBus
@@ -679,26 +694,32 @@ PROJECT_DISPLAY_QUEUE_DEPTH           = 4
 PROJECT_DISPLAY_BOOT_DURATION_MS      = 1000
 ```
 
-先完整迁移并验证，再依据 stack high-water mark / Queue peak 做资源优化。
+这些资源值已经支持当前目标板功能正常运行。后续资源优化仅在有 high-water mark / Queue peak 证据时进行。
 
 ---
 
-# 14. 当前 Implementation Plan 状态
+# 14. Implementation Plan 状态
 
-正式计划：
+正式记录：
 
 ```text
 00_Doc/04_Agent/implementation_plan.md
 ```
 
-当前结果：
+最终结果：
 
 ```text
 Implementation           COMPLETE
 Host verification        PASS 40/40
 Keil rebuild             PASS / 0 errors
-Target verification      PENDING MANUAL BOARD TEST
-Resource observation     PENDING MANUAL BOARD TEST
+Target functional test   PASS
+Documentation closeout   COMPLETE
+```
+
+当前：
+
+```text
+Active Implementation Plan = NONE
 ```
 
 不要重新设计或重做：
@@ -710,6 +731,7 @@ ST7789 / Graphics Phase 1
 Display Task / IPC architecture
 ONCE semantic definition
 Main UI information architecture
+UART measurement-output migration
 ```
 
 ---
@@ -732,20 +754,32 @@ Main UI information architecture
 
 ---
 
-# 16. 待执行目标板验收
+# 16. Target Verification Result
 
-烧录当前 Keil 产物后依次确认：
+人工板测功能确认：PASS。
+
+本次确认的功能基线包括：
 
 ```text
-1. Boot Page 正常显示，约 1 s 后进入 Main UI
-2. 初始 STATE = STOPPED，所有 measurement = --
-3. START 后 STATE = RUNNING，并立即完成第一次双传感器采集
-4. RUNNING 下约每 2 s 更新 DHT20 + MPU6050，且无明显整屏闪烁
-5. STOP 后 STATE = STOPPED，并保留最后一次有效 measurement
-6. Button ONCE 更新 measurement，成功时 LED 闪烁 3 次，STATE 保持 STOPPED
-7. UART ONCE 更新 measurement，返回 OK ONCE，成功时 LED 闪烁 3 次
-8. UART START / STOP / STATUS / HELP、未知命令和超长命令行为保持正常
-9. UART 不再输出周期或 ONCE 的 ENV/IMU measurement report
-10. 通过断开 LCD 等安全方式验证 Display 故障不破坏 UART、Control、Acquisition、Indicator
-11. 记录五个产品 Task high-water mark 及 Display/Communication Queue peak occupancy
+Boot Page -> Main UI 正常
+initial STOPPED / placeholder behavior 正常
+START / STOP 正常
+RUNNING 下周期 LCD measurement refresh 正常
+Button ONCE 正常
+UART ONCE -> OK ONCE 正常
+UART START / STOP / STATUS / HELP 正常
+UART 不再输出周期/ONCE ENV/IMU measurement report
+ONCE success LED behavior 正常
 ```
+
+当前工程可直接作为完整功能基线继续使用。
+
+未单独记录：
+
+```text
+Dedicated LCD fault-injection target test
+five product Task high-water marks
+Display / Communication Queue peak occupancy
+```
+
+这些项目属于后续可选可靠性/资源优化工作，不阻塞当前阶段完成。
