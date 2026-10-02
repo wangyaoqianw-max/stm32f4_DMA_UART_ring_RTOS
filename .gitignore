@@ -5,6 +5,9 @@
 # 当前 Keil Target 的构建输出目录
 /RTT_elog_DMA_UART_ring_project/MDK-ARM/Objects/
 /RTT_elog_DMA_UART_ring_project/MDK-ARM/Listings/
+/05_Tools/Config/toolchain.local.bat
+/05_Tools/Config/project.local.bat
+/06_Output/Logs/
 
 # Keil generated intermediate / output files
 *.o

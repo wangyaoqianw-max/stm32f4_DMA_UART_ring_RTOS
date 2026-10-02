@@ -1,0 +1,12 @@
+@echo off
+set "PROJECT_KEIL_PROJECT_FILE=RTT_elog_DMA_UART_ring_project\MDK-ARM\RTT_elog_DMA_UART_ring_project.uvprojx"
+set "PROJECT_KEIL_TARGET=RTT_elog_DMA_UART_ring_project"
+set "PROJECT_OUTPUT_DIR=RTT_elog_DMA_UART_ring_project\MDK-ARM\Objects"
+set "PROJECT_APP_AXF=RTT_elog_DMA_UART_ring_project\MDK-ARM\Objects\RTT_elog_DMA_UART_ring_project.axf"
+set "PROJECT_APP_HEX=RTT_elog_DMA_UART_ring_project\MDK-ARM\Objects\RTT_elog_DMA_UART_ring_project.hex"
+set "PROJECT_LOG_DIR=06_Output\Logs"
+set "JLINK_DEVICE=STM32F411CE"
+set "JLINK_IF=SWD"
+set "JLINK_SPEED=4000"
+set "JLINK_RTT_CHANNEL=0"
+set "RTT_CAPTURE_SECONDS=10"
