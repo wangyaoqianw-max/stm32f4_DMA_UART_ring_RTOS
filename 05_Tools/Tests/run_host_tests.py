@@ -50,4 +50,3 @@ for f in sorted((p/'Tests').glob('*/test_*.c')):
  print(name,'PASS' if item.get('run_exit')==0 else 'FAIL '+str(item.get('run_exit','compile')))
 (out/'summary.json').write_text(json.dumps(results,indent=2,ensure_ascii=False),encoding='utf8')
 passed=sum(x.get('run_exit')==0 for x in results);print('Host:',passed,'/',len(results));sys.exit(0 if passed==len(results) else 1)
-
