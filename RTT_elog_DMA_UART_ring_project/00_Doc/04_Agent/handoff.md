@@ -806,6 +806,6 @@ UI 发送请求并显示 Control 快照，ONCE 成功不依赖显示或触屏成
 
 ## B1/B2 执行方案收束（2026-10-03）
 
-当前执行入口：[CST816T驱动执行计划](CST816T_Driver_Execution_Plan.md)。采用独立软件I²C、Display Task所有权、ISR只通知、5ms有界等待及每轮4条消息限制；先Host单元/集成测试，再Keil完整重建、J-Link/RTT和人工验收。驱动与测试尚未实现。
+当前执行入口：[CST816T驱动执行计划](CST816T_Driver_Execution_Plan.md)。采用独立软件I²C、Display Task所有权、ISR只通知、5ms有界等待及每轮4条消息限制；先Host单元/集成测试，再Keil完整重建、J-Link/RTT和人工验收。驱动与测试现已实现，Host 41/41、Keil完整重建0错误/13个原有告警，实板识别0xB5/0x01；实板采样通过，原有功能人工确认正常。详见 [验证记录](CST816T_Driver_Verification.md)。
 
 原理图已确认SCL/SDA/INT各10kΩ外部上拉；用户取消前置电压实测，后续通信失败再核查。原文中的“上板前必须实测”不再是执行门禁，未测项仍保留记录。

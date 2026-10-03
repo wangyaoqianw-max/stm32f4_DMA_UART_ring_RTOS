@@ -21,6 +21,18 @@
 //******************************** Includes *********************************//
 
 //******************************** Constants ********************************//
+static impl_platform_gpio_context_t g_touchSclContext = {
+    TP_SCL_GPIO_Port, TP_SCL_Pin
+};
+
+static impl_platform_gpio_context_t g_touchSdaContext = {
+    TP_SDA_GPIO_Port, TP_SDA_Pin
+};
+
+static impl_platform_gpio_context_t g_touchRstContext = {
+    TP_RST_GPIO_Port, TP_RST_Pin
+};
+
 static impl_platform_gpio_context_t g_statusLedContext = {
     LED_OUT_GPIO_Port,
     LED_OUT_Pin
@@ -159,3 +171,30 @@ platform_error_t platform_bsp_gpio_construct_lcd_backlight(
                                         &g_lcdBacklightContext);
 }
 //******************************** Functions *********************************//
+
+platform_error_t platform_bsp_gpio_construct_touch_scl(platform_gpio_t *gpio)
+{
+    if (gpio == NULL) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+    return impl_platform_gpio_construct(
+        gpio, "touch_scl_gpio", &g_touchSclContext);
+}
+
+platform_error_t platform_bsp_gpio_construct_touch_sda(platform_gpio_t *gpio)
+{
+    if (gpio == NULL) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+    return impl_platform_gpio_construct(
+        gpio, "touch_sda_gpio", &g_touchSdaContext);
+}
+
+platform_error_t platform_bsp_gpio_construct_touch_rst(platform_gpio_t *gpio)
+{
+    if (gpio == NULL) {
+        return PLATFORM_ERR_INVALID_PARAM;
+    }
+    return impl_platform_gpio_construct(
+        gpio, "touch_rst_gpio", &g_touchRstContext);
+}

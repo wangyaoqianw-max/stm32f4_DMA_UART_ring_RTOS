@@ -106,11 +106,14 @@ static int test_construct_rejects_null_gpio(void)
         platform_bsp_gpio_construct_lcd_cs,
         platform_bsp_gpio_construct_lcd_dc,
         platform_bsp_gpio_construct_lcd_reset,
-        platform_bsp_gpio_construct_lcd_backlight
+        platform_bsp_gpio_construct_lcd_backlight,
+        platform_bsp_gpio_construct_touch_scl,
+        platform_bsp_gpio_construct_touch_sda,
+        platform_bsp_gpio_construct_touch_rst
     };
     uint32_t index;
 
-    for (index = 0U; index < 8U; index++) {
+    for (index = 0U; index < sizeof(constructors) / sizeof(constructors[0]); index++) {
         fake_constructor_reset();
         TEST_ASSERT(constructors[index](NULL) == PLATFORM_ERR_INVALID_PARAM);
         TEST_ASSERT(g_fakeConstructor.callCount == 0U);
@@ -280,6 +283,23 @@ void HAL_GPIO_WritePin(GPIO_TypeDef *GPIOx,
     g_halWriteCallCount++;
 }
 
+static int test_touch_bindings(void)
+{
+    int result = test_constructor_forwards_binding(
+        platform_bsp_gpio_construct_touch_scl, GPIOA, GPIO_PIN_8, "touch_scl_gpio");
+
+    if (result != 0) {
+        return result;
+    }
+    result = test_constructor_forwards_binding(
+        platform_bsp_gpio_construct_touch_sda, GPIOB, GPIO_PIN_4, "touch_sda_gpio");
+    if (result != 0) {
+        return result;
+    }
+    return test_constructor_forwards_binding(
+        platform_bsp_gpio_construct_touch_rst, GPIOA, GPIO_PIN_15, "touch_rst_gpio");
+}
+
 int main(void)
 {
     int result = test_construct_rejects_null_gpio();
@@ -328,6 +348,10 @@ int main(void)
         return result;
     }
 
+    result = test_touch_bindings();
+    if (result != 0) {
+        return result;
+    }
     return test_construct_propagates_constructor_error();
 }
 //******************************** Functions *********************************//

@@ -90,6 +90,15 @@ platform_error_t platform_bsp_gpio_construct_lcd_reset(
  */
 platform_error_t platform_bsp_gpio_construct_lcd_backlight(
     platform_gpio_t *gpio);
+/** @brief 构造触屏SCL板级绑定，不访问或配置硬件。 */
+platform_error_t platform_bsp_gpio_construct_touch_scl(platform_gpio_t *gpio);
+
+/** @brief 构造触屏SDA板级绑定，不访问或配置硬件。 */
+platform_error_t platform_bsp_gpio_construct_touch_sda(platform_gpio_t *gpio);
+
+/** @brief 构造触屏RST板级绑定，不访问或配置硬件。 */
+platform_error_t platform_bsp_gpio_construct_touch_rst(platform_gpio_t *gpio);
+
 //******************************** Functions ********************************//
 
 #endif

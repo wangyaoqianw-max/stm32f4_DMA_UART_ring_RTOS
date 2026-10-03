@@ -22,6 +22,7 @@
 #include "gpio.h"
 
 /* USER CODE BEGIN 0 */
+#include "app_system.h"
 
 /* USER CODE END 0 */
 
@@ -123,5 +124,11 @@ void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 2 */
+void HAL_GPIO_EXTI_Callback(uint16_t pin)
+{
+    if (pin == TP_INT_Pin) {
+        app_system_touch_irq_from_isr();
+    }
+}
 
 /* USER CODE END 2 */

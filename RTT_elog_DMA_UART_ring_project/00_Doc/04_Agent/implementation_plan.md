@@ -1,7 +1,7 @@
 # 触屏与 LVGL 9.4 升级实施计划
 
 更新时间：2026-10-03
-状态：IN_PROGRESS / A1 配置与原有功能回归通过，B1 尚未开始
+状态：IN_PROGRESS / B1 驱动与板上识别通过，B2 实板采样通过，精确映射/延迟待验证
 
 **目标：** 按 CubeMX、触屏驱动、LVGL、Guider 四阶段完成升级。
 **架构：** 触屏总线与 LVGL 归 Display Task；Control 维持唯一业务状态。
@@ -12,7 +12,7 @@
 ## 全局约束
 
 实施前读取 execution_rules.md、工程 C 规范及冻结设计；每阶段先通过前一阶段门禁。
-执行者按任务逐项实施和记录证据，不自动委派或升级模型。本文件是总计划；A1配置已实现，B1/B2驱动尚未开始。
+执行者按任务逐项实施和记录证据，不自动委派或升级模型。本文件是总计划；A1配置已实现，B1/B2代码与自动验证完成，原有功能人工确认通过，精确映射/延迟待验证。
 保持五任务、IPC 值拷贝、单一硬件所有权及双传感器 ONCE 成功语义。
 UI 局部允许直接调用 LVGL；其他业务模块继续遵守分层。第三方版本、配置、手写绑定与生成代码分开。
 构建命令从仓库根目录运行 `05_Tools\toolkit.bat build`；目标板观察用 `05_Tools\toolkit.bat rtt 30`。
@@ -40,11 +40,11 @@ Host 测试复用现有 Tests 方法；实施时记录实际编译运行命令�
 
 依赖：A1。责任：驱动开发。
 
-- [ ] 在 `03_Platform/platform_bsp/platform_bsp_gpio.h` 与 `04_Impl/impl_bsp/impl_platform_bsp_gpio.c` 增加触屏 SCL/SDA/RST 绑定。
-- [ ] 新建 `03_Platform/platform_bsp/cst816t/`，提供初始化与 `read_sample`，样本含 pressed/x/y，不包含 LVGL 类型。
-- [ ] 在 app_system 静态构造独立 `platform_i2c_t`；复用 platform_i2c_write/read/write_read 的7bit地址合同。
-- [ ] 实现复位与100ms等待、ID/版本读取、0xFA/0xFE 配置、7字节坐标解码；错误向调用方返回。
-- [ ] 新增 Host 用例：地址/寄存器序列、12bit 解码、无触点释放、I2C 失败和 ID 不符；伪设备验证实际收发字节。
+- [x] 在 `03_Platform/platform_bsp/platform_bsp_gpio.h` 与 `04_Impl/impl_bsp/impl_platform_bsp_gpio.c` 增加触屏 SCL/SDA/RST 绑定。
+- [x] 新建 `03_Platform/platform_bsp/cst816t/`，提供初始化与 `read_sample`，样本含 pressed/x/y，不包含 LVGL 类型。
+- [x] 在 app_system 静态构造独立 `platform_i2c_t`；复用 platform_i2c_write/read/write_read 的7bit地址合同。
+- [x] 实现复位与100ms等待、ID/版本读取、0xFA/0xFE 配置、7字节坐标解码；错误向调用方返回。
+- [x] 新增 Host 用例：地址/寄存器序列、12bit 解码、无触点释放、I2C 失败和 ID 不符；伪设备验证实际收发字节。
 
 门禁：Host 通过且板上能读 ID/版本；未 ACK 时先检查供电、复位、地址及固件，不添加升级程序兜底。
 
@@ -52,10 +52,10 @@ Host 测试复用现有 Tests 方法；实施时记录实际编译运行命令�
 
 依赖：B1。责任：APP/驱动联调。
 
-- [ ] Core HAL EXTI 回调通过 app_system 薄入口通知 Display Task；任务未就绪时不调用无效 RTOS 句柄。
-- [ ] 保留 CubeMX 的 EXTI 配置，避免 platform_gpio_configure 把 TP_INT 改成普通输入。
+- [x] Core HAL EXTI 回调通过 app_system 薄入口通知 Display Task；任务未就绪时不调用无效 RTOS 句柄。
+- [x] 保留 CubeMX 的 EXTI 配置，避免 platform_gpio_configure 把 TP_INT 改成普通输入。
 - [ ] 任务内读取样本，实测四角、移动、抬起、重复点击与长按；确定坐标映射和必要复位寄存器策略。
-- [ ] 验证 IRQ 合并后仍读取最新状态，I2C 故障释放指针并留下诊断，不阻塞其他任务。
+- [x] 验证 IRQ 合并后仍读取最新状态，I2C 故障释放指针并留下诊断，不阻塞其他任务。
 
 门禁：按下/移动/释放完整，方向正确，长按无失控，触屏故障不影响采集。
 
@@ -139,3 +139,7 @@ Host 测试复用现有 Tests 方法；实施时记录实际编译运行命令�
 
 检查 EXTI 被普通 GPIO 覆盖、IRQ 优先级错误、初始化前通知、重复字节交换、重复 tick、消息风暴饥饿、释放事件丢失和 GUI 线程越界。
 检查旧 PASS 被误写成本次结果、编译样例与实际导出混淆、资源预算被当作实测、生成覆盖手写代码和 UI 自建业务状态。
+
+## B1/B2 实施更新（2026-10-03）
+
+参见 [验证记录](CST816T_Driver_Verification.md)：Host 41/41，Keil 0错误/13个原有告警，实板ID=0xB5、固件=0x01。B2精确四角操作对应待验证，用户已确认原有功能正常，最坏延迟未测。

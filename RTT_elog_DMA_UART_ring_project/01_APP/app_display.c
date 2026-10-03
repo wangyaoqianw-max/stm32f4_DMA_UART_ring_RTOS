@@ -23,6 +23,7 @@
 //******************************** Includes *********************************//
 
 //******************************** Defines **********************************//
+#define APP_DISPLAY_TOUCH_NOTIFY (1UL << 0U)
 #define LOG_TAG                         "app_display"
 #define APP_DISPLAY_LINE_HEIGHT         (16U)
 #define APP_DISPLAY_TITLE_X             (64U)
@@ -274,12 +275,14 @@ static platform_error_t app_display_update_cache(
     }
 }
 
-static platform_error_t app_display_drain_pending(app_display_t *appDisplay)
+static platform_error_t app_display_drain_pending(app_display_t *appDisplay, uint32_t budget)
 {
     app_display_message_t message;
     platform_error_t result;
 
-    for (;;) {
+    uint32_t index;
+
+    for (index = 0U; index < budget; index++) {
         result = platform_queue_receive(
             appDisplay->config.queue, &message, PLATFORM_OS_NO_WAIT);
         if ((result == PLATFORM_ERR_EMPTY) || (result == PLATFORM_ERR_TIMEOUT)) {
@@ -295,6 +298,7 @@ static platform_error_t app_display_drain_pending(app_display_t *appDisplay)
         appDisplay->statistics.processedMessageCount++;
         appDisplay->statistics.coalescedMessageCount++;
     }
+    return PLATFORM_ERR_OK;
 }
 
 static void app_display_disable(app_display_t *appDisplay, platform_error_t error)
@@ -307,6 +311,84 @@ static void app_display_disable(app_display_t *appDisplay, platform_error_t erro
     appDisplay->statistics.startupFailureCount++;
     SERVICE_LOG_E("display startup failed: %d", (int)error);
 }
+static void app_display_read_touch(app_display_t *appDisplay)
+{
+    platform_cst816t_sample_t sample = {PLATFORM_FALSE, 0U, 0U};
+    platform_cst816t_sample_t previous = appDisplay->context.touchSample;
+    platform_error_t result = platform_cst816t_read_sample(appDisplay->config.touch, &sample);
+    uint32_t nowMs = 0U;
+
+    if (result != PLATFORM_ERR_OK) {
+        if (appDisplay->context.touchLastError != result) {
+            SERVICE_LOG_W("touch read failed: %d", (int)result);
+        }
+        sample.pressed = PLATFORM_FALSE;
+        sample.x = 0U;
+        sample.y = 0U;
+    }
+    appDisplay->context.touchLastError = result;
+    appDisplay->context.touchSample = sample;
+    if (platform_time_get_ms(&nowMs) != PLATFORM_ERR_OK) {
+        return;
+    }
+    if (sample.pressed != previous.pressed) {
+        SERVICE_LOG_I("touch %s x=%u y=%u", sample.pressed ? "DOWN" : "UP",
+            (unsigned)sample.x, (unsigned)sample.y);
+        appDisplay->context.touchLastLogMs = nowMs;
+    } else if ((sample.pressed == PLATFORM_TRUE) &&
+        ((sample.x != previous.x) || (sample.y != previous.y)) &&
+        ((uint32_t)(nowMs - appDisplay->context.touchLastLogMs) >= PROJECT_TOUCH_MOVE_LOG_PERIOD_MS)) {
+        SERVICE_LOG_I("touch MOVE x=%u y=%u", (unsigned)sample.x, (unsigned)sample.y);
+        appDisplay->context.touchLastLogMs = nowMs;
+    }
+}
+
+static void app_display_start_touch(app_display_t *appDisplay)
+{
+    platform_error_t result = platform_i2c_init(appDisplay->config.touchI2c,
+        "touch_soft_i2c", appDisplay->config.touchScl, appDisplay->config.touchSda);
+
+    if (result == PLATFORM_ERR_OK) {
+        result = platform_cst816t_init(appDisplay->config.touch,
+            appDisplay->config.touchI2c, appDisplay->config.touchReset);
+    }
+    appDisplay->context.touchLastError = result;
+    appDisplay->context.touchAvailable = (result == PLATFORM_ERR_OK) ? PLATFORM_TRUE : PLATFORM_FALSE;
+    if (result != PLATFORM_ERR_OK) {
+        SERVICE_LOG_W("touch startup failed: %d", (int)result);
+        return;
+    }
+    SERVICE_LOG_I("touch ready id=0x%02X fw=0x%02X", (unsigned)appDisplay->config.touch->chipId,
+        (unsigned)appDisplay->config.touch->firmwareVersion);
+    /* EXTI在任务创建前已启用，主动采样补足初始化期间丢弃的通知。 */
+    app_display_read_touch(appDisplay);
+}
+
+static void app_display_service_touch(app_display_t *appDisplay)
+{
+    uint32_t flags = 0U;
+    platform_error_t result = platform_notify_wait(APP_DISPLAY_TOUCH_NOTIFY,
+        PLATFORM_FALSE, PLATFORM_TRUE, PLATFORM_OS_NO_WAIT, &flags);
+
+    if ((result == PLATFORM_ERR_EMPTY) || (result == PLATFORM_ERR_TIMEOUT)) {
+        return;
+    }
+    if (result != PLATFORM_ERR_OK) {
+        appDisplay->context.touchSample.pressed = PLATFORM_FALSE;
+        appDisplay->context.touchSample.x = 0U;
+        appDisplay->context.touchSample.y = 0U;
+        if (result != appDisplay->context.touchLastError) {
+            SERVICE_LOG_W("touch notify failed: %d", (int)result);
+        }
+        appDisplay->context.touchLastError = result;
+        return;
+    }
+    if (((flags & APP_DISPLAY_TOUCH_NOTIFY) != 0U) &&
+        (appDisplay->context.touchAvailable == PLATFORM_TRUE)) {
+        app_display_read_touch(appDisplay);
+    }
+}
+
 //******************************** Private Functions ************************//
 
 //******************************** Functions ********************************//
@@ -316,7 +398,9 @@ platform_error_t app_display_init(
 {
     if ((appDisplay == NULL) || (config == NULL) ||
         (config->display == NULL) || (config->spiBus == NULL) ||
-        (config->queue == NULL)) {
+        (config->queue == NULL) || (config->touch == NULL) ||
+        (config->touchI2c == NULL) || (config->touchScl == NULL) ||
+        (config->touchSda == NULL) || (config->touchReset == NULL) || (config->thread == NULL)) {
         return PLATFORM_ERR_NULL_POINTER;
     }
     if (appDisplay->context.initialized == PLATFORM_TRUE) {
@@ -344,6 +428,7 @@ platform_error_t app_display_start(app_display_t *appDisplay)
         return PLATFORM_ERR_NOT_INITIALIZED;
     }
 
+    app_display_start_touch(appDisplay);
     result = platform_st7789_init(
         appDisplay->config.display, appDisplay->config.spiBus);
     if (result != PLATFORM_ERR_OK) {
@@ -368,7 +453,7 @@ platform_error_t app_display_start(app_display_t *appDisplay)
     appDisplay->context.available = PLATFORM_TRUE;
     appDisplay->context.stateDirty = PLATFORM_TRUE;
     appDisplay->context.measurementDirty = PLATFORM_TRUE;
-    result = app_display_drain_pending(appDisplay);
+    result = app_display_drain_pending(appDisplay, PROJECT_DISPLAY_MESSAGE_BUDGET);
     if (result == PLATFORM_ERR_OK) {
         (void)app_display_render_dirty(appDisplay);
     }
@@ -386,22 +471,18 @@ platform_error_t app_display_run_once(app_display_t *appDisplay)
     if (appDisplay->context.initialized != PLATFORM_TRUE) {
         return PLATFORM_ERR_NOT_INITIALIZED;
     }
-
     result = platform_queue_receive(
-        appDisplay->config.queue, &message, PLATFORM_OS_WAIT_FOREVER);
-    if ((result == PLATFORM_ERR_TIMEOUT) || (result == PLATFORM_ERR_EMPTY)) {
-        return PLATFORM_ERR_OK;
+        appDisplay->config.queue, &message, PROJECT_DISPLAY_WAIT_TIMEOUT_MS);
+    if (result == PLATFORM_ERR_OK) {
+        result = app_display_update_cache(appDisplay, &message);
+        if (result == PLATFORM_ERR_OK) {
+            appDisplay->statistics.processedMessageCount++;
+            result = app_display_drain_pending(appDisplay, PROJECT_DISPLAY_MESSAGE_BUDGET - 1U);
+        }
+    } else if ((result == PLATFORM_ERR_TIMEOUT) || (result == PLATFORM_ERR_EMPTY)) {
+        result = PLATFORM_ERR_OK;
     }
-    if (result != PLATFORM_ERR_OK) {
-        return result;
-    }
-    result = app_display_update_cache(appDisplay, &message);
-    if (result != PLATFORM_ERR_OK) {
-        return result;
-    }
-    appDisplay->statistics.processedMessageCount++;
-
-    result = app_display_drain_pending(appDisplay);
+    app_display_service_touch(appDisplay);
     if (result != PLATFORM_ERR_OK) {
         return result;
     }
@@ -426,3 +507,18 @@ void app_display_task_entry(void *argument)
     }
 }
 //******************************** Functions ********************************//
+
+void app_display_touch_irq_from_isr(app_display_t *appDisplay)
+{
+    platform_error_t result;
+
+    if ((appDisplay == NULL) || (appDisplay->context.initialized != PLATFORM_TRUE) ||
+        (appDisplay->config.thread == NULL) || (appDisplay->config.thread->native == NULL)) {
+        return;
+    }
+    result = platform_notify_set_from_isr(appDisplay->config.thread, APP_DISPLAY_TOUCH_NOTIFY);
+    if (result != PLATFORM_ERR_OK) {
+        /* ISR只写诊断计数，避免在中断内记录日志或访问I²C。 */
+        appDisplay->statistics.touchNotifyFailureCount++;
+    }
+}

@@ -25,6 +25,8 @@
  * @note 必须在 osKernelInitialize() 后、osKernelStart() 前且仅调用一次。
  */
 platform_error_t app_system_init(void);
+/** @brief HAL EXTI薄转发；系统未装配完成时忽略触屏IRQ。 */
+void app_system_touch_irq_from_isr(void);
 //******************************** Declaring *******************************//
 
 #endif

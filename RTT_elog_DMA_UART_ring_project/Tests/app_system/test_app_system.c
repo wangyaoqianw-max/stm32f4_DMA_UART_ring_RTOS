@@ -29,6 +29,7 @@
 
 #include <stdarg.h>
 #include <string.h>
+#include <stdio.h>
 
 #define TEST_ASSERT(condition) \
     do { \
@@ -40,6 +41,10 @@
 /** @brief 记录 Composition Root 的创建顺序、资源参数与回滚行为。 */
 typedef struct
 {
+    uint32_t touchConstructCount;
+    uint32_t touchIrqForwardCount;
+    platform_gpio_t *touchGpios[3];
+    app_display_config_t displayConfig;
     uint32_t sequence;
     uint32_t lastHardwareSequence;
     uint32_t firstServiceSequence;
@@ -202,7 +207,7 @@ static int test_final_composition_order_and_resources(void)
     };
     uint32_t index;
 
-    TEST_ASSERT(g_fakeRuntime.constructCount == 7U);
+    TEST_ASSERT(g_fakeRuntime.constructCount == 10U);
     TEST_ASSERT(g_fakeRuntime.hardwareInitCount == 7U);
     TEST_ASSERT(g_fakeRuntime.spiLifecycleInitCount == 1U);
     TEST_ASSERT(g_fakeRuntime.spiLifecycleStartCount == 1U);
@@ -477,6 +482,7 @@ platform_error_t app_display_init(
     TEST_ASSERT(config->display != NULL);
     TEST_ASSERT(config->spiBus != NULL);
     TEST_ASSERT(config->queue == g_fakeRuntime.displayQueue);
+    g_fakeRuntime.displayConfig = *config;
     fake_record_app();
     return PLATFORM_ERR_OK;
 }
@@ -675,9 +681,64 @@ platform_log_output_fn_t platform_log_get_output_fn(void)
     return fake_log_output;
 }
 
+platform_error_t platform_bsp_gpio_construct_touch_scl(platform_gpio_t *gpio)
+{
+    g_fakeRuntime.constructCount++;
+    g_fakeRuntime.touchConstructCount++;
+    g_fakeRuntime.touchGpios[0] = gpio;
+    gpio->initialized = PLATFORM_TRUE;
+    ++g_fakeRuntime.sequence;
+    return PLATFORM_ERR_OK;
+}
+
+platform_error_t platform_bsp_gpio_construct_touch_sda(platform_gpio_t *gpio)
+{
+    g_fakeRuntime.constructCount++;
+    g_fakeRuntime.touchConstructCount++;
+    g_fakeRuntime.touchGpios[1] = gpio;
+    gpio->initialized = PLATFORM_TRUE;
+    ++g_fakeRuntime.sequence;
+    return PLATFORM_ERR_OK;
+}
+
+platform_error_t platform_bsp_gpio_construct_touch_rst(platform_gpio_t *gpio)
+{
+    g_fakeRuntime.constructCount++;
+    g_fakeRuntime.touchConstructCount++;
+    g_fakeRuntime.touchGpios[2] = gpio;
+    gpio->initialized = PLATFORM_TRUE;
+    ++g_fakeRuntime.sequence;
+    return PLATFORM_ERR_OK;
+}
+
+void app_display_touch_irq_from_isr(app_display_t *display)
+{
+    (void)display;
+    g_fakeRuntime.touchIrqForwardCount++;
+}
+
+static int test_touch_dependencies_and_irq_forwarding(void)
+{
+    TEST_ASSERT(g_fakeRuntime.touchConstructCount == 3U);
+    TEST_ASSERT(g_fakeRuntime.displayConfig.touch != NULL);
+    TEST_ASSERT(g_fakeRuntime.displayConfig.touchI2c != NULL);
+    TEST_ASSERT(g_fakeRuntime.displayConfig.touchI2c->initialized == PLATFORM_FALSE);
+    TEST_ASSERT(g_fakeRuntime.displayConfig.touchScl == g_fakeRuntime.touchGpios[0]);
+    TEST_ASSERT(g_fakeRuntime.displayConfig.touchSda == g_fakeRuntime.touchGpios[1]);
+    TEST_ASSERT(g_fakeRuntime.displayConfig.touchReset == g_fakeRuntime.touchGpios[2]);
+    TEST_ASSERT(g_fakeRuntime.displayConfig.thread == g_fakeRuntime.createdThreads[4]);
+    app_system_touch_irq_from_isr();
+    TEST_ASSERT(g_fakeRuntime.touchIrqForwardCount == 1U);
+    return 0;
+}
+
 int main(void)
 {
-    int result = test_spi_start_failure_rolls_back_and_allows_retry();
+    int result;
+
+    app_system_touch_irq_from_isr();
+    TEST_ASSERT(g_fakeRuntime.touchIrqForwardCount == 0U);
+    result = test_spi_start_failure_rolls_back_and_allows_retry();
 
     if (result != 0) {
         return result;
@@ -687,5 +748,12 @@ int main(void)
     if (result != 0) {
         return result;
     }
-    return test_final_composition_order_and_resources();
+    result = test_final_composition_order_and_resources();
+    if (result != 0) {
+        (void)printf("FAIL system resources:%d\n", result);
+        return result;
+    }
+    result = test_touch_dependencies_and_irq_forwarding();
+    (void)printf("System: %s\n", (result == 0) ? "4/4 PASS" : "FAIL touch dependencies/IRQ");
+    return result;
 }

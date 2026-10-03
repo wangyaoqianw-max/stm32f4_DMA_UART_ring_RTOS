@@ -56,6 +56,11 @@ static platform_dht20_t g_dht20 = PLATFORM_DHT20_INITIALIZER;
 static platform_mpu6050_t g_mpu6050 = PLATFORM_MPU6050_INITIALIZER;
 static platform_spi_bus_t g_displaySpiBus = PLATFORM_SPI_BUS_INITIALIZER;
 static platform_st7789_t g_display = PLATFORM_ST7789_INITIALIZER;
+static platform_gpio_t g_touchScl = PLATFORM_GPIO_INITIALIZER;
+static platform_gpio_t g_touchSda = PLATFORM_GPIO_INITIALIZER;
+static platform_gpio_t g_touchReset = PLATFORM_GPIO_INITIALIZER;
+static platform_i2c_t g_touchI2c = PLATFORM_I2C_INITIALIZER;
+static platform_cst816t_t g_touch = PLATFORM_CST816T_INITIALIZER;
 
 static service_uart_t g_uartService = SERVICE_UART_INITIALIZER;
 static service_button_t g_buttonService = SERVICE_BUTTON_INITIALIZER;
@@ -82,7 +87,7 @@ static platform_thread_t g_displayThread = PLATFORM_OS_OBJECT_INITIALIZER;
 
 static uint8_t g_dmaRxStorage[PROJECT_COMM_DMA_RX_BUFFER_SIZE] = {0};
 static uint8_t g_ringStorage[PROJECT_COMM_RING_BUFFER_STORAGE_SIZE] = {0};
-static platform_bool_t g_isInitialized = PLATFORM_FALSE;
+static volatile platform_bool_t g_isInitialized = PLATFORM_FALSE;
 
 static const platform_uart_config_t g_communicationUartConfig = {
     .baudRate = PROJECT_COMM_UART_BAUD_RATE,
@@ -128,6 +133,11 @@ static void app_system_reset_storage(void)
     (void)memset(&g_mpu6050, 0, sizeof(g_mpu6050));
     (void)memset(&g_displaySpiBus, 0, sizeof(g_displaySpiBus));
     (void)memset(&g_display, 0, sizeof(g_display));
+    (void)memset(&g_touchScl, 0, sizeof(g_touchScl));
+    (void)memset(&g_touchSda, 0, sizeof(g_touchSda));
+    (void)memset(&g_touchReset, 0, sizeof(g_touchReset));
+    (void)memset(&g_touchI2c, 0, sizeof(g_touchI2c));
+    (void)memset(&g_touch, 0, sizeof(g_touch));
     (void)memset(&g_uartService, 0, sizeof(g_uartService));
     (void)memset(&g_buttonService, 0, sizeof(g_buttonService));
     (void)memset(&g_indicatorService, 0, sizeof(g_indicatorService));
@@ -274,7 +284,13 @@ platform_error_t app_system_init(void)
     app_display_config_t displayConfig = {
         .display = &g_display,
         .spiBus = &g_displaySpiBus,
-        .queue = &g_displayQueue
+        .queue = &g_displayQueue,
+        .touch = &g_touch,
+        .touchI2c = &g_touchI2c,
+        .touchScl = &g_touchScl,
+        .touchSda = &g_touchSda,
+        .touchReset = &g_touchReset,
+        .thread = &g_displayThread
     };
     platform_thread_config_t communicationThreadConfig = {
         .name = "communication",
@@ -341,6 +357,18 @@ platform_error_t app_system_init(void)
         goto cleanup;
     }
     result = platform_bsp_gpio_construct_soft_i2c_sda(&g_softI2cSda);
+    if (result != PLATFORM_ERR_OK) {
+        goto cleanup;
+    }
+    result = platform_bsp_gpio_construct_touch_scl(&g_touchScl);
+    if (result != PLATFORM_ERR_OK) {
+        goto cleanup;
+    }
+    result = platform_bsp_gpio_construct_touch_sda(&g_touchSda);
+    if (result != PLATFORM_ERR_OK) {
+        goto cleanup;
+    }
+    result = platform_bsp_gpio_construct_touch_rst(&g_touchReset);
     if (result != PLATFORM_ERR_OK) {
         goto cleanup;
     }
@@ -501,3 +529,11 @@ cleanup:
     return result;
 }
 //******************************** Functions *********************************//
+
+void app_system_touch_irq_from_isr(void)
+{
+    if (g_isInitialized != PLATFORM_TRUE) {
+        return;
+    }
+    app_display_touch_irq_from_isr(&g_appDisplay);
+}

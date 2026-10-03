@@ -41,4 +41,11 @@ extern GPIO_TypeDef g_fakePortC;
 #define LCD_RST_Pin       GPIO_PIN_10
 #define LCD_RST_GPIO_Port GPIOB
 
+#define TP_SCL_Pin GPIO_PIN_8
+#define TP_SCL_GPIO_Port GPIOA
+#define TP_SDA_Pin GPIO_PIN_4
+#define TP_SDA_GPIO_Port GPIOB
+#define TP_RST_Pin GPIO_PIN_15
+#define TP_RST_GPIO_Port GPIOA
+
 #endif
