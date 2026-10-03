@@ -47,14 +47,13 @@ typedef struct
     app_acquisition_data_t latestMeasurement;
     platform_cst816t_sample_t touchSample;
     platform_error_t touchLastError;
+    platform_error_t guiLastError;
     uint32_t touchLastLogMs;
     platform_bool_t touchAvailable;
     platform_bool_t initialized;
     platform_bool_t available;
     platform_bool_t systemStateValid;
     platform_bool_t measurementValid;
-    platform_bool_t stateDirty;
-    platform_bool_t measurementDirty;
 } app_display_context_t;
 
 typedef struct
@@ -80,7 +79,7 @@ platform_error_t app_display_init(
     app_display_t *appDisplay,
     const app_display_config_t *config);
 
-/** @brief 在 Display Task Context 执行 Boot 到 Main UI 的启动流程。 */
+/** @brief 在 Display Task Context 初始化 LCD 和临时 LVGL 页面。 */
 platform_error_t app_display_start(app_display_t *appDisplay);
 
 /** @brief 有界消费显示消息并服务触摸；最大等待5ms，不含同步I/O耗时。 */

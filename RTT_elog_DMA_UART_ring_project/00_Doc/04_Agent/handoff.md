@@ -2,9 +2,9 @@
 
 ## 本次升级状态（2026-10-03）
 
-当前活动计划：**触屏 → LVGL 9.4.0 → GUI Guider，IN_PROGRESS / A1、B1通过，B2采样通过；精确映射与延迟待验证，LVGL/Guider未开始**。
-CubeMX配置、CST816T驱动与Display Task接入已实现；本次Host 41/41、Keil完整重建0错误/13个原有告警，J-Link烧录校验通过。实板ID=0xB5、固件=0x01，RTT捕获按下/移动/释放及约5秒长按后释放，用户确认原有功能正常。精确四角映射与最坏响应延迟尚未验证，B2保持未完全关闭。
-[开发路线书](development_roadmap.md) · [任务划分与门禁](implementation_plan.md) · [本次验证记录](CST816T_Driver_Verification.md)。
+当前状态：**本轮 LVGL 9.4 最小移植 CLOSED；整体触屏 → LVGL → GUI Guider 路线仍有 D 阶段未实施**。
+临时页已替代原传感器显示页；四角方向、颜色、触摸计数和原业务回归已确认。最终配置为 6 KiB Display Task 栈、28 KiB FreeRTOS heap、24 KiB LVGL 池；本次已有 Host 42/42、最终增量构建 0 错误/7 告警及烧录校验记录。最坏刷新耗时与触摸端到端时延未测，用户确认本轮结束，不再重复验证。
+[开发路线书](development_roadmap.md) · [任务划分与门禁](implementation_plan.md) · [本轮交付记录](evidence/2026-10-03_lvgl94_minimal_port/delivery.md)。
 下文 2026-09-06 的 COMPLETE / PASS 是已关闭基线的历史记录；旧阶段限制遇到以下升级补充时，以补充为准。
 
 更新时间：2026-09-06
@@ -802,7 +802,7 @@ Display / Communication Queue peak occupancy
 Touch/CTP 与 GUI 控件现已纳入活动计划；下文旧“暂不做/DEFERRED”描述只适用于历史阶段。
 Display Task 将独占触屏独立软件 I2C、ST7789 和 LVGL，继续保留五任务。
 允许 `03_Platform/platform_gui` 与 `01_APP/ui` 的适配、界面和生成代码直接包含 LVGL/Guider 头文件；其他 APP/Service 分层不变。
-LVGL 内部使用固定24KiB静态池试配，业务禁止直接系统 malloc/free。初始9.6KB绘制缓冲、4KiB显示栈和20KiB RTOS堆需实测验收。
+LVGL 内部使用固定24KiB静态池，业务禁止直接系统 malloc/free。绘制缓冲9600B；显示栈与RTOS堆经实测从4KiB/20KiB调整为6KiB/28KiB，资源数据见本轮交付记录。
 UI 发送请求并显示 Control 快照，ONCE 成功不依赖显示或触屏成功。
 当前活动计划为 implementation_plan.md；旧计划归档于 archive/2026-09-06_RTOS_Display_Integration_closed_plan.md。
 
@@ -815,5 +815,7 @@ UI 发送请求并显示 Control 快照，ONCE 成功不依赖显示或触屏成
 ## 本次编码与交付状态（2026-10-03）
 
 Coding Standard：READ / SELF_REVIEW_PASS；驱动独立、Display任务所有权与ISR只通知已审查。
+
+LVGL 阶段 Coding Standard Review: PASS；本次新增的 GUI 端口、临时页、Host 替身与 Display 接入已审查。提交前修正规范要求的测试格式，生产行为未再修改。本轮用户确认 CLOSED，后续新任务从 GUI Guider D1 开始；未测性能项按需另行安排。
 实现提交：`f6767c3`、`6624551`；测试入口格式修正：`14ad2b6`。均已推送main。
-恢复工作时先完成B2精确坐标对应与延迟验证，再按总计划进入LVGL；不以5ms等待配置代替实测延迟。
+此处为 B2 阶段历史交接。2026-10-03 后续进展：LVGL 9.4 临时页已烧录；四角显示、点击计数、UART/实体键和采集期间 GUI 操作经人工确认。Host 42/42；Display Task 栈调整至 6 KiB 后历史余量 2584 B，FreeRTOS heap 调整至 28 KiB 后历史最低剩余 10808 B，LVGL 24 KiB 池点击后剩余 17760 B。记录见 [LVGL 实板与资源验收](evidence/2026-10-03_lvgl94_minimal_port/board_verification.md)。刷新最坏耗时及触摸 IRQ 到可见反馈时延尚未测量；GUI Guider 未开始。

@@ -34,6 +34,9 @@
 # Local Git worktrees
 /.worktrees/
 
+# Local embedded tool configuration and runtime state
+/.embeddedskills/
+
 
 # ============================================================
 # Keil user / IDE state

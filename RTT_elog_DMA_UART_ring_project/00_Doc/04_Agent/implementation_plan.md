@@ -1,18 +1,20 @@
 # 触屏与 LVGL 9.4 升级实施计划
 
 更新时间：2026-10-03
-状态：IN_PROGRESS / B1 驱动与板上识别通过，B2 实板采样通过，精确映射/延迟待验证
+状态：整体路线 IN_PROGRESS；本轮 LVGL 最小移植 CLOSED / 功能与资源交付，未测时延列为后续按需项；D 阶段未开始
 
 **目标：** 按 CubeMX、触屏驱动、LVGL、Guider 四阶段完成升级。
 **架构：** 触屏总线与 LVGL 归 Display Task；Control 维持唯一业务状态。
 **技术栈：** STM32F411CE、FreeRTOS、ARMCC 5.06、CST816T、ST7789、LVGL 9.4.0、GUI Guider。
 **设计依据：** [开发路线书](development_roadmap.md)。
-**当前执行入口：** [CST816T驱动执行计划](CST816T_Driver_Execution_Plan.md)，覆盖B1/B2、单元测试与工具验收。
+**当前执行入口：** [LVGL 9.4 最小移植施工计划](LVGL_9_4_Minimal_Port_Execution_Plan.md)，覆盖 C1～C3 与实板验收。
+
+LVGL C1～C3 的实现与本轮关闭记录见 [LVGL 9.4 最小移植施工计划](LVGL_9_4_Minimal_Port_Execution_Plan.md)。四角方向与映射已确认；刷新和触摸最坏时延未测，按用户确认保留为后续按需项，不再阻塞本轮交付。
 
 ## 全局约束
 
 实施前读取 execution_rules.md、工程 C 规范及冻结设计；每阶段先通过前一阶段门禁。
-执行者按任务逐项实施和记录证据，不自动委派或升级模型。本文件是总计划；A1配置已实现，B1/B2代码与自动验证完成，原有功能人工确认通过，精确映射/延迟待验证。
+执行者按任务逐项实施和记录证据，不自动委派或升级模型。本文件是总计划；A1、B1/B2 与 C 阶段最小移植已实现，原有功能人工确认通过；本轮按用户要求收束，Guider 尚未实施。
 保持五任务、IPC 值拷贝、单一硬件所有权及双传感器 ONCE 成功语义。
 UI 局部允许直接调用 LVGL；其他业务模块继续遵守分层。第三方版本、配置、手写绑定与生成代码分开。
 构建命令从仓库根目录运行 `05_Tools\toolkit.bat build`；目标板观察用 `05_Tools\toolkit.bat rtt 30`。
@@ -54,7 +56,7 @@ Host 测试复用现有 Tests 方法；实施时记录实际编译运行命令�
 
 - [x] Core HAL EXTI 回调通过 app_system 薄入口通知 Display Task；任务未就绪时不调用无效 RTOS 句柄。
 - [x] 保留 CubeMX 的 EXTI 配置，避免 platform_gpio_configure 把 TP_INT 改成普通输入。
-- [ ] 任务内读取样本，实测四角、移动、抬起、重复点击与长按；确定坐标映射和必要复位寄存器策略。
+- [x] 任务内读取样本，实测四角、移动、抬起、重复点击与长按；确定坐标映射和必要复位寄存器策略。
 - [x] 验证 IRQ 合并后仍读取最新状态，I2C 故障释放指针并留下诊断，不阻塞其他任务。
 
 门禁：按下/移动/释放完整，方向正确，长按无失控，触屏故障不影响采集。
@@ -63,10 +65,10 @@ Host 测试复用现有 Tests 方法；实施时记录实际编译运行命令�
 
 依赖：B2。责任：移植开发。
 
-- [ ] 加入 `05_Vendors/lvgl` 的9.4.0源码、版本/来源/许可记录及受控 `lv_conf.h`；不携带无关样例平台代码。
-- [ ] 更新 MDK-ARM `.uvprojx` 源文件组和包含路径；保持 C99，UI 单元及所有包含生成头文件的单元启用 GNU 扩展。
-- [ ] 配置 RGB565、LV_OS_NONE、24KiB 静态池与最小控件/字库；试配4KiB Display栈和20KiB RTOS堆。
-- [ ] 工程构建并记录警告与链接 map；核算静态 RAM、各任务栈和两类内存池，保留余量。
+- [x] 加入 `05_Vendors/lvgl` 的9.4.0源码、版本/来源/许可记录及受控 `lv_conf.h`；不携带无关样例平台代码。
+- [x] 更新 MDK-ARM `.uvprojx` 源文件组和包含路径；本轮临时 UI 保持 C99，未来包含 Guider 生成头文件的单元再处理 GNU 扩展。
+- [x] 配置 RGB565、LV_OS_NONE、24KiB 静态池与最小控件/字库；4KiB Display 栈和20KiB RTOS堆经实测偏紧，调整为6KiB/28KiB。
+- [x] 工程构建并记录警告与链接 map；核算静态 RAM、Display Task 栈和两类内存池，保留余量。
 
 门禁：真实工程编译链接通过、资源不超限；离线样例通过不能替代此项。
 
@@ -74,11 +76,11 @@ Host 测试复用现有 Tests 方法；实施时记录实际编译运行命令�
 
 依赖：C1。责任：移植开发。
 
-- [ ] 新建 `03_Platform/platform_gui/` 显示/输入/tick 端口，隔离 LVGL API。
-- [ ] 显示采用单缓冲240×20 RGB565；flush 对接 platform_st7789_write_rgb565，完成同步传输后调用 lv_display_flush_ready。
-- [ ] 确认现有 ST7789 按高字节先发送，不重复交换 RGB565 字节；正确处理区域宽高与必要裁剪。
-- [ ] 指针读取 B2 缓存，LVGL 坐标限定屏幕范围；tick 使用独立单调毫秒时基，避免双重递增。
-- [ ] 验证红绿蓝、四角矩形、非整屏区域及释放状态；SPI 故障仍结束 flush 并返回局部诊断。
+- [x] 新建 `03_Platform/platform_gui/` 显示/输入/tick 端口，隔离 LVGL API。
+- [x] 显示采用单缓冲240×20 RGB565；flush 对接 platform_st7789_write_rgb565，完成同步传输后调用 lv_display_flush_ready。
+- [x] 确认现有 ST7789 按高字节先发送，不重复交换 RGB565 字节；区域宽高经 Host 用例验证。
+- [x] 指针读取 B2 缓存，LVGL 坐标限定屏幕范围；tick 使用独立单调毫秒时基，避免双重递增。
+- [x] 验证红绿蓝、四角矩形、非整屏区域及释放状态；SPI 故障仍结束 flush 并返回局部诊断。
 
 门禁：颜色、区域、时间与指针状态正确，无 flush 永久等待。
 
@@ -86,12 +88,15 @@ Host 测试复用现有 Tests 方法；实施时记录实际编译运行命令�
 
 依赖：C2。责任：APP 开发。
 
-- [ ] 修改 `01_APP/app_display.c` 无限等待为有界等待；按5ms试配服务触摸与 lv_timer_handler。
-- [ ] 队列按有限数量消费并保留现有状态/测量合并语义，避免消息持续涌入导致 GUI 饥饿。
-- [ ] 在 app_system 初始化端口和页面，所有 lv_* 调用由 Display Task 执行；先用最小手写页面。
-- [ ] 测最坏刷新/触控延迟、任务栈高水位、RTOS剩余堆、LVGL池峰值及连续运行。
+- [x] 修改 `01_APP/app_display.c` 无限等待为有界等待；按5ms试配服务触摸与 lv_timer_handler。
+- [x] 队列按有限数量消费并保留现有状态/测量合并语义，避免消息持续涌入导致 GUI 饥饿。
+- [x] 由 Display Task 初始化端口和最小手写页面，所有 lv_* 调用由 Display Task 执行。
+- [x] 记录 Display Task 栈高水位、RTOS剩余堆、LVGL池峰值；采集运行期间 GUI 操作已验证，栈与堆按实测调整。
+- [ ] 后续按需：最坏刷新/触控端到端时延。本轮未测，用户确认结束。
 
 门禁：定时服务持续运行，现有 UART/采集/控制回归通过，资源数据满足预算或有明确调整记录。
+
+本次 [实板与资源记录](evidence/2026-10-03_lvgl94_minimal_port/board_verification.md)：显示、触摸、串口、实体键和持续采集期间的 GUI 操作通过；Display Task 栈历史余量 2584 B，FreeRTOS heap 历史最低余量 10808 B，LVGL 池点击后剩余 17760 B。刷新最坏耗时与触摸端到端时延条目仍未完成；用户确认结束本轮，C1～C3 功能移植按 [交付收束记录](evidence/2026-10-03_lvgl94_minimal_port/delivery.md) 交付。
 
 ### D1 GUI Guider 工程与可重复导出
 
@@ -142,4 +147,4 @@ Host 测试复用现有 Tests 方法；实施时记录实际编译运行命令�
 
 ## B1/B2 实施更新（2026-10-03）
 
-参见 [验证记录](CST816T_Driver_Verification.md)：Host 41/41，Keil 0错误/13个原有告警，实板ID=0xB5、固件=0x01。B2精确四角操作对应待验证，用户已确认原有功能正常，最坏延迟未测。
+参见 [驱动阶段验证记录](CST816T_Driver_Verification.md)：Host 41/41，Keil 0错误/13个原有告警，实板ID=0xB5、固件=0x01。后续 LVGL 阶段已按固定顺序同步采集四角/中心，确定原始坐标直通及边界裁剪；最坏延迟未测，见本轮交付记录。

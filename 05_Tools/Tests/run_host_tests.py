@@ -2,7 +2,7 @@
 from pathlib import Path
 import subprocess,json,re,sys
 p=Path('RTT_elog_DMA_UART_ring_project');out=Path('06_Output/Logs/host_tests');out.mkdir(parents=True,exist_ok=True)
-incs=[p/'00_Config',p/'01_APP']+[d for b in ['02_Service','03_Platform','04_Impl','05_Vendors'] for d in (p/b).rglob('*') if d.is_dir()]
+incs=[p/'00_Config',p/'01_APP',p/'01_APP/ui']+[d for b in ['02_Service','03_Platform','04_Impl','05_Vendors'] for d in (p/b).rglob('*') if d.is_dir() and 'lvgl' not in d.parts]
 mapSources={
  'app_communication_outbound':['01_APP/app_communication.c'],
  'platform_bsp_gpio':['04_Impl/impl_bsp/impl_platform_bsp_gpio.c'],
@@ -12,7 +12,8 @@ mapSources={
  'platform_os':[f.as_posix().removeprefix(p.as_posix()+'/') for f in (p/'04_Impl/impl_os/freertos').glob('*.c')],
  'platform_st7789':['03_Platform/platform_bsp/st7789/platform_st7789.c','03_Platform/platform_bsp/st7789/platform_bsp_st7789.c'],
  'platform_graphics':['03_Platform/platform_graphics/platform_graphics.c','03_Platform/platform_graphics/font/platform_font_ascii_8x16.c'],
- 'app_display':['01_APP/app_display.c','03_Platform/platform_graphics/font/platform_font_ascii_8x16.c'],
+ 'app_display':['01_APP/app_display.c'],
+ 'platform_gui':['03_Platform/platform_gui/platform_gui.c'],
 }
 gpio='03_Platform/platform_mcu/gpio/platform_gpio.c'
 spi='03_Platform/platform_mcu/spi/platform_spi.c'

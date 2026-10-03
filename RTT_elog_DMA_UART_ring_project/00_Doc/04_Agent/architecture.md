@@ -585,6 +585,6 @@ Indicator Queue              4
 Touch/CTP 与 GUI 控件现已纳入活动计划；下文旧“暂不做/DEFERRED”描述只适用于历史阶段。
 Display Task 将独占触屏独立软件 I2C、ST7789 和 LVGL，继续保留五任务。
 允许 `03_Platform/platform_gui` 与 `01_APP/ui` 的适配、界面和生成代码直接包含 LVGL/Guider 头文件；其他 APP/Service 分层不变。
-LVGL 内部使用固定24KiB静态池试配，业务禁止直接系统 malloc/free。初始9.6KB绘制缓冲、4KiB显示栈和20KiB RTOS堆需实测验收。
+LVGL 内部使用固定24KiB静态池，业务禁止直接系统 malloc/free。绘制缓冲9600B；显示栈与RTOS堆经本轮实测从4KiB/20KiB调整为6KiB/28KiB，记录见 [LVGL交付记录](evidence/2026-10-03_lvgl94_minimal_port/delivery.md)。
 UI 发送请求并显示 Control 快照，ONCE 成功不依赖显示或触屏成功。
 当前活动计划为 implementation_plan.md；旧计划归档于 archive/2026-09-06_RTOS_Display_Integration_closed_plan.md。

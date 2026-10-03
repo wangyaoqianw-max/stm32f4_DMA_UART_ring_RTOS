@@ -115,10 +115,9 @@
 #define PROJECT_DISPLAY_Y_OFFSET                      (20U)
 #define PROJECT_DISPLAY_MADCTL                        (0x00U)
 #define PROJECT_DISPLAY_SPI_MAX_CLOCK_HZ              (12500000U)
-#define PROJECT_DISPLAY_TASK_STACK_SIZE_BYTES          (1536U)
+#define PROJECT_DISPLAY_TASK_STACK_SIZE_BYTES          (6144U)
 #define PROJECT_DISPLAY_TASK_PRIORITY                  PLATFORM_THREAD_PRIORITY_NORMAL
 #define PROJECT_DISPLAY_QUEUE_DEPTH                    (4U)
-#define PROJECT_DISPLAY_BOOT_DURATION_MS               (1000U)
 /* 队列等待不被线程通知唤醒，限制等待与每轮消息数以服务触屏。 */
 #define PROJECT_DISPLAY_WAIT_TIMEOUT_MS                (5U)
 #define PROJECT_DISPLAY_MESSAGE_BUDGET                 (4U)

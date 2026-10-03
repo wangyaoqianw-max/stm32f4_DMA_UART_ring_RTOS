@@ -189,7 +189,7 @@ static int test_final_composition_order_and_resources(void)
         "indicator",
         "display"
     };
-    static const uint32_t expectedStacks[] = {2048U, 1024U, 1536U, 768U, 1536U};
+    static const uint32_t expectedStacks[] = {2048U, 1024U, 1536U, 768U, 6144U};
     static const platform_thread_priority_t expectedPriorities[] = {
         PLATFORM_THREAD_PRIORITY_ABOVE_NORMAL,
         PLATFORM_THREAD_PRIORITY_ABOVE_NORMAL,
