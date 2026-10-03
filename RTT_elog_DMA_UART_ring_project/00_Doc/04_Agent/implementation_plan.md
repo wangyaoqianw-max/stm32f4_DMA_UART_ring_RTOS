@@ -7,14 +7,15 @@
 **架构：** 触屏总线与 LVGL 归 Display Task；Control 维持唯一业务状态。
 **技术栈：** STM32F411CE、FreeRTOS、ARMCC 5.06、CST816T、ST7789、LVGL 9.4.0、GUI Guider。
 **设计依据：** [开发路线书](development_roadmap.md)。
+**当前执行入口：** [CST816T驱动执行计划](CST816T_Driver_Execution_Plan.md)，覆盖B1/B2、单元测试与工具验收。
 
 ## 全局约束
 
 实施前读取 execution_rules.md、工程 C 规范及冻结设计；每阶段先通过前一阶段门禁。
-执行者按任务逐项实施和记录证据，不自动委派或升级模型。本文件只规划，当前未修改固件。
+执行者按任务逐项实施和记录证据，不自动委派或升级模型。本文件是总计划；A1配置已实现，B1/B2驱动尚未开始。
 保持五任务、IPC 值拷贝、单一硬件所有权及双传感器 ONCE 成功语义。
 UI 局部允许直接调用 LVGL；其他业务模块继续遵守分层。第三方版本、配置、手写绑定与生成代码分开。
-构建命令从工程目录运行 `05_Tools\toolkit.bat build`；目标板观察用 `05_Tools\toolkit.bat rtt 30`。
+构建命令从仓库根目录运行 `05_Tools\toolkit.bat build`；目标板观察用 `05_Tools\toolkit.bat rtt 30`。
 Host 测试复用现有 Tests 方法；实施时记录实际编译运行命令，不能以历史40/40代替新测试。
 
 ## 任务划分
@@ -31,7 +32,7 @@ Host 测试复用现有 Tests 方法；实施时记录实际编译运行命令�
 产物：`.ioc`、Core/Inc、Core/Src 必要生成改动和配置检查记录。
 门禁：无引脚冲突、构建通过、旧功能通过；否则不进入 B。
 
-2026-10-03 验收：提交 `e22d73e`；四引脚配置及 EXTI2 6/0 检查通过，Keil 32组/94文件保留；ARMCC完整重建0错误、13个未改动代码警告；J-Link烧录校验、复位运行通过。用户肉眼确认原有功能全部正常。A1配置/构建/功能回归门禁通过；供电与外部上拉尚无实测记录，B1上板通信前必须核实。下一任务 B1。
+2026-10-03 验收：提交 `e22d73e`；四引脚配置及 EXTI2 6/0 检查通过，Keil 32组/94文件保留；ARMCC完整重建0错误、13个未改动代码警告；J-Link烧录校验、复位运行通过。用户肉眼确认原有功能全部正常。A1配置/构建/功能回归门禁通过；供电与外部上拉尚无实测记录，用户随后提供原理图确认三路10kΩ上拉，并明确不再前置实测；按驱动计划继续，通信失败再核查电气条件。下一任务 B1。
 
 本地证据（Git忽略）：`06_Output/Logs/cubemx_touch_A1/RTT_elog_DMA_UART_ring_project-RTT_elog_DMA_UART_ring_project-rebuild.log`、`06_Output/Logs/RTT_elog_DMA_UART_ring_project_flash.log`（路径相对仓库根）。
 

@@ -803,3 +803,9 @@ Display Task 将独占触屏独立软件 I2C、ST7789 和 LVGL，继续保留五
 LVGL 内部使用固定24KiB静态池试配，业务禁止直接系统 malloc/free。初始9.6KB绘制缓冲、4KiB显示栈和20KiB RTOS堆需实测验收。
 UI 发送请求并显示 Control 快照，ONCE 成功不依赖显示或触屏成功。
 当前活动计划为 implementation_plan.md；旧计划归档于 archive/2026-09-06_RTOS_Display_Integration_closed_plan.md。
+
+## B1/B2 执行方案收束（2026-10-03）
+
+当前执行入口：[CST816T驱动执行计划](CST816T_Driver_Execution_Plan.md)。采用独立软件I²C、Display Task所有权、ISR只通知、5ms有界等待及每轮4条消息限制；先Host单元/集成测试，再Keil完整重建、J-Link/RTT和人工验收。驱动与测试尚未实现。
+
+原理图已确认SCL/SDA/INT各10kΩ外部上拉；用户取消前置电压实测，后续通信失败再核查。原文中的“上板前必须实测”不再是执行门禁，未测项仍保留记录。
