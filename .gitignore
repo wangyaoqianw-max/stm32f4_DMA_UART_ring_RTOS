@@ -69,3 +69,6 @@ JLinkSettings.ini
 *~
 .DS_Store
 Thumbs.db
+
+# Local ad hoc compiler log
+/RTT_elog_DMA_UART_ring_project/MDK-ARM/codex_build.log
