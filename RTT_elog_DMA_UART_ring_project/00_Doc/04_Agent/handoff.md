@@ -2,16 +2,16 @@
 
 ## 本次升级状态（2026-10-03）
 
-当前活动计划：**触屏 → LVGL 9.4.0 → GUI Guider，IN_PROGRESS / A1 回归通过，下一任务 B1**。
-先修改 CubeMX，再实现 CST816T，随后移植 LVGL，最后导出与绑定 UI。A1 配置、构建、烧录与原有功能目标板验收已完成，触屏驱动尚未实现。
-[开发路线书](development_roadmap.md) · [任务划分与门禁](implementation_plan.md)。
+当前活动计划：**触屏 → LVGL 9.4.0 → GUI Guider，IN_PROGRESS / A1、B1通过，B2采样通过；精确映射与延迟待验证，LVGL/Guider未开始**。
+CubeMX配置、CST816T驱动与Display Task接入已实现；本次Host 41/41、Keil完整重建0错误/13个原有告警，J-Link烧录校验通过。实板ID=0xB5、固件=0x01，RTT捕获按下/移动/释放及约5秒长按后释放，用户确认原有功能正常。精确四角映射与最坏响应延迟尚未验证，B2保持未完全关闭。
+[开发路线书](development_roadmap.md) · [任务划分与门禁](implementation_plan.md) · [本次验证记录](CST816T_Driver_Verification.md)。
 下文 2026-09-06 的 COMPLETE / PASS 是已关闭基线的历史记录；旧阶段限制遇到以下升级补充时，以补充为准。
 
 更新时间：2026-09-06
 
 ## A1 验收更新（2026-10-03）
 
-CubeMX触屏配置已提交 `e22d73e`，配置核对通过；Keil完整重建0错误、13个现有代码警告。J-Link烧录与校验通过，用户确认原有功能全部正常。升级现已进入实施阶段，下一任务为 B1 CST816T驱动；下文“实现尚未开始/PLANNED”是初始规划记录。供电与外部上拉未取得实测记录，触屏通信前仍需核实。
+CubeMX触屏配置已提交 `e22d73e`，配置核对通过；Keil完整重建0错误、13个现有代码警告。J-Link烧录与校验通过，用户确认原有功能全部正常。此段为A1历史验收；B1/B2现状以本文顶部及本次验证记录为准。原理图已确认三路10kΩ上拉，用户取消前置电压实测；实际触屏通信已通过，电压仍未测。
 
 
 > 本文件是 AI Agent / Codex 与人工开发者恢复工程上下文时的长期入口。
@@ -37,13 +37,15 @@ RTOS Display Integration Design           FROZEN
 Display Task / IPC                        COMPLETE / HOST + KEIL + TARGET FUNCTION VERIFIED
 UART Product Output Migration             COMPLETE / HOST + KEIL + TARGET FUNCTION VERIFIED
 ONCE Semantic Migration                   COMPLETE / HOST + KEIL + TARGET FUNCTION VERIFIED
-Touch / CTP                               PLANNED / NOT_IMPLEMENTED
+Touch / CTP                               IMPLEMENTED / HOST + TARGET SAMPLING VERIFIED
+Touch precise mapping / worst latency     NOT_VERIFIED
+LVGL / GUI Guider                         NOT_IMPLEMENTED
 
 RTOS Display Integration                  COMPLETE
-Host Full Regression                      PASS 40/40
+Host Full Regression                      PASS 41/41 (2026-10-03)
 Keil Full Rebuild                         PASS / 0 ERRORS
 Target Functional Verification            PASS
-Current Active Implementation Plan        TOUCH + LVGL94 + GUIDER / PLANNED
+Current Active Implementation Plan        TOUCH + LVGL94 + GUIDER / IN_PROGRESS
 ```
 
 未作为当前功能阶段关闭阻塞项执行：
@@ -293,7 +295,7 @@ Controller  : ST7789T3
 Resolution  : 240 x 280
 Interface   : 4-wire SPI display path
 Pixel       : RGB565
-Touch       : PLANNED / NOT_IMPLEMENTED
+Touch       : IMPLEMENTED / HOST + TARGET SAMPLING VERIFIED
 ```
 
 Pins：
@@ -730,7 +732,7 @@ Documentation closeout   COMPLETE
 当前：
 
 ```text
-Active Implementation Plan = TOUCH + LVGL94 + GUIDER / PLANNED
+Active Implementation Plan = TOUCH + LVGL94 + GUIDER / IN_PROGRESS
 ```
 
 不要重新设计或重做：
@@ -809,3 +811,9 @@ UI 发送请求并显示 Control 快照，ONCE 成功不依赖显示或触屏成
 当前执行入口：[CST816T驱动执行计划](CST816T_Driver_Execution_Plan.md)。采用独立软件I²C、Display Task所有权、ISR只通知、5ms有界等待及每轮4条消息限制；先Host单元/集成测试，再Keil完整重建、J-Link/RTT和人工验收。驱动与测试现已实现，Host 41/41、Keil完整重建0错误/13个原有告警，实板识别0xB5/0x01；实板采样通过，原有功能人工确认正常。详见 [验证记录](CST816T_Driver_Verification.md)。
 
 原理图已确认SCL/SDA/INT各10kΩ外部上拉；用户取消前置电压实测，后续通信失败再核查。原文中的“上板前必须实测”不再是执行门禁，未测项仍保留记录。
+
+## 本次编码与交付状态（2026-10-03）
+
+Coding Standard：READ / SELF_REVIEW_PASS；驱动独立、Display任务所有权与ISR只通知已审查。
+实现提交：`f6767c3`、`6624551`；测试入口格式修正：`14ad2b6`。均已推送main。
+恢复工作时先完成B2精确坐标对应与延迟验证，再按总计划进入LVGL；不以5ms等待配置代替实测延迟。

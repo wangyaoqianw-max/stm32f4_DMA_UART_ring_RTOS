@@ -2,9 +2,9 @@
 
 ## 本次升级状态（2026-10-03）
 
-当前活动计划：**触屏 → LVGL 9.4.0 → GUI Guider，PLANNED / NOT_IMPLEMENTED**。
-先修改 CubeMX，再实现 CST816T，随后移植 LVGL，最后导出与绑定 UI。未执行本次固件改动、构建或目标板验收。
-[开发路线书](development_roadmap.md) · [任务划分与门禁](implementation_plan.md)。
+当前活动计划：**触屏 → LVGL 9.4.0 → GUI Guider，IN_PROGRESS / A1、B1通过，B2采样通过；精确映射与延迟待验证，LVGL/Guider未开始**。
+CubeMX配置、CST816T驱动与Display Task接入已实现；本次Host 41/41、Keil完整重建0错误/13个原有告警，J-Link烧录校验通过。实板ID=0xB5、固件=0x01，RTT捕获按下/移动/释放及约5秒长按后释放，用户确认原有功能正常。精确四角映射与最坏响应延迟尚未验证，B2保持未完全关闭。
+[开发路线书](development_roadmap.md) · [任务划分与门禁](implementation_plan.md) · [本次验证记录](CST816T_Driver_Verification.md)。
 下文 2026-09-06 的 COMPLETE / PASS 是已关闭基线的历史记录；旧阶段限制遇到以下升级补充时，以补充为准。
 
 更新时间：2026-09-06
