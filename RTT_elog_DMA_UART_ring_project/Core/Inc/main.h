@@ -67,8 +67,17 @@ void Error_Handler(void);
 #define LCD_CS_GPIO_Port GPIOA
 #define LCD_DC_Pin GPIO_PIN_6
 #define LCD_DC_GPIO_Port GPIOA
+#define TP_INT_Pin GPIO_PIN_2
+#define TP_INT_GPIO_Port GPIOB
+#define TP_INT_EXTI_IRQn EXTI2_IRQn
 #define LCD_RST_Pin GPIO_PIN_10
 #define LCD_RST_GPIO_Port GPIOB
+#define TP_SCL_Pin GPIO_PIN_8
+#define TP_SCL_GPIO_Port GPIOA
+#define TP_RST_Pin GPIO_PIN_15
+#define TP_RST_GPIO_Port GPIOA
+#define TP_SDA_Pin GPIO_PIN_4
+#define TP_SDA_GPIO_Port GPIOB
 #define I2C_SCL_Pin GPIO_PIN_6
 #define I2C_SCL_GPIO_Port GPIOB
 #define I2C_SDA_Pin GPIO_PIN_7
