@@ -2,12 +2,17 @@
 
 ## 本次升级状态（2026-10-03）
 
-当前活动计划：**触屏 → LVGL 9.4.0 → GUI Guider，PLANNED / NOT_IMPLEMENTED**。
-先修改 CubeMX，再实现 CST816T，随后移植 LVGL，最后导出与绑定 UI。未执行本次固件改动、构建或目标板验收。
+当前活动计划：**触屏 → LVGL 9.4.0 → GUI Guider，IN_PROGRESS / A1 回归通过，下一任务 B1**。
+先修改 CubeMX，再实现 CST816T，随后移植 LVGL，最后导出与绑定 UI。A1 配置、构建、烧录与原有功能目标板验收已完成，触屏驱动尚未实现。
 [开发路线书](development_roadmap.md) · [任务划分与门禁](implementation_plan.md)。
 下文 2026-09-06 的 COMPLETE / PASS 是已关闭基线的历史记录；旧阶段限制遇到以下升级补充时，以补充为准。
 
 更新时间：2026-09-06
+
+## A1 验收更新（2026-10-03）
+
+CubeMX触屏配置已提交 `e22d73e`，配置核对通过；Keil完整重建0错误、13个现有代码警告。J-Link烧录与校验通过，用户确认原有功能全部正常。升级现已进入实施阶段，下一任务为 B1 CST816T驱动；下文“实现尚未开始/PLANNED”是初始规划记录。供电与外部上拉未取得实测记录，触屏通信前仍需核实。
+
 
 > 本文件是 AI Agent / Codex 与人工开发者恢复工程上下文时的长期入口。
 > Phase 1~9 Core Application 已完成并通过 Host / Keil / Target 综合验证。

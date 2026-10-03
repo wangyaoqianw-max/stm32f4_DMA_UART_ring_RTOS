@@ -1,7 +1,7 @@
 # 触屏与 LVGL 9.4 升级实施计划
 
 更新时间：2026-10-03
-状态：PLANNED / NOT_IMPLEMENTED
+状态：IN_PROGRESS / A1 配置与原有功能回归通过，B1 尚未开始
 
 **目标：** 按 CubeMX、触屏驱动、LVGL、Guider 四阶段完成升级。
 **架构：** 触屏总线与 LVGL 归 Display Task；Control 维持唯一业务状态。
@@ -24,12 +24,16 @@ Host 测试复用现有 Tests 方法；实施时记录实际编译运行命令�
 依赖：无。责任：硬件/底层开发。
 
 - [ ] 核实电源、上拉和引脚占用，记录原理图与实测依据。
-- [ ] 修改现有 `.ioc`：PA8/PB4 开漏软件 I2C、PA15 输出复位、PB2 EXTI2 下降沿，调试保留 SWD。
-- [ ] 核实 EXTI2 IRQ 优先级满足 FreeRTOS FromISR 规则；仅改需要的 Core GPIO/IRQ 用户区。
-- [ ] 生成后检查 UART DMA、传感器总线、SPI1 和现有任务配置；构建及板上旧功能回归。
+- [x] 修改现有 `.ioc`：PA8/PB4 开漏软件 I2C、PA15 输出复位、PB2 EXTI2 下降沿，调试保留 SWD。
+- [x] 核实 EXTI2 IRQ 优先级满足 FreeRTOS FromISR 规则；仅改需要的 Core GPIO/IRQ 用户区。
+- [x] 生成后检查 UART DMA、传感器总线、SPI1 和现有任务配置；构建及板上旧功能回归。
 
 产物：`.ioc`、Core/Inc、Core/Src 必要生成改动和配置检查记录。
 门禁：无引脚冲突、构建通过、旧功能通过；否则不进入 B。
+
+2026-10-03 验收：提交 `e22d73e`；四引脚配置及 EXTI2 6/0 检查通过，Keil 32组/94文件保留；ARMCC完整重建0错误、13个未改动代码警告；J-Link烧录校验、复位运行通过。用户肉眼确认原有功能全部正常。A1配置/构建/功能回归门禁通过；供电与外部上拉尚无实测记录，B1上板通信前必须核实。下一任务 B1。
+
+本地证据（Git忽略）：`06_Output/Logs/cubemx_touch_A1/RTT_elog_DMA_UART_ring_project-RTT_elog_DMA_UART_ring_project-rebuild.log`、`06_Output/Logs/RTT_elog_DMA_UART_ring_project_flash.log`（路径相对仓库根）。
 
 ### B1 触屏 BSP 与 CST816T 驱动
 
