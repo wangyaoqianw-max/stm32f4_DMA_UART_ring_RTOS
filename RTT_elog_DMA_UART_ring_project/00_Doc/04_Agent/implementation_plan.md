@@ -1,506 +1,136 @@
-# Closed Implementation Plan — RTOS Display Integration
+# 触屏与 LVGL 9.4 升级实施计划
 
-> 状态：COMPLETE / HOST + KEIL + TARGET FUNCTION VERIFIED  
-> 日期：2026-09-06  
-> 设计依据：`00_Doc/02_架构设计/RTOS_Display_Integration_Design.md`
+更新时间：2026-10-03
+状态：PLANNED / NOT_IMPLEMENTED
 
-最终验证证据：
+**目标：** 按 CubeMX、触屏驱动、LVGL、Guider 四阶段完成升级。
+**架构：** 触屏总线与 LVGL 归 Display Task；Control 维持唯一业务状态。
+**技术栈：** STM32F411CE、FreeRTOS、ARMCC 5.06、CST816T、ST7789、LVGL 9.4.0、GUI Guider。
+**设计依据：** [开发路线书](development_roadmap.md)。
 
-```text
-Implementation            COMPLETE
-Host full regression      PASS 40/40
-Keil full rebuild         PASS / 0 errors
-Modified production code  no new warnings
-Target functional test    PASS
-```
+## 全局约束
 
-未作为本功能阶段关闭阻塞项执行：
+实施前读取 execution_rules.md、工程 C 规范及冻结设计；每阶段先通过前一阶段门禁。
+执行者按任务逐项实施和记录证据，不自动委派或升级模型。本文件只规划，当前未修改固件。
+保持五任务、IPC 值拷贝、单一硬件所有权及双传感器 ONCE 成功语义。
+UI 局部允许直接调用 LVGL；其他业务模块继续遵守分层。第三方版本、配置、手写绑定与生成代码分开。
+构建命令从工程目录运行 `05_Tools\toolkit.bat build`；目标板观察用 `05_Tools\toolkit.bat rtt 30`。
+Host 测试复用现有 Tests 方法；实施时记录实际编译运行命令，不能以历史40/40代替新测试。
 
-```text
-Dedicated LCD fault-injection target test
-Task stack high-water mark observation
-Queue peak occupancy observation
-```
+## 任务划分
 
-以上转为后续可选可靠性/资源优化工作。
+### A1 CubeMX 与硬件配置
 
----
+依赖：无。责任：硬件/底层开发。
 
-# 1. 目标
+- [ ] 核实电源、上拉和引脚占用，记录原理图与实测依据。
+- [ ] 修改现有 `.ioc`：PA8/PB4 开漏软件 I2C、PA15 输出复位、PB2 EXTI2 下降沿，调试保留 SWD。
+- [ ] 核实 EXTI2 IRQ 优先级满足 FreeRTOS FromISR 规则；仅改需要的 Core GPIO/IRQ 用户区。
+- [ ] 生成后检查 UART DMA、传感器总线、SPI1 和现有任务配置；构建及板上旧功能回归。
 
-在不破坏 Phase 1~9 已验证 Core Application 的前提下，将 ST7789 正式接入 RTOS 产品链，完成：
+产物：`.ioc`、Core/Inc、Core/Src 必要生成改动和配置检查记录。
+门禁：无引脚冲突、构建通过、旧功能通过；否则不进入 B。
 
-```text
-Display Task
-Display Queue
-Boot -> Main UI
-UART measurement output migration
-ONCE semantic migration
-SPI Platform integration gap
-app_system composition-root integration
-Host / Keil / Target functional verification
-```
+### B1 触屏 BSP 与 CST816T 驱动
 
-结果：全部完成。
+依赖：A1。责任：驱动开发。
 
----
+- [ ] 在 `03_Platform/platform_bsp/platform_bsp_gpio.h` 与 `04_Impl/impl_bsp/impl_platform_bsp_gpio.c` 增加触屏 SCL/SDA/RST 绑定。
+- [ ] 新建 `03_Platform/platform_bsp/cst816t/`，提供初始化与 `read_sample`，样本含 pressed/x/y，不包含 LVGL 类型。
+- [ ] 在 app_system 静态构造独立 `platform_i2c_t`；复用 platform_i2c_write/read/write_read 的7bit地址合同。
+- [ ] 实现复位与100ms等待、ID/版本读取、0xFA/0xFE 配置、7字节坐标解码；错误向调用方返回。
+- [ ] 新增 Host 用例：地址/寄存器序列、12bit 解码、无触点释放、I2C 失败和 ID 不符；伪设备验证实际收发字节。
 
-# 2. 执行约束保持结果
+门禁：Host 通过且板上能读 ID/版本；未 ACK 时先检查供电、复位、地址及固件，不添加升级程序兜底。
 
-实现保持：
+### B2 IRQ 与 Display Task 触摸采样
 
-```text
-APP -> Service -> Platform -> Impl -> Vendor
-APP -> Impl FORBIDDEN
-Service -> Impl FORBIDDEN
-no runtime malloc/free
-Queue copy-by-value
-no stack-pointer enqueue
-```
+依赖：B1。责任：APP/驱动联调。
 
-Display：
+- [ ] Core HAL EXTI 回调通过 app_system 薄入口通知 Display Task；任务未就绪时不调用无效 RTOS 句柄。
+- [ ] 保留 CubeMX 的 EXTI 配置，避免 platform_gpio_configure 把 TP_INT 改成普通输入。
+- [ ] 任务内读取样本，实测四角、移动、抬起、重复点击与长按；确定坐标映射和必要复位寄存器策略。
+- [ ] 验证 IRQ 合并后仍读取最新状态，I2C 故障释放指针并留下诊断，不阻塞其他任务。
 
-```text
-Display Task = sole ST7789 / Graphics runtime owner
-no Display Service
-no full framebuffer
-partial refresh
-Display failure does not redefine acquisition success
-```
+门禁：按下/移动/释放完整，方向正确，长按无失控，触屏故障不影响采集。
 
-ONCE：
+### C1 LVGL 源码与构建配置
 
-```text
-success = DHT20 OK && MPU6050 OK
-```
+依赖：B2。责任：移植开发。
 
-UART：
+- [ ] 加入 `05_Vendors/lvgl` 的9.4.0源码、版本/来源/许可记录及受控 `lv_conf.h`；不携带无关样例平台代码。
+- [ ] 更新 MDK-ARM `.uvprojx` 源文件组和包含路径；保持 C99，UI 单元及所有包含生成头文件的单元启用 GNU 扩展。
+- [ ] 配置 RGB565、LV_OS_NONE、24KiB 静态池与最小控件/字库；试配4KiB Display栈和20KiB RTOS堆。
+- [ ] 工程构建并记录警告与链接 map；核算静态 RAM、各任务栈和两类内存池，保留余量。
 
-```text
-retain full command/response/debug function
-remove sensor measurement reports only
-```
+门禁：真实工程编译链接通过、资源不超限；离线样例通过不能替代此项。
 
----
+### C2 显示、输入与时基端口
 
-# 3. Task 1 — SPI Platform Integration Gap
+依赖：C1。责任：移植开发。
 
-状态：COMPLETE
+- [ ] 新建 `03_Platform/platform_gui/` 显示/输入/tick 端口，隔离 LVGL API。
+- [ ] 显示采用单缓冲240×20 RGB565；flush 对接 platform_st7789_write_rgb565，完成同步传输后调用 lv_display_flush_ready。
+- [ ] 确认现有 ST7789 按高字节先发送，不重复交换 RGB565 字节；正确处理区域宽高与必要裁剪。
+- [ ] 指针读取 B2 缓存，LVGL 坐标限定屏幕范围；tick 使用独立单调毫秒时基，避免双重递增。
+- [ ] 验证红绿蓝、四角矩形、非整屏区域及释放状态；SPI 故障仍结束 flush 并返回局部诊断。
 
-完成：
+门禁：颜色、区域、时间与指针状态正确，无 flush 永久等待。
 
-```text
-Platform BSP constructor for display SPI Bus / SPI1 binding
-Platform public SPI Bus lifecycle facade
-reuse existing SPI lifecycle model
-APP no direct impl_platform_spi dependency
-APP no lifecycle function-table dereference
-```
+### C3 Display Task 周期循环与最小页面
 
-验证：Host/Keil PASS，架构边界保持。
+依赖：C2。责任：APP 开发。
 
----
+- [ ] 修改 `01_APP/app_display.c` 无限等待为有界等待；按5ms试配服务触摸与 lv_timer_handler。
+- [ ] 队列按有限数量消费并保留现有状态/测量合并语义，避免消息持续涌入导致 GUI 饥饿。
+- [ ] 在 app_system 初始化端口和页面，所有 lv_* 调用由 Display Task 执行；先用最小手写页面。
+- [ ] 测最坏刷新/触控延迟、任务栈高水位、RTOS剩余堆、LVGL池峰值及连续运行。
 
-# 4. Task 2 — Shared APP Types / IPC Migration
+门禁：定时服务持续运行，现有 UART/采集/控制回归通过，资源数据满足预算或有明确调整记录。
 
-状态：COMPLETE
+### D1 GUI Guider 工程与可重复导出
 
-完成：
+依赖：C3。责任：UI 开发。
 
-```text
-app_control_state_t moved to shared control types
-APP_CONTROL_MESSAGE_ONCE_COMPLETE introduced
-APP_DISPLAY_MESSAGE_SYSTEM_STATE introduced
-APP_DISPLAY_MESSAGE_MEASUREMENT introduced
-app_display_message_t value-copy IPC introduced
-APP_CONTROL_RESPONSE_OK_ONCE introduced
-old UART measurement outbound message types removed
-```
+- [ ] 保存可编辑 Guider 项目和版本说明；按240×280、LVGL9.4导出。
+- [ ] 生成代码放 `01_APP/ui/generated`，自定义绑定另放 `01_APP/ui`；字体/图片限预算。
+- [ ] 用本项目端口与 Display Task 入口集成，不直接复制工具样例的目标板初始化。
+- [ ] 实际导出代码用 ARMCC 编译；检查空结构体、GNU 配置、控件 API 和资源占用。
+- [ ] 重复导出后构建，确认手写文件未被覆盖，记录操作步骤和许可核对结果。
 
-删除：
+门禁：实际项目可重新导出、编译、显示，新增资源不超过预算。
 
-```text
-APP_CONTROL_MESSAGE_ONCE_ACQUISITION_FAILED
-APP_CONTROL_MESSAGE_ONCE_TX_RESULT
-APP_COMM_OUTBOUND_PERIODIC_REPORT
-APP_COMM_OUTBOUND_ONCE_REPORT
-```
+### D2 UI 业务事件绑定
 
-Communication Response Queue 使用：
+依赖：D1。责任：APP/UI 开发。
 
-```text
-app_control_response_t
-```
+- [ ] 新增 `01_APP/ui` 页面入口和绑定；提供初始化、状态/测量快照更新等窄接口。
+- [ ] `app_control_types.h` 增加 UI 请求来源，按钮只投递现有 START/STOP/SAMPLE_ONCE 请求。
+- [ ] 根据异步反馈需要在 `app_ipc_types.h` 扩展 CONTROL_RESULT 显示消息，复用既有响应结构与 Display Queue。
+- [ ] 页面从 Control 快照显示真实状态，验证忙碌/拒绝/队列满反馈；不在控件事件内读传感器或改 FSM。
+- [ ] Host 验证 UI 请求来源与响应路由；板上验证 UI、实体键和 UART 同时控制及 ONCE 语义。
 
----
+门禁：三种入口语义一致，UI失败不改业务成功条件，无新增业务状态副本。
 
-# 5. Task 3 — Communication APP Simplification
+### V1 全量回归与资源验收
 
-状态：COMPLETE
+依赖：D2。责任：联调/验收。
 
-保留：
+- [ ] 运行现有 Host 回归和新增用例，记录实际数量、命令与结果；执行 Keil 全构建。
+- [ ] 板上验证启动、START/STOP/ONCE、持续采集、页面刷新、连续点击、长按、触屏与 LCD 故障。
+- [ ] 检查 RAM/Flash map、任务高水位、队列峰值和 GUI/RTOS 堆峰值；标明测试时长和最坏场景。
 
-```text
-UART RX DMA + RingBuffer path
-strict CRLF parser
-START / STOP / ONCE / STATUS / HELP
-control event submit
-control response TX
-local HELP / error responses
-```
+门禁：结果有本次证据；资源不足时减少资源或调整预算，不以历史验收替代。
 
-删除：
+### V2 交付与状态关闭
 
-```text
-sensor report formatting
-ENV / IMU report buffers
-periodic report TX
-ONCE report TX
-ONCE TX completion -> Control
-sensor report statistics
-Communication controlQueue dependency used by old ONCE TX completion
-```
+依赖：V1。责任：维护者。
 
-新增 UART 成功响应：
+- [ ] 更新需求、架构、交接、README、Guider 导出步骤和资源记录。
+- [ ] 保留第三方许可/版本及手写与生成文件边界；删除实施过程中明确无用的临时代码。
+- [ ] 审查差异，按门禁勾选任务；全部满足后才标记 COMPLETE 并提交交付。
 
-```text
-OK ONCE\r\n
-```
+## 审查重点
 
-Communication 已退出 sensor data plane。
-
----
-
-# 6. Task 4 — Control APP Migration
-
-状态：COMPLETE
-
-完成：
-
-```text
-initial SYSTEM_STATE(STOPPED) publish
-START -> RUNNING + Indicator + Display + UART response
-STOP -> STOPPED + Indicator + Display + UART response
-Display publish = best-effort NO_WAIT
-ONCE_COMPLETE replaces old acquisition/TX completion split
-ONCE_COMPLETE(OK) -> clear onceActive + success blink + UART OK ONCE
-ONCE_COMPLETE(error) -> clear onceActive + no blink + UART acquisition error
-```
-
-Control FSM 仍是唯一业务状态真值。
-
----
-
-# 7. Task 5 — Acquisition APP Migration
-
-状态：COMPLETE
-
-配置：
-
-```text
-remove communicationQueue
-add displayQueue
-retain controlQueue
-```
-
-Periodic：
-
-```text
-sample success
- -> Display MEASUREMENT / NO_WAIT
-```
-
-ONCE：
-
-```text
-sample failure
- -> Control ONCE_COMPLETE(error) / WAIT_FOREVER
-
-sample success
- -> Display MEASUREMENT / NO_WAIT
- -> Control ONCE_COMPLETE(OK) / WAIT_FOREVER
-```
-
-Display Queue failure 不改变 ONCE acquisition success。
-
----
-
-# 8. Task 6 — APP Display Module
-
-状态：COMPLETE
-
-实现：
-
-```text
-01_APP/app_display.h
-01_APP/app_display.c
-Host tests
-```
-
-Display context：
-
-```text
-initialized
-available
-systemState + valid
-latestMeasurement + valid
-stateDirty
-measurementDirty
-```
-
-启动：
-
-```text
-platform_st7789_init
- -> Boot Page
- -> backlight ON
- -> 1000 ms dwell
- -> Main UI static layout
- -> drain queue
- -> render latest cache
- -> event loop
-```
-
-Queue 消费：
-
-```text
-WAIT_FOREVER receive first
- -> update cache
- -> NO_WAIT drain backlog
- -> render dirty latest state / measurement
-```
-
-启动失败进入 degraded queue consumer；runtime render failure 保留 dirty 并等待下一 Display event 重试。
-
----
-
-# 9. Task 7 — Main UI
-
-状态：COMPLETE / TARGET FUNCTION VERIFIED
-
-页面：
-
-```text
-SENSOR MONITOR
-STATE : RUNNING / STOPPED
-ENVIRONMENT
-TEMP
-HUM
-ACCEL X/Y/Z
-GYRO X/Y/Z
-```
-
-格式：
-
-```text
-Temp       1 decimal
-Humidity   1 decimal
-Accel      3 decimals
-Gyro       1 decimal
-```
-
-行为：
-
-```text
-initial measurement = --
-STOP retains latest valid measurement
-static layout once
-partial dynamic-region refresh
-```
-
-目标板显示功能已确认正常。
-
----
-
-# 10. Task 8 — Composition Root Integration
-
-状态：COMPLETE
-
-新增静态资源：
-
-```text
-g_displaySpiBus
-g_display
-g_displayQueue
-g_appDisplay
-g_displayThread
-```
-
-配置：
-
-```text
-PROJECT_DISPLAY_TASK_STACK_SIZE_BYTES = 1536
-PROJECT_DISPLAY_TASK_PRIORITY = NORMAL
-PROJECT_DISPLAY_QUEUE_DEPTH = 4
-PROJECT_DISPLAY_BOOT_DURATION_MS = 1000
-```
-
-Pre-scheduler：
-
-```text
-construct display SPI Bus / ST7789
-SPI Bus init/start
-create Display Queue
-init APP modules
-create Display Thread
-```
-
-ST7789 physical init 保持在 Display Task Context。
-
-Rollback 保持 strict reverse order。
-
----
-
-# 11. Task 9 — Host Test Update
-
-状态：PASS
-
-```text
-Host full regression PASS 40/40
-```
-
-覆盖包括：
-
-```text
-SPI BSP / lifecycle facade
-Display message validation
-Display coalescing
-initial -- rendering
-SYSTEM_STATE update
-MEASUREMENT update
-STOP retains latest measurement
-Display degraded startup behavior
-runtime render dirty retry behavior
-Control initial STOPPED publish
-START / STOP display state publish
-ONCE_COMPLETE OK / error
-ONCE completion independent from Display Queue result
-Acquisition no Communication dependency
-Communication no sensor report formatting
-UART OK ONCE response
-app_system rollback
-```
-
----
-
-# 12. Task 10 — Keil / Static Verification
-
-状态：PASS
-
-```text
-Keil full rebuild PASS
-0 errors
-new/modified production code no new warnings
-```
-
-架构检查确认 APP 未引入 Impl SPI 依赖。
-
----
-
-# 13. Task 11 — Target Functional Verification
-
-状态：PASS
-
-人工板测确认当前功能正常，覆盖本阶段主要功能链：
-
-```text
-Boot Page -> Main UI
-initial STOPPED / placeholder behavior
-START -> RUNNING + immediate acquisition
-~2 s LCD measurement refresh
-STOP -> STOPPED + retain latest measurement
-Button ONCE
-UART ONCE -> OK ONCE
-START / STOP / STATUS / HELP UART regression
-UART no periodic/ONCE ENV/IMU measurement reports
-ONCE success LED behavior
-```
-
-因此当前 RTOS Display Integration 可以作为正常目标板功能基线直接使用。
-
-独立 Display fault-injection（例如安全断开 LCD 后验证其他链路）未在本次关闭记录中单独声明 PASS；该项转为后续可靠性验证候选。
-
----
-
-# 14. Task 12 — Resource Observation
-
-状态：DEFERRED / OPTIONAL
-
-尚未记录：
-
-```text
-Communication Task high-water mark
-Control Task high-water mark
-Acquisition Task high-water mark
-Display Task high-water mark
-Indicator Task high-water mark
-Display Queue peak occupancy
-Communication Response Queue peak occupancy
-```
-
-当前目标板功能已稳定运行，因此这些数据用于后续证据驱动的 stack/Queue 优化，不阻塞本功能阶段关闭。
-
----
-
-# 15. Task 13 — Documentation Closeout
-
-状态：COMPLETE
-
-已同步：
-
-```text
-00_Doc/04_Agent/handoff.md
-00_Doc/04_Agent/architecture.md
-00_Doc/04_Agent/development_roadmap.md
-00_Doc/04_Agent/requirements.md
-00_Doc/04_Agent/implementation_plan.md
-```
-
----
-
-# 16. Completion Result
-
-当前完成证据：
-
-```text
-Display Task implemented
-Display Queue implemented
-Boot/Main UI implemented
-UART measurement migration complete
-ONCE semantic migration complete
-Communication sensor-data dependency removed
-Acquisition Communication dependency removed
-APP -> Impl boundary clean
-Host full regression PASS 40/40
-Keil rebuild PASS / 0 errors
-Target functional verification PASS
-documentation synchronized
-```
-
-结论：
-
-```text
-RTOS Display Integration
-= COMPLETE / HOST + KEIL + TARGET FUNCTION VERIFIED
-```
-
-独立 LCD fault-injection 与资源高水位观测为后续可选项，不改变该功能阶段完成结论。
-
----
-
-# 17. Closed Plan Boundary
-
-后续不得因进入其他阶段而重新设计或破坏：
-
-```text
-Display Task sole runtime ownership
-no Display Service baseline
-ONCE acquisition-only success semantic
-UART command/response role
-LCD measurement presentation role
-Acquisition -X-> Communication measurement dependency
-consumer-side Display Queue coalescing
-APP -> Platform -> Impl SPI boundary
-```
-
-当前无 Active Implementation Plan。
+检查 EXTI 被普通 GPIO 覆盖、IRQ 优先级错误、初始化前通知、重复字节交换、重复 tick、消息风暴饥饿、释放事件丢失和 GUI 线程越界。
+检查旧 PASS 被误写成本次结果、编译样例与实际导出混淆、资源预算被当作实测、生成覆盖手写代码和 UI 自建业务状态。

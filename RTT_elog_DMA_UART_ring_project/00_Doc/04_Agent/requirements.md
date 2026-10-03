@@ -1,5 +1,12 @@
 # 工程需求说明
 
+## 本次升级状态（2026-10-03）
+
+当前活动计划：**触屏 → LVGL 9.4.0 → GUI Guider，PLANNED / NOT_IMPLEMENTED**。
+先修改 CubeMX，再实现 CST816T，随后移植 LVGL，最后导出与绑定 UI。未执行本次固件改动、构建或目标板验收。
+[开发路线书](development_roadmap.md) · [任务划分与门禁](implementation_plan.md)。
+下文 2026-09-06 的 COMPLETE / PASS 是已关闭基线的历史记录；旧阶段限制遇到以下升级补充时，以补充为准。
+
 更新时间：2026-09-06
 
 验收状态：
@@ -116,7 +123,7 @@ APP 不得直接依赖 HAL handle 或 STM32-specific Impl API。
 
 # 4. 静态资源要求
 
-禁止 runtime malloc/free。
+业务代码禁止 runtime malloc/free；本次 LVGL 升级允许其内部在固定静态池内分配和释放。
 
 要求：
 
@@ -617,3 +624,12 @@ Periodic Display recovery
 Low-power optimization
 Resource shrinking without evidence
 ```
+
+## 本次升级补充约束
+
+Touch/CTP 与 GUI 控件现已纳入活动计划；下文旧“暂不做/DEFERRED”描述只适用于历史阶段。
+Display Task 将独占触屏独立软件 I2C、ST7789 和 LVGL，继续保留五任务。
+允许 `03_Platform/platform_gui` 与 `01_APP/ui` 的适配、界面和生成代码直接包含 LVGL/Guider 头文件；其他 APP/Service 分层不变。
+LVGL 内部使用固定24KiB静态池试配，业务禁止直接系统 malloc/free。初始9.6KB绘制缓冲、4KiB显示栈和20KiB RTOS堆需实测验收。
+UI 发送请求并显示 Control 快照，ONCE 成功不依赖显示或触屏成功。
+当前活动计划为 implementation_plan.md；旧计划归档于 archive/2026-09-06_RTOS_Display_Integration_closed_plan.md。

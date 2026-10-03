@@ -1,18 +1,13 @@
-# STM32F4 DMA UART Ring RTOS
+# STM32F411 多任务采集与显示工程
 
-当前阶段：`Phase 5 — Button Module (planning)`
+## 当前状态
 
-Phase 4 状态：`COMPLETED / HOST + KEIL + TARGET BOARD VERIFIED`
+2026-10-03：触屏、LVGL 9.4.0 与 GUI Guider 升级规划完成，固件实现尚未开始。
+原 RTOS 显示集成于2026-09-06结项；历史测试结果不代表本次升级验收。
 
-| 项目 | 当前状态 |
-| --- | --- |
-| LED 架构 | `Indicator Service -> Platform LED -> Platform GPIO -> STM32 GPIO Impl` |
-| LED 源码 | `03_Platform/platform_bsp/led/`，服务位于 `02_Service/service_indicator/` |
-| Host 回归 | Platform LED、BSP LED、Indicator Service、Platform GPIO、BSP GPIO：PASS |
-| Keil 构建 | 正常路径 Full Rebuild：0 errors；Phase 4 三源无警告 |
-| 目标板 LED | OFF / ON / 3 次闪烁 / 最终 OFF：PASS |
-| RTT | `start -> STOPPED -> RUNNING -> STOPPED -> ONCE_SUCCESS -> pass`：PASS |
-| UART 串口回归 | PASS：用户确认 Phase 4 本次计划全部完成，现有通信基线正常 |
-| Smoke 清理 | PASS：临时 FreeRTOS smoke 已从正常固件、`freertos.c` 和 Keil 工程移除 |
+- [开发路线书](00_Doc/04_Agent/development_roadmap.md)
+- [任务划分与实施计划](00_Doc/04_Agent/implementation_plan.md)
+- [工程交接](00_Doc/04_Agent/handoff.md)
+- [文档索引](00_Doc/README.md)
 
-下一阶段进入 `Phase 5 — Button Module` 专项设计。正式编码前先冻结 Button Platform/BSP、消抖、单击/双击/长按事件语义以及 Host/目标板验证方案，再更新 `00_Doc/04_Agent/implementation_plan.md`。
+升级顺序：CubeMX → CST816T 驱动 → LVGL 9.4.0 → GUI Guider。

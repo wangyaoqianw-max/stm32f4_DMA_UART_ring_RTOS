@@ -1,0 +1,70 @@
+{
+  "gui_guider_installed": "2.0.1.25",
+  "lvgl": "9.4.0",
+  "compiler": "ARMCC 5.06 update 7 build 960",
+  "current_project_options": {
+    "c99": true,
+    "gnu": false
+  },
+  "tested_config": "LVGL template; RGB565; LV_OS_NONE; 24 KiB memory pool; label selection enabled; dimensions 240x280",
+  "lvgl_compile": {
+    "total": 459,
+    "passed": 459,
+    "gnu": false
+  },
+  "bundled_ui_sample_compile": {
+    "total": 8,
+    "passed": 8,
+    "gnu": true,
+    "generator_tag": "V2.0.0"
+  },
+  "baseline_ui_probe": {
+    "passed": false,
+    "reason": "Three empty structs rejected with ARMCC error #169"
+  },
+  "gnu_ui_probe": {
+    "passed": true
+  },
+  "link": {
+    "exit_code": 0
+  },
+  "warning_categories": [
+    [
+      "#1-D: last line of file ends without a newline",
+      294
+    ],
+    [
+      "#188-D: enumerated type mixed with another type",
+      248
+    ],
+    [
+      "#111-D: statement is unreachable",
+      5
+    ],
+    [
+      "#68-D: integer conversion resulted in a change of sign",
+      5
+    ],
+    [
+      "#546-D: transfer of control bypasses initialization of:",
+      2
+    ],
+    [
+      "#191-D: type qualifier is meaningless on cast type",
+      1
+    ],
+    [
+      "#177-D: function \"nothing\"  was declared but never referenced",
+      1
+    ],
+    [
+      "#170-D: pointer points outside of underlying object",
+      1
+    ],
+    [
+      "#1293-D: assignment in condition",
+      1
+    ]
+  ],
+  "scope": "isolated software compile and link; no original firmware build, hardware validation, or actual user UI generation"
+}
