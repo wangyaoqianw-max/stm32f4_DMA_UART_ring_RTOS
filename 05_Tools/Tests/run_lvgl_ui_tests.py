@@ -41,6 +41,8 @@ if args.native:
 page_sources = list(generated.rglob('*.c'))
 test_source = project / 'Tests/ui_sensor_monitor' / ('native_layout_probe.c' if args.native else 'test_ui_sensor_monitor.c')
 if not args.native:
+    page_sources = [source for source in page_sources if source.parent.name != 'fonts']
+    page_sources += list((project / '01_APP/ui/fonts').glob('*.c'))
     page_sources += [project / '01_APP/ui/ui_sensor_monitor.c']
 cmake_text = '\n'.join([
     'cmake_minimum_required(VERSION 3.16)',

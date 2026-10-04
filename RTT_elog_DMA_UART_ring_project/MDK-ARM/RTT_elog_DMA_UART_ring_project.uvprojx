@@ -3179,22 +3179,22 @@
             <File>
               <FileName>lv_font_montserratMedium_10.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\01_APP\ui\generated\assets\fonts\lv_font_montserratMedium_10.c</FilePath>
+              <FilePath>..\01_APP\ui\fonts\lv_font_montserratMedium_10.c</FilePath>
             </File>
             <File>
               <FileName>lv_font_montserratMedium_12.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\01_APP\ui\generated\assets\fonts\lv_font_montserratMedium_12.c</FilePath>
+              <FilePath>..\01_APP\ui\fonts\lv_font_montserratMedium_12.c</FilePath>
             </File>
             <File>
               <FileName>lv_font_montserratMedium_14.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\01_APP\ui\generated\assets\fonts\lv_font_montserratMedium_14.c</FilePath>
+              <FilePath>..\01_APP\ui\fonts\lv_font_montserratMedium_14.c</FilePath>
             </File>
             <File>
               <FileName>lv_font_montserratMedium_24.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\01_APP\ui\generated\assets\fonts\lv_font_montserratMedium_24.c</FilePath>
+              <FilePath>..\01_APP\ui\fonts\lv_font_montserratMedium_24.c</FilePath>
             </File>
             <File>
               <FileName>gg_event_layer_bottom.c</FileName>

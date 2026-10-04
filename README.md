@@ -7,3 +7,7 @@
 - [任务划分](RTT_elog_DMA_UART_ring_project/00_Doc/04_Agent/implementation_plan.md)
 
 本次固件版本：**V1.1**；已验收产物与校验清单位于 [版本归档](06_Output/Releases/V1.1/README.md)。
+
+## 最新固件 v1.1.1（2026-10-04）
+
+字体优化已通过自动验证、烧录校验和实板显示验收。Flash 262092 B，比 V1.1 减少 73.4 KiB；RAM 94640 B 不变。[固件与校验清单](06_Output/Releases/v1.1.1/README.md)。V1.1 归档保留。

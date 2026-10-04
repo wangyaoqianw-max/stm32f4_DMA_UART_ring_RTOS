@@ -86,3 +86,8 @@ Thumbs.db
 !/06_Output/Releases/V1.1/*.hex
 !/06_Output/Releases/V1.1/*.axf
 !/06_Output/Releases/V1.1/*.map
+
+!/06_Output/Releases/v1.1.1/
+!/06_Output/Releases/v1.1.1/*.hex
+!/06_Output/Releases/v1.1.1/*.axf
+!/06_Output/Releases/v1.1.1/*.map

@@ -1,0 +1,42 @@
+{
+  "tool": "lv_font_conv",
+  "version": "1.5.3",
+  "bpp": 4,
+  "compressed": false,
+  "font_source": "GUI Guider 2.0.1 resources/assets/font/montserratMedium.ttf",
+  "font_sha256": "cd161cba3a3cdcf68ad721920fcd164c87e7b7cc9e6bad510278c3fa378d91d2",
+  "fonts": [
+    {
+      "size": 10,
+      "symbols": " %./ABCDEGHIKLMNOPRSTUXYZadefgilmnopqstuvy",
+      "file": "lv_font_montserratMedium_10.c",
+      "sha256": "9c897f363899c7177a1c9a2847d7920c65451c8f016b3b06cafac5f4f3976d4a",
+      "line_height": 12,
+      "base_line": 3
+    },
+    {
+      "size": 12,
+      "symbols": " +-.0123456789EIMNORST",
+      "file": "lv_font_montserratMedium_12.c",
+      "sha256": "07d82dfba7a0966d272ee6ff985edc26616e604db0cda5abb78bb37cca180aee",
+      "line_height": 15,
+      "base_line": 4
+    },
+    {
+      "size": 14,
+      "symbols": " ACEGILMNOPRST",
+      "file": "lv_font_montserratMedium_14.c",
+      "sha256": "2df864b0827273f250c609568cd4df2e90a4a69ebef2555d5be9648c9066c0cc",
+      "line_height": 17,
+      "base_line": 4
+    },
+    {
+      "size": 24,
+      "symbols": "+-.0123456789",
+      "file": "lv_font_montserratMedium_24.c",
+      "sha256": "e89592fda0ca95e286c4b72e3a7d3392b7f1a101d1618ee581ded6f16abc758b",
+      "line_height": 29,
+      "base_line": 7
+    }
+  ]
+}

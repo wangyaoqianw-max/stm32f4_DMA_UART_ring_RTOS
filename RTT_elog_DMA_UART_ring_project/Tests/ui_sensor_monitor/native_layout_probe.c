@@ -59,6 +59,16 @@ static int labels_fit(lv_obj_t *obj)
     uint32_t index;
     if (lv_obj_check_type(obj, &lv_label_class)) {
         lv_point_t size;
+        const lv_font_t *font = lv_obj_get_style_text_font(obj, 0);
+        const unsigned char *text = (const unsigned char *)lv_label_get_text(obj);
+        while (*text != 0U) {
+            lv_font_glyph_dsc_t glyph;
+            if (!font->get_glyph_dsc(font, &glyph, *text, 0U)) {
+                printf("MISSING GLYPH %u in %s\n", (unsigned int)*text, lv_label_get_text(obj));
+                return 1;
+            }
+            text++;
+        }
         lv_text_get_size(&size, lv_label_get_text(obj), lv_obj_get_style_text_font(obj, 0),
                          0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
         if (size.x > lv_obj_get_content_width(obj) || size.y > lv_obj_get_content_height(obj)) {

@@ -1,5 +1,11 @@
 # 工程长期记忆与交接说明
 
+## 字体优化状态（2026-10-04 / v1.1.1）
+
+工作区已完成四套字体字符裁剪与 4 bpp 转换；Host 43/43、Keil 0 errors / 380 warnings。Flash 从 V1.1 的 337252 B 降到 262092 B，RAM 94640 B 不变。优化产物已按用户授权烧录并校验，串口 STATUS 返回 STOPPED；用户确认文字均清晰可见，字体观感验收通过；本次按用户要求以 v1.1.1 交付，归档及校验清单位于 `06_Output/Releases/v1.1.1/`，对应 Git 标签 `v1.1.1`。原始 Guider 导出未改，固件使用独立 `01_APP/ui/fonts/`；V1.1 归档未覆盖。
+
+详见 [字体优化验证](evidence/2026-10-04_font_optimization/verification.md)。下面 V1.1 为已关闭交付记录。
+
 ## Sensor Monitor 接入状态（2026-10-04 / V1.1）
 
 GUI Guider 传感器页面已接入当前 `main`；八项数据及 START/STOP/ONCE 通过原有 Display/Control Task 绑定，原临时页已删除。**Host 43/43、Keil 完整重建 0 错误/380 告警；J-Link 烧录校验通过，用户确认显示与功能正常，本次功能移植交付完成。** 告警来自既有 Platform/Impl/第三方源码，APP 与生成源码无告警。

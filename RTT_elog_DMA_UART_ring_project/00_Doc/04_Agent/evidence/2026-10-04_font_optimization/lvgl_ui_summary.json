@@ -1,0 +1,7 @@
+{
+  "native": false,
+  "lv_mem_size": 24576,
+  "configure_exit": 0,
+  "compile_exit": 0,
+  "run_exit": 0
+}

@@ -1,0 +1,38 @@
+{
+  "version": "v1.1.1",
+  "date": "2026-10-04",
+  "git_tag": "v1.1.1",
+  "baseline": "V1.1",
+  "target": "STM32F411CE",
+  "interface": "SWD",
+  "speed_khz": 4000,
+  "description": "Sensor Monitor font subset optimization, 4 bpp",
+  "flash_bytes": 262092,
+  "ram_bytes": 94640,
+  "flash_saved_bytes": 75160,
+  "validation": {
+    "host_tests": "43/43 (recorded)",
+    "keil_errors": 0,
+    "keil_warnings": 380,
+    "flash_verified": true,
+    "board_font": "User confirmed all text clearly visible",
+    "board_high_water_and_worst_latency": "Not measured"
+  },
+  "artifacts": {
+    "axf": {
+      "file": "RTT_elog_DMA_UART_ring_project.axf",
+      "sha256": "4481351a924184f138c3245bcceab48d5517c7545bed0b310058c18cf11753fe",
+      "bytes": 6824104
+    },
+    "hex": {
+      "file": "RTT_elog_DMA_UART_ring_project.hex",
+      "sha256": "8ce6aa36dafe13234e21030494cedce9c22bdcf6d8514a78bb48c0ef26f60756",
+      "bytes": 736257
+    },
+    "map": {
+      "file": "RTT_elog_DMA_UART_ring_project.map",
+      "sha256": "73f232917c4d41e3142167d67ef2dd0a3d17c1afc40807e5e0ba0354374fd6c3",
+      "bytes": 1695267
+    }
+  }
+}
