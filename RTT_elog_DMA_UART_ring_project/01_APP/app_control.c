@@ -23,7 +23,8 @@
 static platform_bool_t app_control_is_source_valid(app_ctrl_source_t source)
 {
     return ((source == APP_CTRL_SOURCE_BUTTON) ||
-            (source == APP_CTRL_SOURCE_UART)) ? PLATFORM_TRUE : PLATFORM_FALSE;
+            (source == APP_CTRL_SOURCE_UART) ||
+            (source == APP_CTRL_SOURCE_UI)) ? PLATFORM_TRUE : PLATFORM_FALSE;
 }
 
 /** @brief 以非阻塞方式投递 Queue，并统一累计投递失败统计。 */
@@ -56,12 +57,36 @@ static platform_error_t app_control_send_indicator(
     return app_control_send_queue(control, control->config.indicatorQueue, &command);
 }
 
-/** @brief 仅为 UART 来源生成并投递控制响应。 */
+static void app_control_publish_status(app_control_t *control,
+    app_ctrl_source_t source,
+    platform_bool_t responseValid, app_control_response_t response,
+    platform_error_t requestResult)
+{
+    app_display_message_t message = {
+        .type = APP_DISPLAY_MESSAGE_CONTROL_STATUS,
+        .payload.controlStatus = {
+            .state = control->context.state,
+            .onceActive = control->context.onceActive,
+            .responseValid = responseValid,
+            .response = response,
+            .source = source,
+            .requestResult = requestResult
+        }
+    };
+
+    (void)app_control_send_queue(control, control->config.displayQueue, &message);
+}
+
+/** @brief 页面接收状态快照，UART 保留原有响应。 */
 static platform_error_t app_control_send_response(
     app_control_t *control,
     app_ctrl_source_t source,
     app_control_response_t response)
 {
+    app_control_publish_status(control, source,
+        (source == APP_CTRL_SOURCE_UI || response == APP_CONTROL_RESPONSE_OK_ONCE ||
+         response == APP_CONTROL_RESPONSE_ACQUISITION_FAILED) ? PLATFORM_TRUE : PLATFORM_FALSE,
+        response, PLATFORM_ERR_OK);
     if (source != APP_CTRL_SOURCE_UART) {
         return PLATFORM_ERR_OK;
     }
@@ -118,6 +143,7 @@ static platform_error_t app_control_handle_start(
     result = app_control_send_acquisition(
         control, APP_ACQUISITION_COMMAND_START_PERIODIC);
     if (result != PLATFORM_ERR_OK) {
+        app_control_publish_status(control, source, PLATFORM_TRUE, APP_CONTROL_RESPONSE_MAX, result);
         return result;
     }
 
@@ -149,6 +175,7 @@ static platform_error_t app_control_handle_stop(
     result = app_control_send_acquisition(
         control, APP_ACQUISITION_COMMAND_STOP_PERIODIC);
     if (result != PLATFORM_ERR_OK) {
+        app_control_publish_status(control, source, PLATFORM_TRUE, APP_CONTROL_RESPONSE_MAX, result);
         return result;
     }
 
@@ -183,6 +210,8 @@ static platform_error_t app_control_handle_sample_once(
     if (result != PLATFORM_ERR_OK) {
         control->context.onceActive = PLATFORM_FALSE;
     }
+    app_control_publish_status(control, source, result != PLATFORM_ERR_OK ? PLATFORM_TRUE : PLATFORM_FALSE,
+        APP_CONTROL_RESPONSE_MAX, result);
 
     return result;
 }

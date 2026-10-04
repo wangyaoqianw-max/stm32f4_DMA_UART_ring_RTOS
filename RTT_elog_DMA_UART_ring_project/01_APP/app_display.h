@@ -33,6 +33,7 @@ typedef struct
     platform_st7789_t *display;
     platform_spi_bus_t *spiBus;
     platform_queue_t *queue;
+    platform_queue_t *controlQueue;
     platform_cst816t_t *touch;
     platform_i2c_t *touchI2c;
     platform_gpio_t *touchScl;
@@ -45,6 +46,13 @@ typedef struct
 {
     app_control_state_t systemState;
     app_acquisition_data_t latestMeasurement;
+    app_control_ui_status_t controlStatus;
+    uint32_t requestDeadlineMs;
+    uint32_t nextStatusQueryMs;
+    platform_bool_t requestPending;
+    platform_bool_t controlStatusValid;
+    platform_bool_t requestTimedOut;
+    platform_bool_t sampleFailed;
     platform_cst816t_sample_t touchSample;
     platform_error_t touchLastError;
     platform_error_t guiLastError;
@@ -79,7 +87,7 @@ platform_error_t app_display_init(
     app_display_t *appDisplay,
     const app_display_config_t *config);
 
-/** @brief 在 Display Task Context 初始化 LCD 和临时 LVGL 页面。 */
+/** @brief 在 Display Task Context 初始化 LCD 和 Guider 页面。 */
 platform_error_t app_display_start(app_display_t *appDisplay);
 
 /** @brief 有界消费显示消息并服务触摸；最大等待5ms，不含同步I/O耗时。 */

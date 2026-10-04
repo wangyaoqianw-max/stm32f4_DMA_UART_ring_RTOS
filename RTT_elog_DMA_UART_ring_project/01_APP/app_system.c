@@ -285,6 +285,7 @@ platform_error_t app_system_init(void)
         .display = &g_display,
         .spiBus = &g_displaySpiBus,
         .queue = &g_displayQueue,
+        .controlQueue = &g_controlQueue,
         .touch = &g_touch,
         .touchI2c = &g_touchI2c,
         .touchScl = &g_touchScl,

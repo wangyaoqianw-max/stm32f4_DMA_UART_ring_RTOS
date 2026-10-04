@@ -482,6 +482,7 @@ platform_error_t app_display_init(
     TEST_ASSERT(config->display != NULL);
     TEST_ASSERT(config->spiBus != NULL);
     TEST_ASSERT(config->queue == g_fakeRuntime.displayQueue);
+    TEST_ASSERT(config->controlQueue == g_fakeRuntime.controlQueue);
     g_fakeRuntime.displayConfig = *config;
     fake_record_app();
     return PLATFORM_ERR_OK;

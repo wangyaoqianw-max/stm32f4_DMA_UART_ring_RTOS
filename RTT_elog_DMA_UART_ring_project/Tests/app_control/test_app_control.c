@@ -37,6 +37,7 @@ typedef struct
     app_indicator_command_t indicatorMessages[8];
     platform_error_t queueSendResult;
     platform_error_t displayQueueSendResult;
+    platform_error_t acquisitionQueueSendResult;
     platform_error_t queueReceiveResult;
     platform_error_t buttonReadResult;
     platform_error_t buttonProcessResult;
@@ -268,7 +269,7 @@ static int test_queue_failure_is_observable_and_does_not_change_state(void)
     TEST_ASSERT(app_control_process_event(
                 &control, APP_CTRL_START, APP_CTRL_SOURCE_UART) == PLATFORM_ERR_FULL);
     TEST_ASSERT(control.context.state == APP_CONTROL_STATE_STOPPED);
-    TEST_ASSERT(control.statistics.queueSubmitFailureCount == 1U);
+    TEST_ASSERT(control.statistics.queueSubmitFailureCount == 2U);
 
     return 0;
 }
@@ -329,7 +330,7 @@ static int test_display_publish_failure_does_not_roll_back_control_state(void)
     TEST_ASSERT(control.context.state == APP_CONTROL_STATE_RUNNING);
     TEST_ASSERT(g_fakeRuntime.indicatorMessages[0] == APP_INDICATOR_RUNNING);
     TEST_ASSERT(g_fakeRuntime.communicationMessages[0] == APP_CONTROL_RESPONSE_OK_START);
-    TEST_ASSERT(control.statistics.queueSubmitFailureCount == 1U);
+    TEST_ASSERT(control.statistics.queueSubmitFailureCount == 2U);
 
     return 0;
 }
@@ -411,6 +412,9 @@ platform_error_t platform_queue_send(
         return g_fakeRuntime.queueSendResult;
     }
     if (queue == &g_fakeRuntime.acquisitionQueue) {
+        if (g_fakeRuntime.acquisitionQueueSendResult != PLATFORM_ERR_OK) {
+            return g_fakeRuntime.acquisitionQueueSendResult;
+        }
         g_fakeRuntime.acquisitionMessages[g_fakeRuntime.acquisitionCount++] =
             *(const app_acquisition_command_t *)item;
     } else if (queue == &g_fakeRuntime.communicationQueue) {
@@ -481,9 +485,70 @@ platform_error_t platform_time_delay_ms(uint32_t delayMs)
     return PLATFORM_ERR_OK;
 }
 
+static int test_ui_source_uses_same_fsm(void)
+{
+    platform_button_t button = PLATFORM_BUTTON_INITIALIZER;
+    service_button_t service = SERVICE_BUTTON_INITIALIZER;
+    app_control_t control;
+
+    fake_runtime_reset();
+    control = create_control(&button, &service);
+    TEST_ASSERT(app_control_process_event(&control, APP_CTRL_START,
+                APP_CTRL_SOURCE_UI) == PLATFORM_ERR_OK);
+    TEST_ASSERT(control.context.state == APP_CONTROL_STATE_RUNNING);
+    TEST_ASSERT(g_fakeRuntime.acquisitionCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.communicationCount == 0U);
+    TEST_ASSERT(g_fakeRuntime.displayMessages[1].payload.controlStatus.responseValid == PLATFORM_TRUE);
+    TEST_ASSERT(g_fakeRuntime.displayMessages[1].payload.controlStatus.source == APP_CTRL_SOURCE_UI);
+    fake_clear_outputs();
+    TEST_ASSERT(app_control_process_event(&control, APP_CTRL_STOP, APP_CTRL_SOURCE_UI) == PLATFORM_ERR_OK);
+    TEST_ASSERT(control.context.state == APP_CONTROL_STATE_STOPPED);
+    fake_clear_outputs();
+    g_fakeRuntime.acquisitionQueueSendResult = PLATFORM_ERR_FULL;
+    TEST_ASSERT(app_control_process_event(&control, APP_CTRL_START, APP_CTRL_SOURCE_UI) == PLATFORM_ERR_FULL);
+    TEST_ASSERT(control.context.state == APP_CONTROL_STATE_STOPPED);
+    TEST_ASSERT(g_fakeRuntime.displayCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.displayMessages[0].payload.controlStatus.requestResult == PLATFORM_ERR_FULL);
+    TEST_ASSERT(g_fakeRuntime.displayMessages[0].payload.controlStatus.responseValid == PLATFORM_TRUE);
+    g_fakeRuntime.acquisitionQueueSendResult = PLATFORM_ERR_OK;
+    fake_clear_outputs();
+    TEST_ASSERT(app_control_process_event(&control, APP_CTRL_SAMPLE_ONCE, APP_CTRL_SOURCE_UI) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.displayMessages[0].payload.controlStatus.onceActive == PLATFORM_TRUE);
+    TEST_ASSERT(g_fakeRuntime.displayMessages[0].payload.controlStatus.source == APP_CTRL_SOURCE_UI);
+    fake_clear_outputs();
+    TEST_ASSERT(app_control_process_event(&control, APP_CTRL_START, APP_CTRL_SOURCE_UI) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.displayMessages[0].payload.controlStatus.response == APP_CONTROL_RESPONSE_BUSY);
+    return 0;
+}
+
+static int test_external_once_publishes_busy_to_display(void)
+{
+    platform_button_t button = PLATFORM_BUTTON_INITIALIZER;
+    service_button_t service = SERVICE_BUTTON_INITIALIZER;
+    app_control_t control;
+
+    fake_runtime_reset();
+    control = create_control(&button, &service);
+    TEST_ASSERT(app_control_process_event(&control, APP_CTRL_SAMPLE_ONCE,
+                APP_CTRL_SOURCE_UART) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.displayCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.displayMessages[0].payload.controlStatus.onceActive == PLATFORM_TRUE);
+    TEST_ASSERT(g_fakeRuntime.displayMessages[0].payload.controlStatus.source == APP_CTRL_SOURCE_UART);
+    return 0;
+}
+
 int main(void)
 {
-    int result = test_boots_stopped_and_initializes_deadline();
+    int result = test_ui_source_uses_same_fsm();
+
+    if (result != 0) {
+        return result;
+    }
+    result = test_external_once_publishes_busy_to_display();
+    if (result != 0) {
+        return result;
+    }
+    result = test_boots_stopped_and_initializes_deadline();
 
     if (result != 0) {
         return result;

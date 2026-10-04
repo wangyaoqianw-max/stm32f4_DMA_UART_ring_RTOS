@@ -13,7 +13,7 @@
 #include "app_display.h"
 #include "platform_gui.h"
 #include "service_log.h"
-#include "ui_smoke.h"
+#include "ui_sensor_monitor.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -24,6 +24,18 @@
 typedef struct
 {
     platform_queue_t queue;
+    platform_queue_t controlQueue;
+    app_control_event_handler_t handler;
+    void *handlerContext;
+    app_control_message_t requests[16];
+    app_control_ui_status_t status;
+    platform_error_t sendResult;
+    platform_bool_t pending;
+    uint32_t requestCount;
+    uint32_t nowMs;
+    uint32_t requestFailureCount;
+    uint32_t sampleFailureCount;
+    uint32_t measurementUpdateCount;
     platform_cst816t_t touch;
     platform_i2c_t touchI2c;
     platform_gpio_t touchScl;
@@ -61,6 +73,8 @@ static void fake_reset(void)
 {
     (void)memset(&g_fake, 0, sizeof(g_fake));
     g_fake.queue.native = &g_fake.queue;
+    g_fake.controlQueue.native = &g_fake.controlQueue;
+    g_fake.nowMs = 100U;
     g_fake.thread.native = &g_fake.thread;
 }
 
@@ -72,6 +86,7 @@ static app_display_t create_display(platform_st7789_t *display,
         .display = display,
         .spiBus = spiBus,
         .queue = &g_fake.queue,
+        .controlQueue = &g_fake.controlQueue,
         .touch = &g_fake.touch,
         .touchI2c = &g_fake.touchI2c,
         .touchScl = &g_fake.touchScl,
@@ -289,9 +304,44 @@ platform_error_t platform_gui_process(void)
     return g_fake.guiProcessResult;
 }
 
-platform_error_t ui_smoke_create(void)
+platform_error_t ui_sensor_monitor_create(app_control_event_handler_t handler, void *context)
 {
     g_fake.uiCreateCount++;
+    g_fake.handler = handler;
+    g_fake.handlerContext = context;
+    return PLATFORM_ERR_OK;
+}
+
+void ui_sensor_monitor_update_control(const app_control_ui_status_t *status, platform_bool_t pending)
+{
+    g_fake.status = *status;
+    g_fake.pending = pending;
+}
+
+void ui_sensor_monitor_update_measurement(const app_acquisition_data_t *measurement)
+{
+    (void)measurement;
+    g_fake.measurementUpdateCount++;
+}
+
+void ui_sensor_monitor_show_request_failure(void)
+{
+    g_fake.requestFailureCount++;
+}
+
+void ui_sensor_monitor_show_sample_failure(void)
+{
+    g_fake.sampleFailureCount++;
+}
+
+platform_error_t platform_queue_send(platform_queue_t *queue, const void *item, uint32_t timeoutMs)
+{
+    TEST_ASSERT(queue == &g_fake.controlQueue);
+    TEST_ASSERT(timeoutMs == PLATFORM_OS_NO_WAIT);
+    if (g_fake.sendResult != PLATFORM_ERR_OK) {
+        return g_fake.sendResult;
+    }
+    g_fake.requests[g_fake.requestCount++] = *(const app_control_message_t *)item;
     return PLATFORM_ERR_OK;
 }
 
@@ -299,7 +349,7 @@ platform_error_t platform_queue_receive(platform_queue_t *queue, void *item,
                                         uint32_t timeoutMs)
 {
     TEST_ASSERT(queue == &g_fake.queue);
-    g_fake.receiveTimeouts[g_fake.receiveCount++] = timeoutMs;
+    g_fake.receiveTimeouts[g_fake.receiveCount++ % TEST_MESSAGE_CAPACITY] = timeoutMs;
     if (g_fake.messageReadIndex >= g_fake.messageCount) {
         return (timeoutMs == PLATFORM_OS_NO_WAIT) ? PLATFORM_ERR_EMPTY : PLATFORM_ERR_TIMEOUT;
     }
@@ -315,7 +365,7 @@ platform_error_t platform_time_delay_ms(uint32_t delayMs)
 
 platform_error_t platform_time_get_ms(uint32_t *timeMs)
 {
-    *timeMs = 100U;
+    *timeMs = g_fake.nowMs;
     return PLATFORM_ERR_OK;
 }
 
@@ -393,6 +443,113 @@ platform_log_output_fn_t platform_log_get_output_fn(void)
     return fake_log_output;
 }
 
+static int test_ui_request_waits_for_confirmation_and_recovers_lost_response(void)
+{
+    platform_st7789_t display = PLATFORM_ST7789_INITIALIZER;
+    platform_spi_bus_t bus = PLATFORM_SPI_BUS_INITIALIZER;
+    app_display_t appDisplay;
+    app_display_message_t message = {0};
+    uint32_t requests;
+
+    fake_reset();
+    appDisplay = create_display(&display, &bus);
+    TEST_ASSERT(app_display_start(&appDisplay) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fake.handler != NULL);
+    message.type = APP_DISPLAY_MESSAGE_CONTROL_STATUS;
+    message.payload.controlStatus.state = APP_CONTROL_STATE_STOPPED;
+    enqueue(message);
+    TEST_ASSERT(app_display_run_once(&appDisplay) == PLATFORM_ERR_OK);
+    g_fake.requestCount = 0U;
+    TEST_ASSERT(g_fake.handler(g_fake.handlerContext, APP_CTRL_START) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fake.requests[0].payload.request.source == APP_CTRL_SOURCE_UI);
+    TEST_ASSERT(g_fake.requests[0].payload.request.event == APP_CTRL_START);
+    TEST_ASSERT(appDisplay.context.requestPending == PLATFORM_TRUE);
+    TEST_ASSERT(appDisplay.context.systemState == APP_CONTROL_STATE_STOPPED);
+    TEST_ASSERT(g_fake.pending == PLATFORM_TRUE);
+    message.payload.controlStatus.responseValid = PLATFORM_TRUE;
+    message.payload.controlStatus.response = APP_CONTROL_RESPONSE_OK_ONCE;
+    message.payload.controlStatus.source = APP_CTRL_SOURCE_UART;
+    enqueue(message);
+    TEST_ASSERT(app_display_run_once(&appDisplay) == PLATFORM_ERR_OK);
+    TEST_ASSERT(appDisplay.context.requestPending == PLATFORM_TRUE);
+    /* 点击前已在队列中的查询响应不能充当这次 START 的执行确认。 */
+    message.payload.controlStatus.responseValid = PLATFORM_TRUE;
+    message.payload.controlStatus.response = APP_CONTROL_RESPONSE_STATUS_STOPPED;
+    message.payload.controlStatus.source = APP_CTRL_SOURCE_UI;
+    enqueue(message);
+    g_fake.nowMs = 500U;
+    TEST_ASSERT(app_display_run_once(&appDisplay) == PLATFORM_ERR_OK);
+    TEST_ASSERT(appDisplay.context.requestPending == PLATFORM_TRUE);
+    g_fake.nowMs = 1099U;
+    TEST_ASSERT(app_display_run_once(&appDisplay) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fake.requestCount == 1U);
+    g_fake.nowMs = 1100U;
+    TEST_ASSERT(app_display_run_once(&appDisplay) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fake.requests[1].payload.request.event == APP_CTRL_GET_STATUS);
+    requests = g_fake.requestCount;
+    g_fake.nowMs = 1200U;
+    TEST_ASSERT(app_display_run_once(&appDisplay) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fake.requestCount == requests);
+    message.payload.controlStatus.state = APP_CONTROL_STATE_RUNNING;
+    message.payload.controlStatus.responseValid = PLATFORM_TRUE;
+    message.payload.controlStatus.response = APP_CONTROL_RESPONSE_STATUS_RUNNING;
+    message.payload.controlStatus.source = APP_CTRL_SOURCE_UI;
+    enqueue(message);
+    TEST_ASSERT(app_display_run_once(&appDisplay) == PLATFORM_ERR_OK);
+    TEST_ASSERT(appDisplay.context.requestPending == PLATFORM_FALSE);
+    TEST_ASSERT(g_fake.status.state == APP_CONTROL_STATE_RUNNING);
+    TEST_ASSERT(g_fake.pending == PLATFORM_FALSE);
+    return 0;
+}
+
+static int test_queue_full_and_external_once_do_not_stick_or_corrupt_cache(void)
+{
+    platform_st7789_t display = PLATFORM_ST7789_INITIALIZER;
+    platform_spi_bus_t bus = PLATFORM_SPI_BUS_INITIALIZER;
+    app_display_t appDisplay;
+    app_display_message_t message = {0};
+
+    fake_reset();
+    appDisplay = create_display(&display, &bus);
+    TEST_ASSERT(app_display_start(&appDisplay) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fake.handler != NULL);
+    message.type = APP_DISPLAY_MESSAGE_CONTROL_STATUS;
+    message.payload.controlStatus.state = APP_CONTROL_STATE_STOPPED;
+    enqueue(message);
+    TEST_ASSERT(app_display_run_once(&appDisplay) == PLATFORM_ERR_OK);
+    g_fake.sendResult = PLATFORM_ERR_FULL;
+    TEST_ASSERT(g_fake.handler(g_fake.handlerContext, APP_CTRL_SAMPLE_ONCE) == PLATFORM_ERR_FULL);
+    TEST_ASSERT(appDisplay.context.requestPending == PLATFORM_FALSE);
+    TEST_ASSERT(g_fake.requestFailureCount == 1U);
+    g_fake.sendResult = PLATFORM_ERR_OK;
+    message.payload.controlStatus.onceActive = PLATFORM_TRUE;
+    enqueue(message);
+    message.type = APP_DISPLAY_MESSAGE_SYSTEM_STATE;
+    message.payload.systemState = APP_CONTROL_STATE_RUNNING;
+    enqueue(message);
+    TEST_ASSERT(app_display_run_once(&appDisplay) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fake.status.onceActive == PLATFORM_TRUE);
+    TEST_ASSERT(g_fake.status.state == APP_CONTROL_STATE_STOPPED);
+    TEST_ASSERT(g_fake.handler(g_fake.handlerContext, APP_CTRL_START) == PLATFORM_ERR_BUSY);
+    message.type = APP_DISPLAY_MESSAGE_CONTROL_STATUS;
+    memset(&message.payload.controlStatus, 0, sizeof(message.payload.controlStatus));
+    message.payload.controlStatus.responseValid = PLATFORM_TRUE;
+    message.payload.controlStatus.response = APP_CONTROL_RESPONSE_ACQUISITION_FAILED;
+    enqueue(message);
+    TEST_ASSERT(app_display_run_once(&appDisplay) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fake.status.onceActive == PLATFORM_FALSE);
+    message.type = APP_DISPLAY_MESSAGE_MEASUREMENT;
+    message.payload.measurement.environment.temperatureC = 25.0F;
+    enqueue(message);
+    message.type = APP_DISPLAY_MESSAGE_ACQUISITION_FAILURE;
+    message.payload.acquisitionResult = PLATFORM_ERR_IO;
+    enqueue(message);
+    TEST_ASSERT(app_display_run_once(&appDisplay) == PLATFORM_ERR_OK);
+    TEST_ASSERT(appDisplay.context.latestMeasurement.environment.temperatureC == 25.0F);
+    TEST_ASSERT(g_fake.sampleFailureCount == 1U);
+    return 0;
+}
+
 int main(void)
 {
     static int (*const tests[])(void) = {
@@ -402,7 +559,9 @@ int main(void)
         test_touch_failure_still_services_gui,
         test_queue_budget_retains_latest_cache_and_runs_gui,
         test_empty_queue_services_touch_and_gui,
-        test_flush_failure_is_local
+        test_flush_failure_is_local,
+        test_ui_request_waits_for_confirmation_and_recovers_lost_response,
+        test_queue_full_and_external_once_do_not_stick_or_corrupt_cache
     };
     uint32_t index;
     uint32_t failures = 0U;
@@ -414,6 +573,7 @@ int main(void)
             (void)printf("FAIL app_display[%u]:%d\n", (unsigned)index, result);
         }
     }
-    (void)printf("Display: %u/7 PASS\n", (unsigned)(7U - failures));
+    (void)printf("Display: %u/%u PASS\n", (unsigned)(sizeof(tests) / sizeof(tests[0]) - failures),
+        (unsigned)(sizeof(tests) / sizeof(tests[0])));
     return (failures == 0U) ? 0 : 1;
 }

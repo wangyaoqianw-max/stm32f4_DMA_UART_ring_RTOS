@@ -22,6 +22,10 @@
 
 _Static_assert(APP_CTRL_SOURCE_BUTTON != APP_CTRL_SOURCE_UART,
                "control sources must be distinct");
+_Static_assert(APP_CTRL_SOURCE_UI != APP_CTRL_SOURCE_UART && APP_CTRL_SOURCE_UI != APP_CTRL_SOURCE_BUTTON,
+               "UI source must be distinct");
+_Static_assert(sizeof(app_control_ui_status_t) <= sizeof(app_acquisition_data_t),
+               "new status must not increase Display Queue item size");
 _Static_assert(APP_CONTROL_MESSAGE_CONTROL_REQUEST != APP_CONTROL_MESSAGE_ONCE_COMPLETE,
                "control message kinds must be distinct");
 _Static_assert(APP_ACQUISITION_COMMAND_START_PERIODIC != APP_ACQUISITION_COMMAND_SAMPLE_ONCE,
@@ -57,6 +61,12 @@ int main(void)
     TEST_ASSERT(displayMessage.payload.measurement.motion.accelZG == 1.0F);
 
     TEST_ASSERT(APP_CONTROL_RESPONSE_OK_ONCE < APP_CONTROL_RESPONSE_MAX);
+    displayMessage.type = APP_DISPLAY_MESSAGE_CONTROL_STATUS;
+    displayMessage.payload.controlStatus.state = APP_CONTROL_STATE_STOPPED;
+    displayMessage.payload.controlStatus.onceActive = PLATFORM_TRUE;
+    displayMessage.payload.controlStatus.requestResult = PLATFORM_ERR_FULL;
+    TEST_ASSERT(displayMessage.payload.controlStatus.onceActive == PLATFORM_TRUE);
+    TEST_ASSERT(displayMessage.payload.controlStatus.requestResult == PLATFORM_ERR_FULL);
 
     return 0;
 }

@@ -322,9 +322,41 @@ platform_error_t platform_time_delay_ms(uint32_t delayMs)
     return PLATFORM_ERR_OK;
 }
 
+static int test_periodic_failure_notifies_display(void)
+{
+    service_acquisition_t service = SERVICE_ACQUISITION_INITIALIZER;
+    app_acquisition_t acquisition;
+
+    fake_runtime_reset();
+    acquisition = create_acquisition(&service);
+    g_fakeRuntime.sampleResult = PLATFORM_ERR_CHECKSUM;
+    fake_enqueue_command(APP_ACQUISITION_COMMAND_START_PERIODIC);
+    TEST_ASSERT(app_acquisition_run_once(&acquisition) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.displayCount == 1U);
+    TEST_ASSERT(g_fakeRuntime.displayMessages[0].type == APP_DISPLAY_MESSAGE_ACQUISITION_FAILURE);
+    TEST_ASSERT(g_fakeRuntime.displayMessages[0].payload.acquisitionResult == PLATFORM_ERR_CHECKSUM);
+    TEST_ASSERT(g_fakeRuntime.controlCount == 0U);
+    g_fakeRuntime.nowMs = 2100U;
+    g_fakeRuntime.queueSendResult = PLATFORM_ERR_FULL;
+    TEST_ASSERT(app_acquisition_run_once(&acquisition) == PLATFORM_ERR_OK);
+    TEST_ASSERT(acquisition.statistics.queueSubmitFailureCount == 1U);
+    g_fakeRuntime.nowMs = 4100U;
+    g_fakeRuntime.enqueueStopDuringSample = PLATFORM_TRUE;
+    g_fakeRuntime.queueSendResult = PLATFORM_ERR_OK;
+    TEST_ASSERT(app_acquisition_run_once(&acquisition) == PLATFORM_ERR_OK);
+    TEST_ASSERT(g_fakeRuntime.displayCount == 1U);
+    TEST_ASSERT(acquisition.context.periodicEnabled == PLATFORM_FALSE);
+    return 0;
+}
+
 int main(void)
 {
-    int result = test_init_validates_dependencies_and_starts_disabled();
+    int result = test_periodic_failure_notifies_display();
+
+    if (result != 0) {
+        return result;
+    }
+    result = test_init_validates_dependencies_and_starts_disabled();
 
     if (result != 0) {
         return result;

@@ -138,6 +138,13 @@ static platform_error_t app_acquisition_execute_periodic(
         return PLATFORM_ERR_OK;
     }
     if (sampleResult != PLATFORM_ERR_OK) {
+        app_display_message_t message = {
+            .type = APP_DISPLAY_MESSAGE_ACQUISITION_FAILURE,
+            .payload.acquisitionResult = sampleResult
+        };
+
+        (void)app_acquisition_send_queue(acquisition, acquisition->config.displayQueue,
+            &message, PLATFORM_OS_NO_WAIT);
         return PLATFORM_ERR_OK;
     }
 

@@ -1,5 +1,13 @@
 # 工程长期记忆与交接说明
 
+## Sensor Monitor 接入状态（2026-10-04 / V1.1）
+
+GUI Guider 传感器页面已接入当前 `main`；八项数据及 START/STOP/ONCE 通过原有 Display/Control Task 绑定，原临时页已删除。**Host 43/43、Keil 完整重建 0 错误/380 告警；J-Link 烧录校验通过，用户确认显示与功能正常，本次功能移植交付完成。** 告警来自既有 Platform/Impl/第三方源码，APP 与生成源码无告警。
+
+RAM 94640 B，剩余 SRAM 36432 B；Flash 337252 B。LVGL 池仍为 24 KiB，真实 Host 页面测试结束剩余 3552 B；板上高水位未测。温湿度标签高度由 APP 修正到字体实际行高，原生设计源已同步，当前生成文件尚未重新导出该坐标修正。
+
+提交推送已获用户明确授权；本次板上高水位和最坏时延未测。详见 [实板交付记录](evidence/2026-10-04_guider_sensor_monitor/board_delivery.md)、[自动验证记录](evidence/2026-10-04_guider_sensor_monitor/verification.md)、[专项执行计划](GUI_Guider_Sensor_Monitor_Execution_Plan.md)、`01_APP/ui/generated/README.md`。下文为已关闭阶段的历史记录；当前 GUI 状态以本段为准。
+
 ## 本次升级状态（2026-10-03）
 
 当前状态：**本轮 LVGL 9.4 最小移植 CLOSED；整体触屏 → LVGL → GUI Guider 路线仍有 D 阶段未实施**。
@@ -39,13 +47,13 @@ UART Product Output Migration             COMPLETE / HOST + KEIL + TARGET FUNCTI
 ONCE Semantic Migration                   COMPLETE / HOST + KEIL + TARGET FUNCTION VERIFIED
 Touch / CTP                               IMPLEMENTED / HOST + TARGET SAMPLING VERIFIED
 Touch precise mapping / worst latency     NOT_VERIFIED
-LVGL / GUI Guider                         NOT_IMPLEMENTED
+LVGL / GUI Guider                         IMPLEMENTED / TARGET FUNCTION VERIFIED (2026-10-04)
 
 RTOS Display Integration                  COMPLETE
 Host Full Regression                      PASS 41/41 (2026-10-03)
 Keil Full Rebuild                         PASS / 0 ERRORS
 Target Functional Verification            PASS
-Current Active Implementation Plan        TOUCH + LVGL94 + GUIDER / IN_PROGRESS
+Current Active Implementation Plan        SENSOR MONITOR / FUNCTION DELIVERY CLOSED (2026-10-04)
 ```
 
 未作为当前功能阶段关闭阻塞项执行：

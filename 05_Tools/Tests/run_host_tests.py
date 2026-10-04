@@ -1,6 +1,9 @@
 """Run firmware Host tests from the repository root; requires Python 3.9+ and GCC."""
 from pathlib import Path
-import subprocess,json,re,sys
+import subprocess,json,re,sys,argparse
+parser=argparse.ArgumentParser()
+parser.add_argument('--suite',action='append')
+args=parser.parse_args()
 p=Path('RTT_elog_DMA_UART_ring_project');out=Path('06_Output/Logs/host_tests');out.mkdir(parents=True,exist_ok=True)
 incs=[p/'00_Config',p/'01_APP',p/'01_APP/ui']+[d for b in ['02_Service','03_Platform','04_Impl','05_Vendors'] for d in (p/b).rglob('*') if d.is_dir() and 'lvgl' not in d.parts]
 mapSources={
@@ -34,6 +37,15 @@ mapSources['platform_st7789'] += [spi,gpio]+common
 results=[]
 for f in sorted((p/'Tests').glob('*/test_*.c')):
  name=f.stem;suite=f.parent.name;src=[];content=f.read_text(encoding='utf8')
+ if args.suite and suite not in args.suite:continue
+ if suite=='ui_sensor_monitor':
+  r=subprocess.run([sys.executable,'05_Tools/Tests/run_lvgl_ui_tests.py'],capture_output=True,text=True)
+  (out/(name+'.run.log')).write_text(r.stdout+r.stderr,encoding='utf8')
+  detail=json.loads((out/'lvgl_ui_summary.json').read_text(encoding='utf8'))
+  item={'test':name,'compile_exit':detail.get('compile_exit',1),'run_exit':detail.get('run_exit',1)}
+  results.append(item)
+  print(name,'PASS' if item['run_exit']==0 else 'FAIL')
+  continue
  if name.endswith(('_types','_headers')) or suite in ['project_config','app_ipc_types']:pass
  elif suite in mapSources:src=[p/s for s in mapSources[suite]]
  elif re.search(r'#include\s+"[^"\n]+\.c"',content):pass

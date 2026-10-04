@@ -337,7 +337,7 @@
               <MiscControls />
               <Define>USE_HAL_DRIVER,STM32F411xE,LV_CONF_INCLUDE_SIMPLE</Define>
               <Undefine />
-              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;../05_vendors/RTT;../05_vendors/easylogger/inc;../05_vendors/easylogger/plugins/file;../05_vendors/easylogger/plugins/flash;../04_Impl/impl_middleware/impl_log;../03_Platform/platform_middleware;../03_Platform/platform_common;../03_Platform/platform_os;../03_Platform/platform_mcu/uart;../03_Platform/platform_mcu/gpio;../03_Platform/platform_mcu/i2c;../03_Platform/platform_mcu/spi;../03_Platform/platform_bsp;../03_Platform/platform_bsp/button;../03_Platform/platform_bsp/dht20;../03_Platform/platform_bsp/mpu6050;../03_Platform/platform_bsp/st7789;../03_Platform/platform_graphics;../03_Platform/platform_graphics/font;../04_Impl/impl_mcu;../04_Impl/impl_os/freertos;../04_Impl/impl_board;../02_Service/service_common;../02_Service/service_uart;../02_Service/service_log;../02_Service/service_indicator;../02_Service/service_button;../02_Service/service_acquisition;../00_Config;../01_APP;..\03_Platform\platform_bsp\cst816t;..\05_Vendors\lvgl;..\03_Platform\platform_gui;..\01_APP\ui</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;../05_vendors/RTT;../05_vendors/easylogger/inc;../05_vendors/easylogger/plugins/file;../05_vendors/easylogger/plugins/flash;../04_Impl/impl_middleware/impl_log;../03_Platform/platform_middleware;../03_Platform/platform_common;../03_Platform/platform_os;../03_Platform/platform_mcu/uart;../03_Platform/platform_mcu/gpio;../03_Platform/platform_mcu/i2c;../03_Platform/platform_mcu/spi;../03_Platform/platform_bsp;../03_Platform/platform_bsp/button;../03_Platform/platform_bsp/dht20;../03_Platform/platform_bsp/mpu6050;../03_Platform/platform_bsp/st7789;../03_Platform/platform_graphics;../03_Platform/platform_graphics/font;../04_Impl/impl_mcu;../04_Impl/impl_os/freertos;../04_Impl/impl_board;../02_Service/service_common;../02_Service/service_uart;../02_Service/service_log;../02_Service/service_indicator;../02_Service/service_button;../02_Service/service_acquisition;../00_Config;../01_APP;..\03_Platform\platform_bsp\cst816t;..\05_Vendors\lvgl;..\03_Platform\platform_gui;..\01_APP\ui;..\01_APP\ui\generated;..\01_APP\ui\custom</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -756,9 +756,9 @@
               <FilePath>..\01_APP\app_display.c</FilePath>
             </File>
             <File>
-              <FileName>ui_smoke.c</FileName>
+              <FileName>ui_sensor_monitor.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\01_APP\ui\ui_smoke.c</FilePath>
+              <FilePath>..\01_APP\ui\ui_sensor_monitor.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -3170,6 +3170,76 @@
               <FileName>lv_win.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\05_Vendors\lvgl\src\widgets\win\lv_win.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>GUI_Guider_Generated</GroupName>
+          <Files>
+            <File>
+              <FileName>lv_font_montserratMedium_10.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\01_APP\ui\generated\assets\fonts\lv_font_montserratMedium_10.c</FilePath>
+            </File>
+            <File>
+              <FileName>lv_font_montserratMedium_12.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\01_APP\ui\generated\assets\fonts\lv_font_montserratMedium_12.c</FilePath>
+            </File>
+            <File>
+              <FileName>lv_font_montserratMedium_14.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\01_APP\ui\generated\assets\fonts\lv_font_montserratMedium_14.c</FilePath>
+            </File>
+            <File>
+              <FileName>lv_font_montserratMedium_24.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\01_APP\ui\generated\assets\fonts\lv_font_montserratMedium_24.c</FilePath>
+            </File>
+            <File>
+              <FileName>gg_event_layer_bottom.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\01_APP\ui\generated\events\gg_event_layer_bottom.c</FilePath>
+            </File>
+            <File>
+              <FileName>gg_event_layer_sys.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\01_APP\ui\generated\events\gg_event_layer_sys.c</FilePath>
+            </File>
+            <File>
+              <FileName>gg_event_layer_top.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\01_APP\ui\generated\events\gg_event_layer_top.c</FilePath>
+            </File>
+            <File>
+              <FileName>gg_event_screen.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\01_APP\ui\generated\events\gg_event_screen.c</FilePath>
+            </File>
+            <File>
+              <FileName>gg_utils.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\01_APP\ui\generated\gg_utils.c</FilePath>
+            </File>
+            <File>
+              <FileName>gg_layer_bottom.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\01_APP\ui\generated\screens\gg_layer_bottom.c</FilePath>
+            </File>
+            <File>
+              <FileName>gg_layer_sys.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\01_APP\ui\generated\screens\gg_layer_sys.c</FilePath>
+            </File>
+            <File>
+              <FileName>gg_layer_top.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\01_APP\ui\generated\screens\gg_layer_top.c</FilePath>
+            </File>
+            <File>
+              <FileName>gg_screen.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\01_APP\ui\generated\screens\gg_screen.c</FilePath>
             </File>
           </Files>
         </Group>

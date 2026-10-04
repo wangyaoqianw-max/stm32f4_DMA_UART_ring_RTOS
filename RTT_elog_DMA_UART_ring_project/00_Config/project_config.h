@@ -121,6 +121,9 @@
 /* 队列等待不被线程通知唤醒，限制等待与每轮消息数以服务触屏。 */
 #define PROJECT_DISPLAY_WAIT_TIMEOUT_MS                (5U)
 #define PROJECT_DISPLAY_MESSAGE_BUDGET                 (4U)
+#define PROJECT_UI_RESPONSE_TIMEOUT_MS                 (1000U)
+#define PROJECT_UI_STATUS_RETRY_MS                     (250U)
+#define PROJECT_UI_STATUS_SYNC_PERIOD_MS               (1000U)
 #define PROJECT_TOUCH_MOVE_LOG_PERIOD_MS                (100U)
 //******************************** Defines *********************************//
 

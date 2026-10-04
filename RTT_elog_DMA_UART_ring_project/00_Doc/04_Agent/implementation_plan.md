@@ -148,3 +148,9 @@ Host 测试复用现有 Tests 方法；实施时记录实际编译运行命令�
 ## B1/B2 实施更新（2026-10-03）
 
 参见 [驱动阶段验证记录](CST816T_Driver_Verification.md)：Host 41/41，Keil 0错误/13个原有告警，实板ID=0xB5、固件=0x01。后续 LVGL 阶段已按固定顺序同步采集四角/中心，确定原始坐标直通及边界裁剪；最坏延迟未测，见本轮交付记录。
+
+## D 阶段实施更新（2026-10-04）
+
+Guider Sensor Monitor 固件接入及自动测试完成，采用专项 [执行计划](GUI_Guider_Sensor_Monitor_Execution_Plan.md)。Host 43/43，Keil 完整重建 0 错误/380 个已有源码告警；RAM 94640 B / 128 KiB，Flash 337252 B / 512 KiB。生成文件保持原样，业务文件独立；默认主题的动态状态过渡不用于本页面。
+
+J-Link 烧录校验通过，串口 STATUS 返回 STOPPED；用户确认显示与功能正常，授权提交推送，本次 Sensor Monitor 功能交付关闭。D1 两处字体高度修正已同步原生源并由 APP 应用，尚未重新原生导出。V1 的板上资源高水位、最坏时延及故障注入未执行；不将整个 D/V 扩展验证清单标为全部 COMPLETE。详见 [实板交付记录](evidence/2026-10-04_guider_sensor_monitor/board_delivery.md)。详见 [验证记录](evidence/2026-10-04_guider_sensor_monitor/verification.md)。

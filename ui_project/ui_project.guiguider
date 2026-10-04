@@ -1,0 +1,1021 @@
+{
+  "projectId": "project-MUT5K02QTWXN",
+  "projectName": "ui_project",
+  "projectPath": "E:\\my_project_2026\\Git_test\\stm32f4_DMA_UART_ring_RTOS\\ui_project",
+  "version": "2.0.1",
+  "toolVendor": "NXP Semiconductors",
+  "createDate": "2026-10-04",
+  "createVersion": "2.0.1",
+  "lastModified": "2026-10-04T04:56:51.861Z",
+  "description": "",
+  "metadata": {
+    "board": {
+      "id": 20,
+      "name": "Simulator"
+    },
+    "application": {
+      "id": 3,
+      "name": "BlankTemplate"
+    }
+  },
+  "projectSettings": {
+    "lvglVersion": "9.4.0",
+    "width": 240,
+    "height": 280,
+    "targetConfig": {
+      "targetRun": false,
+      "targetBuild": false,
+      "toolchainAlias": "simulator",
+      "toolchain": "x86_64-w64-mingw32",
+      "display": "",
+      "colorDepth": 16,
+      "display_name": "P169H200"
+    },
+    "imageConfig": {
+      "storage_type": "CArray",
+      "sd_path": "/sdcard/images/",
+      "flash_address": "0xFFFFFFFFU",
+      "color_format": "RGB565A8",
+      "aligned": 0,
+      "origin_size": 0,
+      "compress": "",
+      "dither": ""
+    },
+    "fontConfig": {
+      "default_family": "montserratMedium.ttf",
+      "default_size": 14,
+      "enable_base_chars": 1,
+      "base_chars": "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz +-.%/"
+    }
+  },
+  "lvConf": {
+    "LV_MEM_SIZE": 320
+  },
+  "UI": {
+    "screen_list": [
+      {
+        "type": "layer_sys",
+        "name": "layer_sys",
+        "id": "layer_sys",
+        "children": []
+      },
+      {
+        "type": "layer_top",
+        "name": "layer_top",
+        "id": "layer_top",
+        "children": []
+      },
+      {
+        "type": "layer_bottom",
+        "name": "layer_bottom",
+        "id": "layer_bottom",
+        "children": []
+      },
+      {
+        "type": "screen",
+        "id": "screen",
+        "name": "screen",
+        "default_screen": true,
+        "style": {
+          "LV_PART_MAIN|LV_STATE_DEFAULT": {
+            "part": "LV_PART_MAIN",
+            "state": "LV_STATE_DEFAULT",
+            "bg_color": "#101820",
+            "bg_opa": 255,
+            "border_width": 0,
+            "radius": 0,
+            "pad_left": 0,
+            "pad_right": 0,
+            "pad_top": 0,
+            "pad_bottom": 0
+          }
+        },
+        "children": [
+          {
+            "type": "label",
+            "id": "label_label_title",
+            "name": "label_title",
+            "x": 24,
+            "x_unit": "px",
+            "y": 17,
+            "y_unit": "px",
+            "width": 122,
+            "width_unit": "px",
+            "height": 16,
+            "height_unit": "px",
+            "align": "LV_ALIGN_TOP_LEFT",
+            "style": {
+              "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                "part": "LV_PART_MAIN",
+                "state": "LV_STATE_DEFAULT",
+                "text_color": "#F2F6FA",
+                "text_align": "LV_TEXT_ALIGN_LEFT",
+                "text_size": 12,
+                "text_family": "montserratMedium.ttf",
+                "pad_left": 0,
+                "pad_right": 0,
+                "pad_top": 0,
+                "pad_bottom": 0
+              }
+            },
+            "text": "SENSOR MONITOR"
+          },
+          {
+            "type": "label",
+            "id": "label_label_state",
+            "name": "label_state",
+            "x": 154,
+            "x_unit": "px",
+            "y": 15,
+            "y_unit": "px",
+            "width": 60,
+            "width_unit": "px",
+            "height": 20,
+            "height_unit": "px",
+            "align": "LV_ALIGN_TOP_LEFT",
+            "style": {
+              "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                "part": "LV_PART_MAIN",
+                "state": "LV_STATE_DEFAULT",
+                "text_color": "#9BAEC2",
+                "text_align": "LV_TEXT_ALIGN_CENTER",
+                "bg_color": "#263544",
+                "bg_opa": 255,
+                "radius": 5,
+                "pad_top": 3,
+                "text_size": 10,
+                "text_family": "montserratMedium.ttf",
+                "pad_left": 0,
+                "pad_right": 0,
+                "pad_bottom": 0
+              }
+            },
+            "text": "STOPPED"
+          },
+          {
+            "type": "container",
+            "id": "container_container_temperature",
+            "name": "container_temperature",
+            "x": 8,
+            "x_unit": "px",
+            "y": 36,
+            "y_unit": "px",
+            "width": 108,
+            "width_unit": "px",
+            "height": 52,
+            "height_unit": "px",
+            "align": "LV_ALIGN_TOP_LEFT",
+            "style": {
+              "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                "part": "LV_PART_MAIN",
+                "state": "LV_STATE_DEFAULT",
+                "bg_color": "#1B2733",
+                "bg_opa": 255,
+                "border_color": "#2B3E50",
+                "border_width": 1,
+                "radius": 7,
+                "shadow_width": 0,
+                "pad_left": 0,
+                "pad_right": 0,
+                "pad_top": 0,
+                "pad_bottom": 0
+              }
+            },
+            "children": [
+              {
+                "type": "label",
+                "id": "label_container_temperature_caption",
+                "name": "container_temperature_caption",
+                "x": 8,
+                "x_unit": "px",
+                "y": 6,
+                "y_unit": "px",
+                "width": 96,
+                "width_unit": "px",
+                "height": 14,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#9BAEC2",
+                    "text_align": "LV_TEXT_ALIGN_LEFT",
+                    "text_size": 10,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "TEMPERATURE"
+              },
+              {
+                "type": "label",
+                "id": "label_label_temperature_value",
+                "name": "label_temperature_value",
+                "x": 8,
+                "x_unit": "px",
+                "y": 22,
+                "y_unit": "px",
+                "width": 76,
+                "width_unit": "px",
+                "height": 27,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#F2F6FA",
+                    "text_align": "LV_TEXT_ALIGN_LEFT",
+                    "text_size": 24,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "--"
+              },
+              {
+                "type": "label",
+                "id": "label_container_temperature_unit",
+                "name": "container_temperature_unit",
+                "x": 87,
+                "x_unit": "px",
+                "y": 31,
+                "y_unit": "px",
+                "width": 13,
+                "width_unit": "px",
+                "height": 14,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#9BAEC2",
+                    "text_align": "LV_TEXT_ALIGN_LEFT",
+                    "text_size": 10,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "C"
+              }
+            ]
+          },
+          {
+            "type": "container",
+            "id": "container_container_humidity",
+            "name": "container_humidity",
+            "x": 124,
+            "x_unit": "px",
+            "y": 36,
+            "y_unit": "px",
+            "width": 108,
+            "width_unit": "px",
+            "height": 52,
+            "height_unit": "px",
+            "align": "LV_ALIGN_TOP_LEFT",
+            "style": {
+              "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                "part": "LV_PART_MAIN",
+                "state": "LV_STATE_DEFAULT",
+                "bg_color": "#1B2733",
+                "bg_opa": 255,
+                "border_color": "#2B3E50",
+                "border_width": 1,
+                "radius": 7,
+                "shadow_width": 0,
+                "pad_left": 0,
+                "pad_right": 0,
+                "pad_top": 0,
+                "pad_bottom": 0
+              }
+            },
+            "children": [
+              {
+                "type": "label",
+                "id": "label_container_humidity_caption",
+                "name": "container_humidity_caption",
+                "x": 8,
+                "x_unit": "px",
+                "y": 6,
+                "y_unit": "px",
+                "width": 96,
+                "width_unit": "px",
+                "height": 14,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#9BAEC2",
+                    "text_align": "LV_TEXT_ALIGN_LEFT",
+                    "text_size": 10,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "HUMIDITY"
+              },
+              {
+                "type": "label",
+                "id": "label_label_humidity_value",
+                "name": "label_humidity_value",
+                "x": 8,
+                "x_unit": "px",
+                "y": 22,
+                "y_unit": "px",
+                "width": 76,
+                "width_unit": "px",
+                "height": 27,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#F2F6FA",
+                    "text_align": "LV_TEXT_ALIGN_LEFT",
+                    "text_size": 24,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "--"
+              },
+              {
+                "type": "label",
+                "id": "label_container_humidity_unit",
+                "name": "container_humidity_unit",
+                "x": 87,
+                "x_unit": "px",
+                "y": 31,
+                "y_unit": "px",
+                "width": 13,
+                "width_unit": "px",
+                "height": 14,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#9BAEC2",
+                    "text_align": "LV_TEXT_ALIGN_LEFT",
+                    "text_size": 10,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "%"
+              }
+            ]
+          },
+          {
+            "type": "container",
+            "id": "container_container_acceleration",
+            "name": "container_acceleration",
+            "x": 8,
+            "x_unit": "px",
+            "y": 94,
+            "y_unit": "px",
+            "width": 224,
+            "width_unit": "px",
+            "height": 50,
+            "height_unit": "px",
+            "align": "LV_ALIGN_TOP_LEFT",
+            "style": {
+              "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                "part": "LV_PART_MAIN",
+                "state": "LV_STATE_DEFAULT",
+                "bg_color": "#1B2733",
+                "bg_opa": 255,
+                "border_color": "#2B3E50",
+                "border_width": 1,
+                "radius": 7,
+                "shadow_width": 0,
+                "pad_left": 0,
+                "pad_right": 0,
+                "pad_top": 0,
+                "pad_bottom": 0
+              }
+            },
+            "children": [
+              {
+                "type": "label",
+                "id": "label_container_acceleration_caption",
+                "name": "container_acceleration_caption",
+                "x": 8,
+                "x_unit": "px",
+                "y": 5,
+                "y_unit": "px",
+                "width": 208,
+                "width_unit": "px",
+                "height": 14,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#9BAEC2",
+                    "text_align": "LV_TEXT_ALIGN_LEFT",
+                    "text_size": 10,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "ACCELERATION / g"
+              },
+              {
+                "type": "label",
+                "id": "label_label_acceleration_x_caption",
+                "name": "label_acceleration_x_caption",
+                "x": 8,
+                "x_unit": "px",
+                "y": 20,
+                "y_unit": "px",
+                "width": 16,
+                "width_unit": "px",
+                "height": 14,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#4AA8FF",
+                    "text_align": "LV_TEXT_ALIGN_LEFT",
+                    "text_size": 10,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "X"
+              },
+              {
+                "type": "label",
+                "id": "label_label_acceleration_x",
+                "name": "label_acceleration_x",
+                "x": 23,
+                "x_unit": "px",
+                "y": 24,
+                "y_unit": "px",
+                "width": 53,
+                "width_unit": "px",
+                "height": 18,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#F2F6FA",
+                    "text_align": "LV_TEXT_ALIGN_CENTER",
+                    "text_size": 12,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "--"
+              },
+              {
+                "type": "label",
+                "id": "label_label_acceleration_y_caption",
+                "name": "label_acceleration_y_caption",
+                "x": 78,
+                "x_unit": "px",
+                "y": 20,
+                "y_unit": "px",
+                "width": 16,
+                "width_unit": "px",
+                "height": 14,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#4AA8FF",
+                    "text_align": "LV_TEXT_ALIGN_LEFT",
+                    "text_size": 10,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "Y"
+              },
+              {
+                "type": "label",
+                "id": "label_label_acceleration_y",
+                "name": "label_acceleration_y",
+                "x": 93,
+                "x_unit": "px",
+                "y": 24,
+                "y_unit": "px",
+                "width": 53,
+                "width_unit": "px",
+                "height": 18,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#F2F6FA",
+                    "text_align": "LV_TEXT_ALIGN_CENTER",
+                    "text_size": 12,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "--"
+              },
+              {
+                "type": "label",
+                "id": "label_label_acceleration_z_caption",
+                "name": "label_acceleration_z_caption",
+                "x": 148,
+                "x_unit": "px",
+                "y": 20,
+                "y_unit": "px",
+                "width": 16,
+                "width_unit": "px",
+                "height": 14,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#4AA8FF",
+                    "text_align": "LV_TEXT_ALIGN_LEFT",
+                    "text_size": 10,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "Z"
+              },
+              {
+                "type": "label",
+                "id": "label_label_acceleration_z",
+                "name": "label_acceleration_z",
+                "x": 163,
+                "x_unit": "px",
+                "y": 24,
+                "y_unit": "px",
+                "width": 53,
+                "width_unit": "px",
+                "height": 18,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#F2F6FA",
+                    "text_align": "LV_TEXT_ALIGN_CENTER",
+                    "text_size": 12,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "--"
+              }
+            ]
+          },
+          {
+            "type": "container",
+            "id": "container_container_gyroscope",
+            "name": "container_gyroscope",
+            "x": 8,
+            "x_unit": "px",
+            "y": 150,
+            "y_unit": "px",
+            "width": 224,
+            "width_unit": "px",
+            "height": 50,
+            "height_unit": "px",
+            "align": "LV_ALIGN_TOP_LEFT",
+            "style": {
+              "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                "part": "LV_PART_MAIN",
+                "state": "LV_STATE_DEFAULT",
+                "bg_color": "#1B2733",
+                "bg_opa": 255,
+                "border_color": "#2B3E50",
+                "border_width": 1,
+                "radius": 7,
+                "shadow_width": 0,
+                "pad_left": 0,
+                "pad_right": 0,
+                "pad_top": 0,
+                "pad_bottom": 0
+              }
+            },
+            "children": [
+              {
+                "type": "label",
+                "id": "label_container_gyroscope_caption",
+                "name": "container_gyroscope_caption",
+                "x": 8,
+                "x_unit": "px",
+                "y": 5,
+                "y_unit": "px",
+                "width": 208,
+                "width_unit": "px",
+                "height": 14,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#9BAEC2",
+                    "text_align": "LV_TEXT_ALIGN_LEFT",
+                    "text_size": 10,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "GYROSCOPE / dps"
+              },
+              {
+                "type": "label",
+                "id": "label_label_gyroscope_x_caption",
+                "name": "label_gyroscope_x_caption",
+                "x": 8,
+                "x_unit": "px",
+                "y": 20,
+                "y_unit": "px",
+                "width": 16,
+                "width_unit": "px",
+                "height": 14,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#4AA8FF",
+                    "text_align": "LV_TEXT_ALIGN_LEFT",
+                    "text_size": 10,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "X"
+              },
+              {
+                "type": "label",
+                "id": "label_label_gyroscope_x",
+                "name": "label_gyroscope_x",
+                "x": 23,
+                "x_unit": "px",
+                "y": 24,
+                "y_unit": "px",
+                "width": 53,
+                "width_unit": "px",
+                "height": 18,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#F2F6FA",
+                    "text_align": "LV_TEXT_ALIGN_CENTER",
+                    "text_size": 12,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "--"
+              },
+              {
+                "type": "label",
+                "id": "label_label_gyroscope_y_caption",
+                "name": "label_gyroscope_y_caption",
+                "x": 78,
+                "x_unit": "px",
+                "y": 20,
+                "y_unit": "px",
+                "width": 16,
+                "width_unit": "px",
+                "height": 14,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#4AA8FF",
+                    "text_align": "LV_TEXT_ALIGN_LEFT",
+                    "text_size": 10,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "Y"
+              },
+              {
+                "type": "label",
+                "id": "label_label_gyroscope_y",
+                "name": "label_gyroscope_y",
+                "x": 93,
+                "x_unit": "px",
+                "y": 24,
+                "y_unit": "px",
+                "width": 53,
+                "width_unit": "px",
+                "height": 18,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#F2F6FA",
+                    "text_align": "LV_TEXT_ALIGN_CENTER",
+                    "text_size": 12,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "--"
+              },
+              {
+                "type": "label",
+                "id": "label_label_gyroscope_z_caption",
+                "name": "label_gyroscope_z_caption",
+                "x": 148,
+                "x_unit": "px",
+                "y": 20,
+                "y_unit": "px",
+                "width": 16,
+                "width_unit": "px",
+                "height": 14,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#4AA8FF",
+                    "text_align": "LV_TEXT_ALIGN_LEFT",
+                    "text_size": 10,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "Z"
+              },
+              {
+                "type": "label",
+                "id": "label_label_gyroscope_z",
+                "name": "label_gyroscope_z",
+                "x": 163,
+                "x_unit": "px",
+                "y": 24,
+                "y_unit": "px",
+                "width": 53,
+                "width_unit": "px",
+                "height": 18,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#F2F6FA",
+                    "text_align": "LV_TEXT_ALIGN_CENTER",
+                    "text_size": 12,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "--"
+              }
+            ]
+          },
+          {
+            "type": "label",
+            "id": "label_label_feedback",
+            "name": "label_feedback",
+            "x": 8,
+            "x_unit": "px",
+            "y": 204,
+            "y_unit": "px",
+            "width": 224,
+            "width_unit": "px",
+            "height": 12,
+            "height_unit": "px",
+            "align": "LV_ALIGN_TOP_LEFT",
+            "style": {
+              "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                "part": "LV_PART_MAIN",
+                "state": "LV_STATE_DEFAULT",
+                "text_color": "#9BAEC2",
+                "text_align": "LV_TEXT_ALIGN_CENTER",
+                "text_size": 10,
+                "text_family": "montserratMedium.ttf",
+                "pad_left": 0,
+                "pad_right": 0,
+                "pad_top": 0,
+                "pad_bottom": 0
+              }
+            },
+            "text": "No sample yet"
+          },
+          {
+            "type": "button",
+            "id": "button_button_start_stop",
+            "name": "button_start_stop",
+            "x": 20,
+            "x_unit": "px",
+            "y": 222,
+            "y_unit": "px",
+            "width": 96,
+            "width_unit": "px",
+            "height": 44,
+            "height_unit": "px",
+            "align": "LV_ALIGN_TOP_LEFT",
+            "style": {
+              "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                "part": "LV_PART_MAIN",
+                "state": "LV_STATE_DEFAULT",
+                "bg_color": "#15803D",
+                "bg_opa": 255,
+                "border_width": 0,
+                "radius": 7,
+                "shadow_width": 0,
+                "pad_left": 0,
+                "pad_right": 0,
+                "pad_top": 0,
+                "pad_bottom": 0
+              }
+            },
+            "children": [
+              {
+                "type": "label",
+                "id": "label_button_start_stop_label",
+                "name": "button_start_stop_label",
+                "x": 0,
+                "x_unit": "px",
+                "y": 13,
+                "y_unit": "px",
+                "width": 96,
+                "width_unit": "px",
+                "height": 18,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#F2F6FA",
+                    "text_align": "LV_TEXT_ALIGN_CENTER",
+                    "text_size": 14,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "START"
+              }
+            ]
+          },
+          {
+            "type": "button",
+            "id": "button_button_once",
+            "name": "button_once",
+            "x": 124,
+            "x_unit": "px",
+            "y": 222,
+            "y_unit": "px",
+            "width": 96,
+            "width_unit": "px",
+            "height": 44,
+            "height_unit": "px",
+            "align": "LV_ALIGN_TOP_LEFT",
+            "style": {
+              "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                "part": "LV_PART_MAIN",
+                "state": "LV_STATE_DEFAULT",
+                "bg_color": "#175CB5",
+                "bg_opa": 255,
+                "border_width": 0,
+                "radius": 7,
+                "shadow_width": 0,
+                "pad_left": 0,
+                "pad_right": 0,
+                "pad_top": 0,
+                "pad_bottom": 0
+              }
+            },
+            "children": [
+              {
+                "type": "label",
+                "id": "label_button_once_label",
+                "name": "button_once_label",
+                "x": 0,
+                "x_unit": "px",
+                "y": 13,
+                "y_unit": "px",
+                "width": 96,
+                "width_unit": "px",
+                "height": 18,
+                "height_unit": "px",
+                "align": "LV_ALIGN_TOP_LEFT",
+                "style": {
+                  "LV_PART_MAIN|LV_STATE_DEFAULT": {
+                    "part": "LV_PART_MAIN",
+                    "state": "LV_STATE_DEFAULT",
+                    "text_color": "#F2F6FA",
+                    "text_align": "LV_TEXT_ALIGN_CENTER",
+                    "text_size": 14,
+                    "text_family": "montserratMedium.ttf",
+                    "pad_left": 0,
+                    "pad_right": 0,
+                    "pad_top": 0,
+                    "pad_bottom": 0
+                  }
+                },
+                "text": "ONCE"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "event_list": {},
+    "variable_setting": {
+      "condition": {},
+      "lv_anim_t": {}
+    }
+  }
+}

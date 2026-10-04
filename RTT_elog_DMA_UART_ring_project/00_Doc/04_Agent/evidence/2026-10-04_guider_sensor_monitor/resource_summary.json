@@ -1,0 +1,41 @@
+{
+  "errors": 0,
+  "warnings": 380,
+  "warnings_by_code": {
+    "1-D": 279,
+    "186-D": 12,
+    "188-D": 74,
+    "191-D": 1,
+    "111-D": 5,
+    "177-D": 1,
+    "170-D": 1,
+    "546-D": 1,
+    "68-D": 5,
+    "1293-D": 1
+  },
+  "app_or_generated_warnings": [],
+  "code_bytes": 252880,
+  "ro_bytes": 83928,
+  "rw_bytes": 444,
+  "zi_bytes": 94196,
+  "flash_budget_bytes": 337252,
+  "ram_bytes": 94640,
+  "sram_remaining_bytes": 36432,
+  "flash_remaining_bytes": 187036,
+  "ram_increment_bytes": 176,
+  "flash_increment_bytes": 75060,
+  "artifacts": {
+    "axf": {
+      "path": "RTT_elog_DMA_UART_ring_project\\MDK-ARM\\Objects\\RTT_elog_DMA_UART_ring_project.axf",
+      "sha256": "fc56fff0cd076c1bec0b0b4f504dc0dd806396d1a15deb4b8286a04d9febbc53"
+    },
+    "hex": {
+      "path": "RTT_elog_DMA_UART_ring_project\\MDK-ARM\\Objects\\RTT_elog_DMA_UART_ring_project.hex",
+      "sha256": "9b461fdb75d7227568c19bf14c0eba04d6bbb44cfb9d7780525d63427fe7ceab"
+    },
+    "map": {
+      "path": "RTT_elog_DMA_UART_ring_project\\MDK-ARM\\Objects\\RTT_elog_DMA_UART_ring_project.map",
+      "sha256": "66bc90117ec79ce2c638f071bc75360b042f01aa846a55e456fe212834716056"
+    }
+  }
+}

@@ -8,6 +8,7 @@
 /05_Tools/Config/toolchain.local.bat
 /05_Tools/Config/project.local.bat
 /06_Output/Logs/
+/06_Output/Build/
 
 # Keil generated intermediate / output files
 *.o
@@ -75,3 +76,13 @@ Thumbs.db
 
 # Local ad hoc compiler log
 /RTT_elog_DMA_UART_ring_project/MDK-ARM/codex_build.log
+
+# GUI Guider local simulator runtime (restore with GUI Guider 2.0.1)
+/ui_project/platform/
+
+# Versioned firmware delivery artifacts
+!/06_Output/Releases/
+!/06_Output/Releases/V1.1/
+!/06_Output/Releases/V1.1/*.hex
+!/06_Output/Releases/V1.1/*.axf
+!/06_Output/Releases/V1.1/*.map

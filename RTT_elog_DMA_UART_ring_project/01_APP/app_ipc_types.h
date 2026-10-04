@@ -16,6 +16,7 @@
 
 //******************************** Includes *********************************//
 #include "app_control_types.h"
+#include "platform_def.h"
 #include "dht20/platform_dht20.h"
 #include "mpu6050/platform_mpu6050.h"
 //******************************** Includes *********************************//
@@ -38,7 +39,7 @@ typedef enum
     APP_CONTROL_MESSAGE_MAX
 } app_control_message_type_t;
 
-/** @brief Button 或 UART 提交给唯一 Control FSM 的请求。 */
+/** @brief Button、UART 或 UI 提交给唯一 Control FSM 的请求。 */
 typedef struct
 {
     /** 与输入介质无关的统一控制事件。 */
@@ -86,11 +87,24 @@ typedef enum
     APP_CONTROL_RESPONSE_MAX
 } app_control_response_t;
 
+/** @brief Control FSM 发布给页面的实际状态及执行结果。 */
+typedef struct
+{
+    app_control_state_t state;
+    platform_bool_t onceActive;
+    platform_bool_t responseValid;
+    app_control_response_t response;
+    app_ctrl_source_t source;
+    platform_error_t requestResult;
+} app_control_ui_status_t;
+
 /** @brief Display Queue 消息类别。 */
 typedef enum
 {
     APP_DISPLAY_MESSAGE_SYSTEM_STATE = 0,
     APP_DISPLAY_MESSAGE_MEASUREMENT,
+    APP_DISPLAY_MESSAGE_CONTROL_STATUS,
+    APP_DISPLAY_MESSAGE_ACQUISITION_FAILURE,
     APP_DISPLAY_MESSAGE_MAX
 } app_display_message_type_t;
 
@@ -106,6 +120,8 @@ typedef struct
         app_control_state_t systemState;
         /** type 为 MEASUREMENT 时有效。 */
         app_acquisition_data_t measurement;
+        app_control_ui_status_t controlStatus;
+        platform_error_t acquisitionResult;
     } payload;
 } app_display_message_t;
 

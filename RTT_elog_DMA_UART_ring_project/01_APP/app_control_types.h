@@ -46,6 +46,7 @@ typedef enum
 {
     APP_CTRL_SOURCE_BUTTON = 0,
     APP_CTRL_SOURCE_UART,
+    APP_CTRL_SOURCE_UI,
     APP_CTRL_SOURCE_MAX
 } app_ctrl_source_t;
 

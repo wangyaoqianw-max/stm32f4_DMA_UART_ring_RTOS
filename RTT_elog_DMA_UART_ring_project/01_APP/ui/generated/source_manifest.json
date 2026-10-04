@@ -1,0 +1,82 @@
+{
+  "tool": "GUI Guider",
+  "version": "2.0.1",
+  "lvgl": "9.4.0",
+  "date": "2026-10-04",
+  "source": "ui_project/generated",
+  "upstream_modified": false,
+  "files": [
+    {
+      "path": "assets/fonts/gg_font.h",
+      "sha256": "ac2939b4630a0162f3a34afc77349166363ade13df268d2c3d81fb6030031b30"
+    },
+    {
+      "path": "assets/fonts/lv_font_montserratMedium_10.c",
+      "sha256": "a18d1458f5b1b4ea4e318acaba511991922d7bfacc762843c4dcc0a10bf1a9f1"
+    },
+    {
+      "path": "assets/fonts/lv_font_montserratMedium_12.c",
+      "sha256": "c82b12a37b9054d1024ed3ec3f7ac9e0335d99be8451f3a80dd46cf37ba04ff1"
+    },
+    {
+      "path": "assets/fonts/lv_font_montserratMedium_14.c",
+      "sha256": "882f6764609945347ecc6c876b34595cb1ef9a2f8cdb7f93d0195596cb0ec416"
+    },
+    {
+      "path": "assets/fonts/lv_font_montserratMedium_24.c",
+      "sha256": "16423c832292e20b6ab3dcdcb5bd11e0561035619f758fba12f80526c0a29bcd"
+    },
+    {
+      "path": "assets/images/gg_image.h",
+      "sha256": "c5c2b67d6d1bca9da4e6423042b03e9a8c0bde1fd3f614bc5d30140c97dac415"
+    },
+    {
+      "path": "events/gg_event.h",
+      "sha256": "bab2136f957452a28d4a6de73737cc06779e22f99b13d6d2560c5550fd4f819f"
+    },
+    {
+      "path": "events/gg_event_layer_bottom.c",
+      "sha256": "2afa0a9c02b8a4d89479516374faf157ada7f7e358e92df511b2c4f94c5dd8be"
+    },
+    {
+      "path": "events/gg_event_layer_sys.c",
+      "sha256": "de19ab4d3ab658244a938fcaa7f70b9e67edb48c580574e2348841e4ea65fef1"
+    },
+    {
+      "path": "events/gg_event_layer_top.c",
+      "sha256": "8c4dd9b03a5daf85a98b52138819a28c6f102b772faca582190167b6e0371b28"
+    },
+    {
+      "path": "events/gg_event_screen.c",
+      "sha256": "46278173a1767065ca08dd373031aaaeab4d12b606adfddf2a69fd5c5b64aba9"
+    },
+    {
+      "path": "gg_utils.c",
+      "sha256": "bed3f1848f399fbcf4d9d3629ff96b1bfc4c67a9191b8a14345a38e5005c22e9"
+    },
+    {
+      "path": "gg_utils.h",
+      "sha256": "24493977119ed9a1408fc7784fe02a485c6a335bdc357c34b767acb58afc31f1"
+    },
+    {
+      "path": "gui_guider.h",
+      "sha256": "08bb1533335fb9fb9ccc534cd082e11c08ba809d5eef022cc222a91d05861c98"
+    },
+    {
+      "path": "screens/gg_layer_bottom.c",
+      "sha256": "94947c623f69b5d9681bf5400e93ddc360f9cf536a283a84949ea64e80c103da"
+    },
+    {
+      "path": "screens/gg_layer_sys.c",
+      "sha256": "0a2cedf21c6e9ae3c8daf663bcfe96b2a3ab55957e26a0c3b5373235d8a3a18c"
+    },
+    {
+      "path": "screens/gg_layer_top.c",
+      "sha256": "ccb6601b54a4499d6b15f0e2554da17a212fc47e802d85ed328e77b033d2bd6b"
+    },
+    {
+      "path": "screens/gg_screen.c",
+      "sha256": "ae31996dff2f3854df0664f2a33cc1b4afdedb667e660e2f91feef625cf5bf94"
+    }
+  ]
+}
