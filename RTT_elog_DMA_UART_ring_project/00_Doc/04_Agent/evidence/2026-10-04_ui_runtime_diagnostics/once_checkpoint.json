@@ -1,0 +1,27 @@
+{
+  "user_result": "10 ONCE operations normal",
+  "last_snapshot": {
+    "sequence": 220,
+    "uptime_ms": 110335,
+    "clock_hz": 100000000,
+    "lvgl_total": 22340,
+    "lvgl_free": 11204,
+    "lvgl_largest": 11204,
+    "lvgl_peak": 11896,
+    "display_stack_free": 2404,
+    "rtos_heap_free": 11432,
+    "rtos_heap_min": 10808,
+    "flush_count": 534,
+    "flush_max_cycles": 753737,
+    "flush_total_cycles": 238310379,
+    "pixels": 1518960,
+    "process_count": 21159,
+    "process_max_cycles": 17426809,
+    "process_total_cycles": 648175340,
+    "flush_errors": 0,
+    "reserved18": 0,
+    "reserved19": 0,
+    "host_elapsed_s": 61.203
+  },
+  "samples": 62
+}

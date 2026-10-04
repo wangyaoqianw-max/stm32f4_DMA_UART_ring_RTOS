@@ -1,0 +1,22 @@
+{
+  "samples": 122,
+  "sample_duration_s": 121.39,
+  "clock_hz": 100000000,
+  "configured_lvgl_pool": 24576,
+  "usable_lvgl_pool": 22340,
+  "min_lvgl_free": 11204,
+  "min_lvgl_largest": 11204,
+  "lvgl_peak_bytes": 11896,
+  "display_stack_configured": 6144,
+  "display_stack_min_free": 2404,
+  "rtos_heap_configured": 28672,
+  "rtos_heap_min_free": 10808,
+  "rtos_heap_current_free": 11432,
+  "flush_max_ms": 12.52673,
+  "process_max_ms": 174.26808999999997,
+  "maxima_include_startup": true,
+  "flush_errors": 0,
+  "pre_restore_status": "RUNNING",
+  "restored_firmware": "v1.1.1",
+  "diagnostic_hex_sha256": "37f4c87ec09b7cbbc8d40b35ff14cda65de035d17c1caa6b467d2a4dbca91c9d"
+}
